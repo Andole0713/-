@@ -1,6 +1,7 @@
 // 会員がプランを選んだときに Stripe の決済ページ（Checkout）を作成する
 import {
   adminClient,
+  CHECKOUT_PLANS,
   corsHeaders,
   ensureStripeCustomer,
   getUser,
@@ -22,6 +23,9 @@ Deno.serve(async (req) => {
 
     const { plan } = await req.json().catch(() => ({}));
     if (!PLANS.includes(plan)) return json(req, { error: "プランが正しくありません" }, 400);
+    if (!CHECKOUT_PLANS.includes(plan)) {
+      return json(req, { error: "このプランは LINE またはお電話でお申し込みください" }, 400);
+    }
 
     const { data: profile } = await adminClient()
       .from("profiles")

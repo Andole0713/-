@@ -1,5 +1,5 @@
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/+esm';
-import { SUPABASE_URL, SUPABASE_ANON_KEY, SCHOOL_NAME, PLANS } from './config.js';
+import { SUPABASE_URL, SUPABASE_ANON_KEY, SCHOOL_NAME, PLANS, CONTACT } from './config.js';
 
 const configured = !SUPABASE_URL.includes('YOUR-PROJECT') && !SUPABASE_ANON_KEY.includes('YOUR-');
 const sb = configured ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
@@ -63,7 +63,28 @@ function statusPill(status) {
   const [label, cls] = STATUS_LABEL[status] ?? [status, ''];
   return `<span class="pill ${cls}">${esc(label)}</span>`;
 }
-const isActive = (p) => ['active', 'trialing'].includes(p?.subscription_status);
+// 利用できる会員：Stripe で契約中、または管理者が設定した利用期限内（LINE・電話で申し込んだ会員）
+const isActive = (p) => ['active', 'trialing'].includes(p?.subscription_status)
+  || (!!p?.access_until && p.access_until >= new Date().toLocaleDateString('sv-SE'));
+function memberPill(p) {
+  if (!['active', 'trialing'].includes(p.subscription_status) && isActive(p)) return '<span class="pill ok">利用中</span>';
+  return statusPill(p.subscription_status);
+}
+const planOf = (id) => PLANS.find((pl) => pl.id === id);
+const planLabel = (id) => planOf(id)?.name ?? id ?? '';
+const WEEK = ['日', '月', '火', '水', '木', '金', '土'];
+// <input type="datetime-local"> 用の値（端末の時刻）
+function toLocalInput(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+function fmtShort(iso) {
+  const d = new Date(iso);
+  return `${d.getMonth() + 1}/${d.getDate()}（${WEEK[d.getDay()]}）${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+const monthStart = () => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1).toISOString(); };
 
 function getRoute() {
   return location.hash.replace(/^#\/?/, '').split('/').filter(Boolean);
@@ -75,17 +96,28 @@ function go(path) {
 
 function header(title, back) {
   return `<div class="top">
-    <div class="row">${back ? `<a class="top back" href="#/${back}" aria-label="戻る">‹</a>` : ''}
-      <div><div class="brand">${esc(title)}</div><div class="muted">${esc(SCHOOL_NAME)}</div></div></div>
+    <div class="row">${back ? `<a class="back" href="#/${back}" aria-label="戻る">‹</a>` : ''}
+      <div><div class="brand">${esc(title)}</div><div class="muted">Members</div></div></div>
+    <a href="../" aria-label="${esc(SCHOOL_NAME)} トップページへ"><img class="top-logo" src="../assets/logo-mark.png" width="200" height="170" alt="${esc(SCHOOL_NAME)}"></a>
   </div>`;
 }
+const ICON = {
+  home: '<path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/><path d="M10 20v-6h4v6"/>',
+  video: '<rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10l5-3v10l-5-3z"/>',
+  book: '<path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M4 19V5"/><path d="M8 7h7"/>',
+  user: '<circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/>',
+  inbox: '<path d="M3 13l3-8h12l3 8"/><path d="M3 13v6h18v-6h-5l-1 3H9l-1-3z"/>',
+  users: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c1-3.5 3.5-5 6.5-5s5.5 1.5 6.5 5"/><circle cx="17" cy="9" r="2.5"/><path d="M16 14.5c2.5 0 4.5 1.5 5.5 4.5"/>',
+  card: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18"/><path d="M7 15h4"/>',
+};
+const icon = (name) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[name]}</svg>`;
 function nav(items, active) {
   return `<nav class="nav" style="grid-template-columns:repeat(${items.length},1fr)">${items
-    .map(([path, icon, label]) => `<a href="#/${path}" class="${active === path ? 'active' : ''}">${icon}<span>${label}</span></a>`)
+    .map(([path, ic, label]) => `<a href="#/${path}" class="${active === path ? 'active' : ''}"${active === path ? ' aria-current="page"' : ''}>${icon(ic)}<span>${label}</span></a>`)
     .join('')}</nav>`;
 }
-const memberNav = (active) => nav([['home', '🏠', 'ホーム'], ['submit', '📹', '動画提出'], ['history', '📚', '履歴'], ['account', '👤', 'アカウント']], active);
-const adminNav = (active) => nav([['admin/inbox', '📥', '提出動画'], ['admin/members', '👥', '会員一覧'], ['account', '👤', 'アカウント']], active);
+const memberNav = (active) => nav([['home', 'home', 'ホーム'], ['submit', 'video', '動画提出'], ['history', 'book', '履歴'], ['account', 'user', 'アカウント']], active);
+const adminNav = (active) => nav([['admin/inbox', 'inbox', '提出動画'], ['admin/members', 'users', '会員一覧'], ['account', 'user', 'アカウント']], active);
 
 async function must(promise) {
   const { data, error } = await promise;
@@ -179,57 +211,84 @@ function viewPlans() {
     ${troubled ? `<div class="notice">お支払いの確認ができていません（${esc(STATUS_LABEL[p.subscription_status]?.[0] ?? p.subscription_status)}）。
         カード情報を更新してください。<button class="btn-block" data-action="portal">お支払い情報を更新する</button></div>` : ''}
     ${troubled ? '' : PLANS.map((pl) => `<div class="card plan${pl.recommended ? ' rec' : ''}">
-        <div class="between"><h3>${esc(pl.name)}</h3>${pl.recommended ? '<span class="pill">おすすめ</span>' : ''}</div>
+        <div class="between"><span class="eyebrow">${esc(pl.en)}</span>${pl.recommended ? '<span class="pill">中級〜上級者におすすめ</span>' : ''}</div>
+        <h3>${esc(pl.name)}</h3>
+        <p class="lead">${esc(pl.lead)}</p>
+        <dl class="spec"><div><dt>対象</dt><dd>${esc(pl.target)}</dd></div><div><dt>お支払い</dt><dd>${esc(pl.payment)}</dd></div></dl>
         <div class="price">${esc(pl.price)}</div>
         <ul>${pl.features.map((f) => `<li>${esc(f)}</li>`).join('')}</ul>
-        <button class="btn-block" data-action="checkout" data-plan="${esc(pl.id)}">このプランで申し込む</button>
+        ${pl.checkout
+          ? `<button class="btn-block btn-gold" data-action="checkout" data-plan="${esc(pl.id)}">このプランで申し込む</button>`
+          : `<p class="muted small" style="margin:12px 0 0">このプランは LINE またはお電話でお申し込みください。</p>
+             <a class="btn btn-block btn-line" href="${esc(CONTACT.lineUrl)}" target="_blank" rel="noopener">LINEで申し込む</a>
+             <a class="btn btn-block btn-sub" href="tel:${esc(CONTACT.tel)}">電話で申し込む（${esc(CONTACT.telDisplay)}）</a>`}
       </div>`).join('')}
-    <p class="muted small">お支払いは Stripe の安全な決済ページで行います。解約・プラン変更はいつでも「アカウント」から行えます。</p>
-  </div>` + nav([['plans', '💳', 'プラン'], ['account', '👤', 'アカウント']], 'plans');
+    <p class="muted small">カード決済は Stripe の安全な決済ページで行います。解約・プラン変更はいつでも「アカウント」から行えます。</p>
+  </div>` + nav([['plans', 'card', 'プラン'], ['account', 'user', 'アカウント']], 'plans');
 }
 
 // ---------- 画面：会員 ----------
 
 async function viewMemberHome() {
   const p = state.profile;
-  const [tasks, lessons, subs] = await Promise.all([
+  const since = monthStart();
+  const [tasks, lessons, subs, monthSubs, monthLessons] = await Promise.all([
     must(sb.from('tasks').select('*').eq('member_id', p.id).order('sort_order').order('created_at')),
     must(sb.from('lessons').select('id, lesson_date, title, point').eq('member_id', p.id).order('lesson_date', { ascending: false }).order('created_at', { ascending: false }).limit(1)),
     must(sb.from('submissions').select('id, created_at, club, status').eq('member_id', p.id).eq('status', 'pending').order('created_at', { ascending: false })),
+    must(sb.from('submissions').select('id').eq('member_id', p.id).gte('created_at', since)),
+    must(sb.from('lessons').select('id').eq('member_id', p.id).gte('created_at', since)),
   ]);
   const latest = lessons[0];
   const done = tasks.filter((t) => t.done).length;
+  const plan = planOf(p.plan);
+  const quota = plan?.monthly?.submissions;
   return header('マイページ') + `<div class="content">
-    <div class="hero"><span class="pill">${esc(p.plan || '')}</span>
+    <div class="hero">${plan ? `<span class="pill">${esc(plan.name)}</span>` : ''}
       <h1>${esc(p.name)}さん、おかえりなさい。</h1>
-      <div class="muted">現在の目標</div><h2 style="margin:4px 0 0">${esc(p.goal || '未設定')}</h2>
+      <div class="muted">現在の目標</div><h2 style="margin:4px 0 0;font-size:24px">${esc(p.goal || '未設定')}</h2>
       ${p.theme ? `<div style="margin-top:12px">今月のテーマ：${esc(p.theme)}</div>` : ''}</div>
     <div class="grid">
       <div class="stat"><div class="muted">Best Score</div><b>${esc(p.best_score ?? '—')}</b></div>
       <div class="stat"><div class="muted">平均スコア</div><b>${esc(p.avg_score ?? '—')}</b></div>
     </div>
-    <div class="section-title"><h2>🔥 今週の課題</h2><span class="muted">${done}/${tasks.length}</span></div>
+    <div class="section-title"><div><div class="eyebrow">This Month</div><h2>今月のサポート</h2></div></div>
+    <div class="card">
+      <div class="support">
+        <div><b>${monthSubs.length}${quota ? `<small style="font-size:14px"> / ${quota}</small>` : ''}</b><span>動画提出</span>
+          ${quota ? `<div class="meter"><i style="width:${Math.min(100, (monthSubs.length / quota) * 100)}%"></i></div>` : ''}</div>
+        <div><b>${monthLessons.length}</b><span>解説動画</span></div>
+        <div>${p.next_meeting_at ? `<b class="when">${esc(fmtShort(p.next_meeting_at))}</b>` : '<b>—</b>'}<span>次回の面談</span></div>
+      </div>
+      ${plan?.monthly ? '<p class="muted small" style="margin:10px 0 0">毎月、動画2本の提出と25分のオンライン面談1回が受けられます。</p>' : ''}
+    </div>
+    <div class="section-title"><div><div class="eyebrow">Practice</div><h2>今月の課題</h2></div><span class="muted">${done}/${tasks.length}</span></div>
     ${tasks.length ? tasks.map((t) => `<button type="button" class="task${t.done ? ' done' : ''}" data-action="toggle-task" data-id="${t.id}" data-done="${t.done}" aria-pressed="${t.done}">
         <span class="check">${t.done ? '✓' : ''}</span><span><b>${esc(t.title)}</b><div class="muted">${esc(t.detail)}</div></span></button>`).join('')
       : '<div class="empty">コーチから課題が届くとここに表示されます</div>'}
-    <div class="section-title"><h2>🎥 最新レッスン</h2>${latest ? '<a class="muted" href="#/history">すべて見る</a>' : ''}</div>
+    <div class="section-title"><div><div class="eyebrow">Lesson</div><h2>最新のレッスン</h2></div>${latest ? '<a href="#/history">すべて見る</a>' : ''}</div>
     ${latest ? `<a class="card link" href="#/lesson/${latest.id}"><div class="muted">${fmtDate(latest.lesson_date)}</div>
         <h3>${esc(latest.title)}</h3>${latest.point ? `<b>今回のポイント</b><p style="margin:4px 0 0">${esc(latest.point)}</p>` : ''}</a>`
       : '<div class="empty">まだレッスンはありません。まずは動画を提出しましょう。</div>'}
     ${subs.length ? `<div class="notice">確認待ちの動画が ${subs.length} 件あります。コーチからのレッスンをお待ちください。</div>` : ''}
-    <a class="btn btn-block" href="#/submit">＋ 動画を提出する</a>
+    <a class="btn btn-block btn-gold" href="#/submit">スイング動画を送る</a>
   </div>` + memberNav('home');
 }
 
-function viewSubmit() {
-  return header('動画を提出') + `<div class="content">
+async function viewSubmit() {
+  const p = state.profile;
+  const quota = planOf(p.plan)?.monthly?.submissions;
+  const monthSubs = quota ? await must(sb.from('submissions').select('id').eq('member_id', p.id).gte('created_at', monthStart())) : [];
+  return header('スイング動画を送る') + `<div class="content">
+    ${quota ? `<div class="card"><div class="between"><span>今月の提出</span><b>${monthSubs.length} / ${quota} 本</b></div>
+      <div class="meter"><i style="width:${Math.min(100, (monthSubs.length / quota) * 100)}%"></i></div></div>` : ''}
     <div class="notice">正面または後方から、全身とクラブが入るように撮影してください。</div>
     <details><summary>YouTube に「限定公開」でアップする方法</summary>
       <ol class="small">
         <li>YouTube アプリで「＋」→「動画をアップロード」を選ぶ</li>
         <li>公開設定を <b>「限定公開」</b> にする（「公開」にしないでください）</li>
         <li>アップロード後、動画の「共有」→「リンクをコピー」</li>
-        <li>下の欄にリンクを貼り付けて提出</li>
+        <li>下の欄にリンクを貼り付けて送信</li>
       </ol></details>
     <form class="card form" data-form="submit">
       <label for="youtube_url">YouTube のリンク</label>
@@ -240,9 +299,9 @@ function viewSubmit() {
           <option>アイアン</option><option>ウェッジ</option><option>パター</option><option>その他</option></select></div>
         <div><label for="angle">撮影方向</label><select id="angle" name="angle"><option>正面</option><option>後方</option><option>その他</option></select></div>
       </div>
-      <label for="question">今回気になっていること</label>
-      <textarea id="question" name="question" rows="5" maxlength="2000" placeholder="例：最近ドライバーが右に出ます"></textarea>
-      <button class="btn-block" type="submit">動画を提出する</button>
+      <label for="question">お悩み・質問（文章で）</label>
+      <textarea id="question" name="question" rows="5" maxlength="2000" placeholder="例：最近ドライバーが右に出ます。前回の課題はだいぶできるようになりました。"></textarea>
+      <button class="btn-block btn-gold" type="submit">動画を送信する</button>
     </form>
   </div>` + memberNav('submit');
 }
@@ -281,7 +340,7 @@ async function viewLesson(id, back = 'history') {
 function viewAccount() {
   const p = state.profile;
   const admin = p.role === 'admin';
-  const navHtml = admin ? adminNav('account') : isActive(p) ? memberNav('account') : nav([['plans', '💳', 'プラン'], ['account', '👤', 'アカウント']], 'account');
+  const navHtml = admin ? adminNav('account') : isActive(p) ? memberNav('account') : nav([['plans', 'card', 'プラン'], ['account', 'user', 'アカウント']], 'account');
   return header('アカウント') + `<div class="content">
     <form class="card form" data-form="profile-name">
       <label for="name">お名前</label><input id="name" name="name" value="${esc(p.name)}" maxlength="50" required>
@@ -289,10 +348,13 @@ function viewAccount() {
       <button class="btn-block btn-sub" type="submit">名前を保存</button>
     </form>
     ${admin ? '<div class="card"><span class="pill">ADMIN</span> 管理者アカウントです</div>' : `<div class="card">
-      <div class="between"><b>ご契約</b>${statusPill(p.subscription_status)}</div>
-      <div class="list-item"><span>プラン</span><b>${esc(p.plan || '—')}</b></div>
+      <div class="between"><b>ご契約</b>${memberPill(p)}</div>
+      <div class="list-item"><span>プラン</span><b>${esc(planLabel(p.plan) || '—')}</b></div>
       ${p.current_period_end ? `<div class="list-item"><span>${p.subscription_status === 'canceled' ? '利用期限' : '次回更新日'}</span><b>${fmtDate(p.current_period_end)}</b></div>` : ''}
-      ${p.stripe_customer_id ? '<button class="btn-block" data-action="portal">契約・お支払い（プラン変更・解約）</button>' : '<a class="btn btn-block" href="#/plans">プランを選ぶ</a>'}
+      ${p.access_until ? `<div class="list-item"><span>利用期限</span><b>${fmtDate(p.access_until)}</b></div>` : ''}
+      ${p.stripe_customer_id ? '<button class="btn-block" data-action="portal">契約・お支払い（プラン変更・解約）</button>'
+        : isActive(p) ? `<p class="muted small" style="margin:10px 0 0">ご契約内容の変更は、LINE またはお電話（${esc(CONTACT.telDisplay)}）でお問い合わせください。</p>`
+        : '<a class="btn btn-block" href="#/plans">プランを選ぶ</a>'}
     </div>`}
     <form class="card form" data-form="change-password">
       <b>パスワード変更</b>
@@ -310,7 +372,7 @@ async function viewInbox() {
   const subs = await must(sb.from('submissions').select('*, profiles(name, plan)').eq('status', 'pending').order('created_at'));
   return header('提出動画（確認待ち）') + `<div class="content">
     ${subs.length ? subs.map((s) => `<div class="card">
-        <div class="between"><div><b>${esc(s.profiles?.name || '（名前未設定）')}</b> <span class="pill">${esc(s.profiles?.plan || '')}</span></div>
+        <div class="between"><div><b>${esc(s.profiles?.name || '（名前未設定）')}</b> <span class="pill">${esc(planLabel(s.profiles?.plan))}</span></div>
           <span class="muted">${fmtDate(s.created_at)}</span></div>
         <div class="muted">${esc(s.club)} / ${esc(s.angle)}</div>
         ${videoEmbed(s.youtube_url)}
@@ -325,14 +387,14 @@ async function viewInbox() {
 }
 
 async function viewMembers() {
-  const members = await must(sb.from('profiles').select('id, name, email, plan, role, subscription_status').order('created_at', { ascending: false }));
+  const members = await must(sb.from('profiles').select('id, name, email, plan, role, subscription_status, access_until').order('created_at', { ascending: false }));
   return header('会員一覧') + `<div class="content">
     <div class="form"><input type="search" id="member-search" placeholder="名前・メールで検索" data-action="filter-members"></div>
     <p class="muted">${members.filter((m) => isActive(m)).length} 名が契約中 / 全 ${members.length} 名</p>
     <div id="member-list">${members.map((m) => `<a class="card link" href="#/admin/member/${m.id}" data-search="${esc(`${m.name} ${m.email}`.toLowerCase())}">
         <div class="between"><div><b>${esc(m.name || '（名前未設定）')}</b>${m.role === 'admin' ? ' <span class="pill">ADMIN</span>' : ''}
           <div class="muted">${esc(m.email)}</div></div>
-          <div style="text-align:right">${m.role === 'admin' ? '' : statusPill(m.subscription_status)}<div class="muted">${esc(m.plan || '')}</div></div></div>
+          <div style="text-align:right">${m.role === 'admin' ? '' : memberPill(m)}<div class="muted">${esc(planLabel(m.plan))}</div></div></div>
       </a>`).join('')}</div>
   </div>` + adminNav('admin/members');
 }
@@ -347,27 +409,30 @@ async function viewMemberDetail(id) {
   if (!m) return header('会員詳細', 'admin/members') + '<div class="content"><div class="empty">会員が見つかりません</div></div>';
   const self = m.id === state.profile.id;
   return header(m.name || '会員詳細', 'admin/members') + `<div class="content">
-    <div class="card"><div class="between"><div><b>${esc(m.email)}</b><div class="muted">登録日 ${fmtDate(m.created_at)}</div></div>${statusPill(m.subscription_status)}</div>
+    <div class="card"><div class="between"><div><b>${esc(m.email)}</b><div class="muted">登録日 ${fmtDate(m.created_at)}</div></div>${memberPill(m)}</div>
       ${m.current_period_end ? `<div class="muted">次回更新日 ${fmtDate(m.current_period_end)}</div>` : ''}</div>
 
     <form class="card form" data-form="admin-profile" data-id="${m.id}">
       <b>会員情報</b>
       <label for="name">会員名</label><input id="name" name="name" value="${esc(m.name)}" maxlength="50">
       <label for="plan">プラン <span class="muted">（通常は Stripe から自動で反映）</span></label>
-      <select id="plan" name="plan"><option value="">—</option>${PLANS.map((pl) => `<option ${m.plan === pl.id ? 'selected' : ''}>${esc(pl.id)}</option>`).join('')}</select>
+      <select id="plan" name="plan"><option value="">—</option>${PLANS.map((pl) => `<option value="${esc(pl.id)}" ${m.plan === pl.id ? 'selected' : ''}>${esc(pl.name)}</option>`).join('')}</select>
       <label for="goal">目標</label><input id="goal" name="goal" value="${esc(m.goal)}" maxlength="50">
       <div class="grid">
         <div><label for="best_score">Best Score</label><input id="best_score" name="best_score" type="number" min="40" max="200" value="${esc(m.best_score ?? '')}"></div>
         <div><label for="avg_score">平均スコア</label><input id="avg_score" name="avg_score" type="number" min="40" max="200" value="${esc(m.avg_score ?? '')}"></div>
       </div>
       <label for="theme">今月のテーマ</label><input id="theme" name="theme" value="${esc(m.theme)}" maxlength="100">
+      <label for="access_until">利用期限 <span class="muted">（LINE・電話で申し込んだ会員用。カード決済の会員は空欄）</span></label>
+      <input id="access_until" name="access_until" type="date" value="${esc(m.access_until || '')}">
+      <label for="next_meeting_at">次回の面談日時</label><input id="next_meeting_at" name="next_meeting_at" type="datetime-local" value="${esc(toLocalInput(m.next_meeting_at))}">
       ${self ? '' : `<label for="role">権限</label><select id="role" name="role">
         <option value="member" ${m.role === 'member' ? 'selected' : ''}>会員</option>
         <option value="admin" ${m.role === 'admin' ? 'selected' : ''}>管理者（コーチ）</option></select>`}
       <button class="btn-block" type="submit">保存する</button>
     </form>
 
-    <div class="section-title"><h2>今週の課題</h2>${tasks.length ? '<button class="btn-sm btn-sub" data-action="reset-tasks" data-id="' + m.id + '">完了をリセット</button>' : ''}</div>
+    <div class="section-title"><h2>今月の課題</h2>${tasks.length ? '<button class="btn-sm btn-sub" data-action="reset-tasks" data-id="' + m.id + '">完了をリセット</button>' : ''}</div>
     <div class="card">
       ${tasks.map((t) => `<div class="list-item"><div class="grow">${t.done ? '✅' : '⬜️'} <b>${esc(t.title)}</b> <span class="muted">${esc(t.detail)}</span></div>
           <button class="btn-sm btn-danger" data-action="delete-task" data-id="${t.id}">削除</button></div>`).join('') || '<div class="muted">課題はまだありません</div>'}
@@ -456,7 +521,7 @@ async function render() {
       if (r[0] !== 'plans') return go('plans');
       return paint(viewPlans());
     }
-    if (r[0] === 'submit') return paint(viewSubmit());
+    if (r[0] === 'submit') return paint(await viewSubmit());
     if (r[0] === 'history') return paint(await viewHistory());
     if (r[0] === 'lesson' && r[1]) return paint(await viewLesson(r[1]));
     if (r[0] !== 'home') return go('home');
@@ -578,6 +643,8 @@ const forms = {
     const update = {
       name: f.name.value.trim(), plan: f.plan.value || null, goal: f.goal.value.trim(),
       best_score: num(f.best_score.value), avg_score: num(f.avg_score.value), theme: f.theme.value.trim(),
+      next_meeting_at: f.next_meeting_at.value ? new Date(f.next_meeting_at.value).toISOString() : null,
+      access_until: f.access_until.value || null,
     };
     if (f.role) update.role = f.role.value;
     await must(sb.from('profiles').update(update).eq('id', f.dataset.id));
