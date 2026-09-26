@@ -1,0 +1,7 @@
+# Supabase CLI の設定（Edge Functions のデプロイで使用）
+project_id = "golf-lesson"
+
+# Stripe からの通知はログインユーザーではないため、JWT 検証を無効にする
+# （代わりに Stripe の署名を検証している）
+[functions.stripe-webhook]
+verify_jwt = false
