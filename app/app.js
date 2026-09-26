@@ -113,7 +113,7 @@ async function callFunction(name, body) {
 
 function authShell(inner) {
   return `<div class="auth-page"><div class="auth">
-    <a class="auth-logo" href="../" aria-label="${esc(SCHOOL_NAME)} トップページへ"><b>${esc(SCHOOL_NAME)}</b><small>MEMBERS</small></a>
+    <a class="auth-logo" href="../" aria-label="${esc(SCHOOL_NAME)} トップページへ"><img src="../assets/logo.png" width="880" height="626" alt="オルタイムゴルフ"><small>MEMBERS</small></a>
     <div class="auth-card">${inner}</div>
     <a class="auth-back" href="../">‹ トップページへ戻る</a>
   </div></div>`;
