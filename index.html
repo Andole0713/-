@@ -54,7 +54,27 @@ section{padding:96px 0}
 .nav{display:flex;gap:28px;align-items:center}
 .nav a{color:var(--on-dark);text-decoration:none;font-size:13px;letter-spacing:.12em}
 .nav a:hover{color:var(--gold-2)}
-.nav .login{border:1px solid var(--gold-line);border-radius:999px;padding:8px 18px}
+.nav .login{border:1px solid var(--gold-line);border-radius:999px;padding:8px 18px;white-space:nowrap}
+
+/* 目次メニュー（3本バー） */
+.menu-btn{display:none;width:44px;height:44px;border:1px solid var(--gold-line);border-radius:12px;background:rgba(15,23,18,.4);cursor:pointer;position:relative;flex:none}
+.menu-btn span{position:absolute;left:12px;right:12px;height:1.5px;background:var(--on-dark);border-radius:2px;transition:transform .25s ease,opacity .2s ease,top .25s ease}
+.menu-btn span:nth-child(1){top:15px}.menu-btn span:nth-child(2){top:21px}.menu-btn span:nth-child(3){top:27px}
+.menu-open .menu-btn span:nth-child(1){top:21px;transform:rotate(45deg)}
+.menu-open .menu-btn span:nth-child(2){opacity:0}
+.menu-open .menu-btn span:nth-child(3){top:21px;transform:rotate(-45deg)}
+.menu-btn:focus-visible{outline:2px solid var(--gold-2);outline-offset:2px}
+.menu-open .header{background:var(--ink);border-color:var(--gold-line)}
+.drawer{position:fixed;inset:0;z-index:19;background:var(--ink);padding:88px 0 24px;overflow-y:auto;opacity:0;visibility:hidden;transition:opacity .25s ease,visibility .25s}
+.menu-open .drawer{opacity:1;visibility:visible}
+.menu-open{overflow:hidden}
+.menu-open .sticky-cta{display:none}
+.drawer-inner{max-width:560px;margin:auto;padding:0 20px}
+.drawer-links{list-style:none;margin:0;padding:0}
+.drawer-links a{display:flex;align-items:baseline;gap:16px;padding:18px 4px;border-bottom:1px solid var(--gold-line);color:var(--on-dark);text-decoration:none;font-family:var(--serif);font-size:19px;letter-spacing:.08em}
+.drawer-links a:hover{color:var(--gold-2)}
+.drawer-links small{font-family:var(--latin);color:var(--gold);font-size:14px;letter-spacing:.15em;width:24px}
+.drawer-actions{display:grid;gap:12px;margin-top:32px}
 
 /* ヒーロー */
 .hero{position:relative;min-height:100svh;display:flex;align-items:center;background:radial-gradient(1200px 600px at 80% 10%,#23372a 0%,transparent 60%),linear-gradient(180deg,var(--ink) 0%,var(--ink-2) 100%);color:var(--on-dark);overflow:hidden;padding:120px 0 90px}
@@ -158,6 +178,9 @@ section{padding:96px 0}
 @media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}.reveal{opacity:1;transform:none;transition:none}.btn{transition:none}}
 
 @media (max-width:1024px){
+  .nav a:not(.login){display:none}
+  .menu-btn{display:block}
+  .nav{gap:12px}
   .hero{flex-direction:column;justify-content:center}
   .hero-logo{position:static;transform:none;display:block;width:min(280px,62vw);margin:0 auto 28px}
 }
@@ -169,12 +192,18 @@ section{padding:96px 0}
 }
 @media (max-width:720px){
   section{padding:72px 0}
-  .nav a:not(.login){display:none}
   .plans,.contact-grid{grid-template-columns:1fr}
   .steps,.steps.steps-6{grid-template-columns:1fr}
   .hero{padding:110px 0 80px}
   .hero h1{font-size:clamp(26px,7.4vw,32px);letter-spacing:.04em}
-  .logo .mark{height:36px}.logo .word{height:24px}
+  .logo .mark{height:32px}.logo .word{height:22px}
+  .logo{gap:6px}
+  .nav{gap:8px}
+  .nav .login{padding:7px 12px;font-size:12px;letter-spacing:.06em}
+  .menu-btn{width:40px;height:40px}
+  .menu-btn span{left:11px;right:11px}
+  .menu-btn span:nth-child(1){top:13px}.menu-btn span:nth-child(2){top:19px}.menu-btn span:nth-child(3){top:25px}
+  .menu-open .menu-btn span:nth-child(1),.menu-open .menu-btn span:nth-child(3){top:19px}
   .hero .actions .btn{flex:1 1 100%}
   .hero p br{display:none}
   .sticky-cta{display:flex}
@@ -188,14 +217,36 @@ section{padding:96px 0}
     <a href="#top" class="logo" aria-label="オルタイムゴルフ トップへ"><img class="mark" src="assets/logo-mark.png" width="200" height="170" alt=""><img class="word" src="assets/logo-word.png" width="640" height="129" alt="オルタイムゴルフ"></a>
     <nav class="nav" aria-label="メインメニュー">
       <a href="#concept">特徴</a>
-      <a href="#flow">レッスンの流れ</a>
+      <a href="#flow">レッスンの進め方</a>
       <a href="#plan">料金プラン</a>
+      <a href="#coach">コーチ紹介</a>
       <a href="#faq">よくある質問</a>
       <a href="#contact">お申し込み</a>
       <a href="app/" class="login">会員ログイン</a>
+      <button type="button" class="menu-btn" id="menuBtn" aria-expanded="false" aria-controls="drawer" aria-label="メニューを開く">
+        <span></span><span></span><span></span>
+      </button>
     </nav>
   </div>
 </header>
+
+<div class="drawer" id="drawer" aria-hidden="true">
+  <nav class="drawer-inner" aria-label="目次">
+    <ul class="drawer-links">
+      <li><a href="#concept"><small>01</small>特徴</a></li>
+      <li><a href="#flow"><small>02</small>レッスンの進め方</a></li>
+      <li><a href="#plan"><small>03</small>料金プラン</a></li>
+      <li><a href="#coach"><small>04</small>コーチ紹介</a></li>
+      <li><a href="#faq"><small>05</small>よくある質問</a></li>
+      <li><a href="#contact"><small>06</small>お申し込み・ご相談</a></li>
+    </ul>
+    <div class="drawer-actions">
+      <a class="btn btn-line" data-line href="https://lin.ee/ssvLEAZ" target="_blank" rel="noopener">LINEで相談する</a>
+      <a class="btn btn-gold" data-tel href="tel:0527004909">電話する（11:00〜20:00）</a>
+      <a class="btn btn-ghost" href="app/">会員ログイン</a>
+    </div>
+  </nav>
+</div>
 
 <main id="top">
   <!-- ヒーロー -->
@@ -408,6 +459,20 @@ document.getElementById('year').textContent = new Date().getFullYear();
 
 // ヘッダーの背景・スマホ下部ボタンの表示
 const header = document.getElementById('header');
+
+// 目次メニュー（3本バー）の開け閉め
+const menuBtn = document.getElementById('menuBtn');
+const drawer = document.getElementById('drawer');
+function setMenu(open) {
+  document.body.classList.toggle('menu-open', open);
+  menuBtn.setAttribute('aria-expanded', String(open));
+  menuBtn.setAttribute('aria-label', open ? 'メニューを閉じる' : 'メニューを開く');
+  drawer.setAttribute('aria-hidden', String(!open));
+}
+menuBtn.addEventListener('click', () => setMenu(!document.body.classList.contains('menu-open')));
+drawer.addEventListener('click', (e) => { if (e.target.closest('a')) setMenu(false); });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') setMenu(false); });
+window.addEventListener('resize', () => { if (window.innerWidth > 1024) setMenu(false); });
 const sticky = document.getElementById('stickyCta');
 const contact = document.getElementById('contact');
 function onScroll() {
