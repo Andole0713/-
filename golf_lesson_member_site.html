@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Golf Lesson Member Prototype</title>
+<style>
+*{box-sizing:border-box} body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Noto Sans JP",sans-serif;background:#f5f6f8;color:#171717}
+header{background:#111;color:#fff;padding:18px 20px;position:sticky;top:0;z-index:2}
+.header{max-width:720px;margin:auto;display:flex;justify-content:space-between;align-items:center}
+.logo{font-weight:800;letter-spacing:.08em}.switch{display:flex;gap:6px}.switch button{border:1px solid #555;background:#222;color:#fff;border-radius:8px;padding:7px 10px}
+.switch button.active{background:#fff;color:#111}
+main{max-width:720px;margin:auto;padding:20px 16px 50px}
+h1{font-size:25px;margin:8px 0}.sub{color:#777;font-size:13px}
+.card{background:#fff;border-radius:16px;padding:18px;margin:14px 0;box-shadow:0 2px 10px #0000000a}
+.hero{background:#111;color:#fff}.hero .sub{color:#bbb}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.stat{background:#f7f7f7;border-radius:12px;padding:14px}.stat b{display:block;font-size:22px;margin-top:4px}
+.tag{display:inline-block;background:#eee;border-radius:999px;padding:6px 10px;font-size:12px;margin:4px 4px 0 0}
+.progress{height:9px;background:#e8e8e8;border-radius:99px;overflow:hidden;margin-top:10px}.bar{height:100%;width:70%;background:#111}
+.btn{display:block;width:100%;padding:13px;border:0;border-radius:10px;background:#111;color:#fff;font-weight:700;margin-top:12px}
+.btn.secondary{background:#eee;color:#111}
+.row{display:flex;justify-content:space-between;gap:12px;align-items:center}.item{padding:12px 0;border-bottom:1px solid #eee}.item:last-child{border-bottom:0}
+label{display:block;font-size:13px;font-weight:700;margin:14px 0 6px}input,textarea,select{width:100%;padding:11px;border:1px solid #ddd;border-radius:9px;font:inherit;background:#fff}
+textarea{min-height:90px;resize:vertical}.notice{padding:12px;background:#f1f1f1;border-radius:10px;font-size:13px}
+footer{text-align:center;color:#888;font-size:12px;padding:20px}
+@media(max-width:480px){h1{font-size:23px}.grid{grid-template-columns:1fr 1fr}}
+</style>
+</head>
+<body>
+<header><div class="header"><div class="logo">GOLF LESSON</div><div class="switch">
+<button id="memberBtn" class="active" onclick="show('member')">会員</button>
+<button id="adminBtn" onclick="show('admin')">管理</button>
+</div></div></header>
+<main id="app"></main>
+<footer>Prototype / 会員管理・レッスン管理システム</footer>
+
+<script>
+const data = {
+ name:"山田 太郎", plan:"STANDARD", goal:"90切り", best:"94", avg:"98",
+ theme:"ドライバーの方向性を安定させる",
+ practice1:"ハーフスイング × 20球",
+ practice2:"7I × 30球",
+ practice3:"ドライバー × 20球",
+ lessonDate:"2026.09.25",
+ lessonTitle:"ドライバーの右プッシュ",
+ lessonBody:"切り返しで上体が先に開いています。次回までは下半身から動き出す感覚を作りましょう。"
+};
+function esc(s){return String(s).replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]));}
+function member(){
+document.getElementById("app").innerHTML=`
+<div class="card hero"><div class="sub">会員マイページ</div><h1>${esc(data.name)}さん、おかえりなさい。</h1>
+<p>目標：<b>${esc(data.goal)}</b></p></div>
+<div class="grid"><div class="stat"><span class="sub">Best Score</span><b>${esc(data.best)}</b></div><div class="stat"><span class="sub">平均スコア</span><b>${esc(data.avg)}</b></div></div>
+<div class="card"><div class="sub">🎯 今月のテーマ</div><h2>${esc(data.theme)}</h2><div class="progress"><div class="bar"></div></div></div>
+<div class="card"><div class="row"><h2>🔥 今週の練習</h2><span class="tag">${esc(data.plan)}</span></div>
+<div class="item">① ${esc(data.practice1)}</div><div class="item">② ${esc(data.practice2)}</div><div class="item">③ ${esc(data.practice3)}</div>
+<button class="btn">練習メニューを見る</button></div>
+<div class="card"><div class="sub">🎥 最新レッスン　${esc(data.lessonDate)}</div><h2>${esc(data.lessonTitle)}</h2><p>${esc(data.lessonBody)}</p><button class="btn secondary">レッスン詳細を見る</button></div>
+<div class="card"><h2>📹 動画を提出</h2><p class="sub">正面・後方の動画を送って、次の課題を確認しましょう。</p><button class="btn">＋ 新しい動画を提出</button></div>
+<div class="card"><h2>📈 上達記録</h2><div class="grid"><div class="stat">Best<br><b>${esc(data.best)} → ？</b></div><div class="stat">目標<br><b>${esc(data.goal)}</b></div></div></div>
+<div class="card"><h2>📚 レッスン履歴</h2><div class="item">${esc(data.lessonDate)}　${esc(data.lessonTitle)}</div><div class="item">2026.09.18　アイアンのインパクト</div></div>`;
+}
+function admin(){
+document.getElementById("app").innerHTML=`
+<div class="card"><div class="sub">管理者画面</div><h1>会員情報を編集</h1><div class="notice">ここで変更して保存すると、会員ページに反映されます。</div>
+<label>会員名</label><input id="name" value="${esc(data.name)}">
+<label>プラン</label><select id="plan"><option>BASIC</option><option ${data.plan==="STANDARD"?"selected":""}>STANDARD</option><option>PREMIUM</option></select>
+<label>目標</label><input id="goal" value="${esc(data.goal)}">
+<div class="grid"><div><label>Best Score</label><input id="best" value="${esc(data.best)}"></div><div><label>平均スコア</label><input id="avg" value="${esc(data.avg)}"></div></div>
+<label>今月のテーマ</label><textarea id="theme">${esc(data.theme)}</textarea>
+<label>練習①</label><input id="practice1" value="${esc(data.practice1)}">
+<label>練習②</label><input id="practice2" value="${esc(data.practice2)}">
+<label>練習③</label><input id="practice3" value="${esc(data.practice3)}">
+<label>最新レッスン日</label><input id="lessonDate" value="${esc(data.lessonDate)}">
+<label>レッスンタイトル</label><input id="lessonTitle" value="${esc(data.lessonTitle)}">
+<label>コーチコメント</label><textarea id="lessonBody">${esc(data.lessonBody)}</textarea>
+<button class="btn" onclick="save()">保存して会員ページへ反映</button>
+</div>`;
+}
+function save(){
+["name","plan","goal","best","avg","theme","practice1","practice2","practice3","lessonDate","lessonTitle","lessonBody"].forEach(k=>data[k]=document.getElementById(k).value);
+alert("保存しました。会員ページに反映されています。");
+show("member");
+}
+function show(mode){
+document.getElementById("memberBtn").classList.toggle("active",mode==="member");
+document.getElementById("adminBtn").classList.toggle("active",mode==="admin");
+mode==="member"?member():admin();
+}
+member();
+</script>
+</body></html>
