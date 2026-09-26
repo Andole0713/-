@@ -6,7 +6,9 @@
 <title>All Time Golf（オルタイムゴルフ）｜オンラインゴルフレッスン</title>
 <meta name="description" content="All Time Golf（オルタイムゴルフ）は、スイング動画を送るだけで、PGAプロの診断と課題動画・練習ドリルが届くオンラインゴルフレッスンです。">
 <meta property="og:title" content="All Time Golf（オルタイムゴルフ）">
-<meta property="og:description" content="いつでも、どこでも、あなた専属のゴルフコーチを。">
+<meta property="og:description" content="オンラインで、ゴルフレッスンをもっと自分専用に。">
+<meta property="og:image" content="assets/logo.png">
+<link rel="icon" type="image/png" href="assets/logo-mark.png">
 <meta property="og:type" content="website">
 <meta name="theme-color" content="#0f1712">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -46,9 +48,9 @@ section{padding:96px 0}
 .header{position:fixed;inset:0 0 auto;z-index:20;transition:background .3s ease,border-color .3s ease;border-bottom:1px solid transparent}
 .header.scrolled{background:rgba(15,23,18,.92);backdrop-filter:blur(10px);border-color:var(--gold-line)}
 .header .wrap{display:flex;align-items:center;justify-content:space-between;height:68px}
-.logo{text-decoration:none;color:var(--on-dark);display:flex;flex-direction:column;line-height:1.1}
-.logo b{font-family:var(--latin);font-size:26px;font-weight:600;letter-spacing:.06em;font-style:italic}
-.logo small{font-size:10px;letter-spacing:.3em;color:var(--gold)}
+.logo{text-decoration:none;display:flex;align-items:center;gap:10px}
+.logo .mark{height:42px;width:auto}
+.logo .word{height:28px;width:auto}
 .nav{display:flex;gap:28px;align-items:center}
 .nav a{color:var(--on-dark);text-decoration:none;font-size:13px;letter-spacing:.12em}
 .nav a:hover{color:var(--gold-2)}
@@ -56,8 +58,9 @@ section{padding:96px 0}
 
 /* ヒーロー */
 .hero{position:relative;min-height:100svh;display:flex;align-items:center;background:radial-gradient(1200px 600px at 80% 10%,#23372a 0%,transparent 60%),linear-gradient(180deg,var(--ink) 0%,var(--ink-2) 100%);color:var(--on-dark);overflow:hidden;padding:120px 0 90px}
-.hero-art{position:absolute;right:-120px;top:50%;transform:translateY(-50%);width:min(760px,90vw);opacity:.55;pointer-events:none}
+.hero-logo{position:absolute;right:max(20px,calc((100vw - var(--wrap))/2 + 20px));top:50%;transform:translateY(-50%);width:min(440px,36vw);height:auto;pointer-events:none;filter:drop-shadow(0 20px 40px rgba(0,0,0,.35))}
 .hero .wrap{position:relative;width:100%}
+.hero .copy{max-width:620px}
 .hero h1{font-family:var(--serif);font-weight:600;font-size:clamp(32px,6.4vw,58px);line-height:1.45;letter-spacing:.08em;margin:0 0 22px}
 .hero h1 em{font-style:normal;color:var(--gold-2)}
 .hero p{color:var(--on-dark-muted);max-width:520px;margin:0 0 36px;font-size:15px}
@@ -153,6 +156,10 @@ section{padding:96px 0}
 .reveal.in{opacity:1;transform:none}
 @media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}.reveal{opacity:1;transform:none;transition:none}.btn{transition:none}}
 
+@media (max-width:1024px){
+  .hero{flex-direction:column;justify-content:center}
+  .hero-logo{position:static;transform:none;display:block;width:min(280px,62vw);margin:0 auto 28px}
+}
 @media (max-width:900px){
   .features{grid-template-columns:1fr}
   .steps{grid-template-columns:1fr 1fr}
@@ -166,9 +173,9 @@ section{padding:96px 0}
   .steps{grid-template-columns:1fr}
   .hero{padding:110px 0 80px}
   .hero h1{font-size:clamp(26px,7.4vw,32px);letter-spacing:.04em}
-  .logo b{font-size:22px;letter-spacing:.04em;white-space:nowrap}
+  .logo .mark{height:36px}.logo .word{height:24px}
   .hero .actions .btn{flex:1 1 100%}
-  .hero-art{right:-220px;opacity:.35}
+  .hero p br{display:none}
   .sticky-cta{display:flex}
 }
 </style>
@@ -177,7 +184,7 @@ section{padding:96px 0}
 
 <header class="header" id="header">
   <div class="wrap">
-    <a href="#top" class="logo" aria-label="All Time Golf トップへ"><b>All Time Golf</b><small>オルタイムゴルフ</small></a>
+    <a href="#top" class="logo" aria-label="オルタイムゴルフ トップへ"><img class="mark" src="assets/logo-mark.png" width="200" height="170" alt=""><img class="word" src="assets/logo-word.png" width="640" height="129" alt="オルタイムゴルフ"></a>
     <nav class="nav" aria-label="メインメニュー">
       <a href="#concept">特徴</a>
       <a href="#flow">レッスンの流れ</a>
@@ -192,19 +199,11 @@ section{padding:96px 0}
 <main id="top">
   <!-- ヒーロー -->
   <section class="hero">
-    <svg class="hero-art" viewBox="0 0 600 600" fill="none" aria-hidden="true">
-      <circle cx="300" cy="300" r="280" stroke="#c8a96a" stroke-opacity=".18"/>
-      <circle cx="300" cy="300" r="210" stroke="#c8a96a" stroke-opacity=".14"/>
-      <circle cx="300" cy="300" r="140" stroke="#c8a96a" stroke-opacity=".1"/>
-      <path d="M40 470 C 160 120, 420 60, 560 250" stroke="url(#arc)" stroke-width="2" stroke-linecap="round"/>
-      <circle cx="560" cy="250" r="9" fill="#e2cc9a"/>
-      <defs><linearGradient id="arc" x1="40" y1="470" x2="560" y2="250" gradientUnits="userSpaceOnUse">
-        <stop stop-color="#c8a96a" stop-opacity="0"/><stop offset="1" stop-color="#e2cc9a"/></linearGradient></defs>
-    </svg>
+    <img class="hero-logo" src="assets/logo.png" width="880" height="626" alt="オルタイムゴルフ IN DOOR GOLF">
     <div class="wrap">
       <div class="brand-line">ONLINE GOLF LESSON</div>
-      <h1>いつでも、どこでも。<br>あなた<em>専属</em>の<br>ゴルフコーチを。</h1>
-      <p>スイング動画を送るだけで、PGAプロがあなたのスイングを診断。<br>課題動画と練習ドリルで、自宅から着実に上達へ導きます。</p>
+      <h1>オンラインで、<br>ゴルフレッスンを<br>もっと<em>自分専用</em>に。</h1>
+      <p>スイング動画を送るだけ。<br>あなたの課題を分析し、練習メニューまで個別に提案。<br>レッスン履歴と成長を記録しながら、目標達成までサポートします。</p>
       <div class="actions">
         <a class="btn btn-line" data-line href="https://lin.ee/ssvLEAZ" target="_blank" rel="noopener">
           <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 3C6.5 3 2 6.6 2 11c0 3.9 3.5 7.2 8.3 7.9.3.1.8.2.9.5.1.3.1.7 0 1l-.1.9c0 .3-.2 1 .9.5s6-3.5 8.2-6.1c1.5-1.6 2.2-3.2 2.2-4.8C22.4 6.6 17.9 3 12 3z"/></svg>
@@ -373,7 +372,7 @@ section{padding:96px 0}
 <footer class="footer">
   <div class="wrap">
     <div>
-      <div class="logo"><b>All Time Golf</b><small>オルタイムゴルフ</small></div>
+      <img src="assets/logo.png" width="180" height="128" alt="オルタイムゴルフ IN DOOR GOLF" style="height:auto">
       <p style="margin:14px 0 0">&copy; <span id="year"></span> All Time Golf</p>
     </div>
     <nav aria-label="フッターメニュー">
