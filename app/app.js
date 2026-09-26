@@ -85,6 +85,13 @@ function fmtShort(iso) {
   return `${d.getMonth() + 1}/${d.getDate()}（${WEEK[d.getDay()]}）${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 const monthStart = () => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1).toISOString(); };
+// 今月の締切（月末）と残り日数（今日を含む）、翌月1日
+function monthDeadline() {
+  const d = new Date();
+  const last = new Date(d.getFullYear(), d.getMonth() + 1, 0);
+  const next = new Date(d.getFullYear(), d.getMonth() + 1, 1);
+  return { label: `${last.getMonth() + 1}/${last.getDate()}`, daysLeft: last.getDate() - d.getDate() + 1, next: `${next.getMonth() + 1}/1` };
+}
 
 function getRoute() {
   return location.hash.replace(/^#\/?/, '').split('/').filter(Boolean);
@@ -109,8 +116,26 @@ const ICON = {
   inbox: '<path d="M3 13l3-8h12l3 8"/><path d="M3 13v6h18v-6h-5l-1 3H9l-1-3z"/>',
   users: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c1-3.5 3.5-5 6.5-5s5.5 1.5 6.5 5"/><circle cx="17" cy="9" r="2.5"/><path d="M16 14.5c2.5 0 4.5 1.5 5.5 4.5"/>',
   card: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18"/><path d="M7 15h4"/>',
+  check: '<path d="M5 12l5 5 9-10"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>',
 };
 const icon = (name) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[name]}</svg>`;
+
+// 今月の提出枠（提出済みは塗り、未提出は点線）
+function submitSlots(count, quota, big = false) {
+  const slots = Array.from({ length: quota }, (_, i) => (i < count
+    ? `<span class="slot filled">${icon('check')}${big ? `<span>${i + 1}本目 提出済み</span>` : ''}</span>`
+    : `<span class="slot open">${icon('plus')}${big ? `<span>${i + 1}本目 未提出</span>` : ''}</span>`)).join('');
+  return `<div class="slots${big ? ' lg' : ''}" role="img" aria-label="今月の提出 ${Math.min(count, quota)} / ${quota} 本">${slots}</div>`;
+}
+// 残りの本数と締切（上限に達したら完了表示）
+function submitStatus(count, quota) {
+  const dl = monthDeadline();
+  const left = quota - count;
+  return `<div class="between small submit-status">${left > 0
+    ? `<span>今月の提出は <b>あと${left}本</b></span><span class="pill warn">${dl.label}まで・残り${dl.daysLeft}日</span>`
+    : `<span>今月の提出は完了しました</span><span class="pill ok">次回 ${dl.next}〜</span>`}</div>`;
+}
 function nav(items, active) {
   return `<nav class="nav" style="grid-template-columns:repeat(${items.length},1fr)">${items
     .map(([path, ic, label]) => `<a href="#/${path}" class="${active === path ? 'active' : ''}"${active === path ? ' aria-current="page"' : ''}>${icon(ic)}<span>${label}</span></a>`)
@@ -255,11 +280,11 @@ async function viewMemberHome() {
     <div class="section-title"><div><div class="eyebrow">This Month</div><h2>今月のサポート</h2></div></div>
     <div class="card">
       <div class="support">
-        <div><b>${monthSubs.length}${quota ? `<small style="font-size:14px"> / ${quota}</small>` : ''}</b><span>動画提出</span>
-          ${quota ? `<div class="meter"><i style="width:${Math.min(100, (monthSubs.length / quota) * 100)}%"></i></div>` : ''}</div>
+        <div>${quota ? submitSlots(monthSubs.length, quota) : `<b>${monthSubs.length}</b>`}<span>動画提出</span></div>
         <div><b>${monthLessons.length}</b><span>解説動画</span></div>
         <div>${p.next_meeting_at ? `<b class="when">${esc(fmtShort(p.next_meeting_at))}</b>` : '<b>—</b>'}<span>次回の面談</span></div>
       </div>
+      ${quota ? submitStatus(monthSubs.length, quota) : ''}
       ${plan?.monthly ? '<p class="muted small" style="margin:10px 0 0">毎月、動画2本の提出と25分のオンライン面談1回が受けられます。</p>' : ''}
     </div>
     <div class="section-title"><div><div class="eyebrow">Practice</div><h2>今月の課題</h2></div><span class="muted">${done}/${tasks.length}</span></div>
@@ -279,9 +304,11 @@ async function viewSubmit() {
   const p = state.profile;
   const quota = planOf(p.plan)?.monthly?.submissions;
   const monthSubs = quota ? await must(sb.from('submissions').select('id').eq('member_id', p.id).gte('created_at', monthStart())) : [];
+  const full = quota && monthSubs.length >= quota;
   return header('スイング動画を送る') + `<div class="content">
     ${quota ? `<div class="card"><div class="between"><span>今月の提出</span><b>${monthSubs.length} / ${quota} 本</b></div>
-      <div class="meter"><i style="width:${Math.min(100, (monthSubs.length / quota) * 100)}%"></i></div></div>` : ''}
+      ${submitSlots(monthSubs.length, quota, true)}${submitStatus(monthSubs.length, quota)}</div>` : ''}
+    ${full ? `<div class="notice ok">今月の${quota}本は提出済みです。次の動画は ${monthDeadline().next} から送れます。</div>` : ''}
     <div class="notice">正面または後方から、全身とクラブが入るように撮影してください。</div>
     <details><summary>YouTube に「限定公開」でアップする方法</summary>
       <ol class="small">
@@ -301,7 +328,8 @@ async function viewSubmit() {
       </div>
       <label for="question">お悩み・質問（文章で）</label>
       <textarea id="question" name="question" rows="5" maxlength="2000" placeholder="例：最近ドライバーが右に出ます。前回の課題はだいぶできるようになりました。"></textarea>
-      <button class="btn-block btn-gold" type="submit">動画を送信する</button>
+      ${full ? '<button class="btn-block" type="submit" disabled>今月の提出は完了しています</button>'
+        : '<button class="btn-block btn-gold" type="submit">動画を送信する</button>'}
     </form>
   </div>` + memberNav('submit');
 }
