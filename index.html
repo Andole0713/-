@@ -88,6 +88,7 @@ section{padding:96px 0}
 .who{position:absolute;top:24px;right:18px;font-size:11px;letter-spacing:.1em;padding:2px 10px;border-radius:999px}
 .who.coach{background:rgba(200,169,106,.16);color:var(--gold-2)}
 .who.you{background:rgba(236,230,218,.1);color:var(--on-dark)}
+.steps.steps-6{grid-template-columns:repeat(3,1fr)}
 
 /* プラン */
 .plans{display:grid;grid-template-columns:repeat(2,1fr);gap:24px;margin-top:52px;max-width:880px;margin-left:auto;margin-right:auto}
@@ -162,7 +163,7 @@ section{padding:96px 0}
 }
 @media (max-width:900px){
   .features{grid-template-columns:1fr}
-  .steps{grid-template-columns:1fr 1fr}
+  .steps,.steps.steps-6{grid-template-columns:1fr 1fr}
   .coach-card{grid-template-columns:1fr;gap:28px}
   .coach-photo{max-width:260px}
 }
@@ -170,7 +171,7 @@ section{padding:96px 0}
   section{padding:72px 0}
   .nav a:not(.login){display:none}
   .plans,.contact-grid{grid-template-columns:1fr}
-  .steps{grid-template-columns:1fr}
+  .steps,.steps.steps-6{grid-template-columns:1fr}
   .hero{padding:110px 0 80px}
   .hero h1{font-size:clamp(26px,7.4vw,32px);letter-spacing:.04em}
   .logo .mark{height:36px}.logo .word{height:24px}
@@ -235,15 +236,13 @@ section{padding:96px 0}
       <p class="eyebrow reveal">Lesson Flow</p>
       <h2 class="h2 reveal">レッスンの進め方</h2>
       <p class="lead reveal">毎月この流れをくり返しながら、一つずつ課題をクリアしていきます。</p>
-      <ol class="steps">
-        <li class="step reveal"><span class="who coach">コーチ</span><h3>その月の課題を配信</h3><p>課題動画1本＋必須ドリル1本。必要に応じて補足ドリルもお届けします。</p></li>
+      <ol class="steps steps-6">
+        <li class="step reveal"><span class="who coach">運営</span><h3>その月の課題を配信</h3><p>課題動画1本＋必須ドリル1本。必要に応じて補足ドリルもお届けします。</p></li>
         <li class="step reveal"><span class="who you">受講者</span><h3>内容を確認して練習</h3><p>会員ページで課題動画とドリルを確認し、練習に取り組みます。</p></li>
-        <li class="step reveal"><span class="who you">受講者</span><h3>撮影して提出</h3><p>指定の条件でスイングを撮影し、会員ページから提出します。</p></li>
-        <li class="step reveal"><span class="who coach">コーチ</span><h3>提出動画をチェック</h3><p>届いた動画をコーチが確認します。</p></li>
-        <li class="step reveal"><span class="who coach">コーチ</span><h3>PGAプロが比較・判断</h3><p>理想の動作と比較し、課題を1つ程度に絞って抽出します。</p></li>
-        <li class="step reveal"><span class="who coach">コーチ</span><h3>添削動画・ドリルを送付</h3><p>課題動画・指導動画・ドリルを作成してお届けします。</p></li>
-        <li class="step reveal"><span class="who you">受講者</span><h3>添削をもとに再練習</h3><p>添削動画を見ながら、ポイントを意識して練習します。</p></li>
-        <li class="step reveal"><span class="who coach">コーチ</span><h3>次の課題へ</h3><p>課題ができたら、会員ページで次の課題が見られるようになります。</p></li>
+        <li class="step reveal"><span class="who you">受講者</span><h3>指定条件で撮影・提出</h3><p>指定の条件でスイングを撮影し、会員ページから提出します。</p></li>
+        <li class="step reveal"><span class="who coach">運営</span><h3>提出動画をチェック</h3><p>届いた動画をコーチが確認します。</p></li>
+        <li class="step reveal"><span class="who coach">運営</span><h3>PGAプロが比較・判断</h3><p>理想の動作と比較し、課題を1つ程度に絞って抽出します。</p></li>
+        <li class="step reveal"><span class="who coach">運営</span><h3>課題動画・ドリルを送付</h3><p>課題動画・指導動画・ドリルを作成してお届けします。</p></li>
       </ol>
     </div>
   </section>
