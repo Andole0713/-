@@ -48,7 +48,7 @@
 1. `app/config.js` を編集
    - `SUPABASE_URL` と `SUPABASE_ANON_KEY` に手順1-3の値を入れる
    - `SCHOOL_NAME` とプランの料金表示（`PLANS`）を書き換える
-2. GitHub のリポジトリで **Settings → Pages** を開き、Branch を `main`、フォルダを `/ (root)` にして Save
+2. 公開は設定済みです（Settings → Pages の Source が **GitHub Actions**）。`main` に変更を取り込むと自動で公開されます
 3. 数分後、`https://<ユーザー名>.github.io/<リポジトリ名>/app/` で会員サイトが開きます
    - このリポジトリの場合：`https://andole0713.github.io/-/app/`
    - 以降、この URL を「サイト URL」と呼びます
@@ -67,13 +67,12 @@
 ## 4. Stripe の設定
 
 1. https://stripe.com でアカウントを作成（最初は「テストモード」で進める）
-2. **商品カタログ** で商品を3つ作成し、それぞれに **月額の継続価格** を設定
-   - BASIC / STANDARD / PREMIUM
-   - 各価格の **価格 ID**（`price_...`）を控える
+2. **商品カタログ** で「サブスクリプション制」の商品を作成し、**月額の継続価格** を設定
+   - 価格の **価格 ID**（`price_...`）を控える
+   - ユーキャン制（12か月・一括払い）は、今は LINE・電話での申し込みです（手順8を参照）
 3. **設定 → Billing → カスタマーポータル** を開き、次を有効にして保存
    - 支払い方法の更新、請求書履歴
-   - サブスクリプションのキャンセル
-   - サブスクリプションの切り替え（3つの商品を追加）
+   - サブスクリプションのキャンセル（最低4か月の契約期間は、利用規約での案内をおすすめします）
 4. **開発者 → API キー** でシークレットキー（`sk_test_...`）を控える
 
 ## 5. 決済処理（Edge Functions）をデプロイ
@@ -86,9 +85,7 @@ npx supabase link --project-ref <プロジェクトID>   # URL の https://<こ�
 
 npx supabase secrets set \
   STRIPE_SECRET_KEY=sk_test_... \
-  STRIPE_PRICE_BASIC=price_... \
-  STRIPE_PRICE_STANDARD=price_... \
-  STRIPE_PRICE_PREMIUM=price_... \
+  STRIPE_PRICE_SUBSCRIPTION=price_... \
   SITE_URL=https://andole0713.github.io/-/app
 
 npx supabase functions deploy create-checkout-session
@@ -125,7 +122,18 @@ update public.profiles set role = 'admin' where email = 'coach@example.com';
 3. 再ログインすると管理画面（提出動画・会員一覧）が表示されます
    - 2人目以降のコーチは、管理画面の会員詳細で「権限」を「管理者」に変更できます
 
-## 8. テスト（テストモード）
+## 8. LINE・電話で申し込んだ会員（ユーキャン制など）を利用可能にする
+
+カード決済をしていない会員は、管理者が「利用期限」を設定すると会員ページを使えるようになります。
+
+1. 会員に、会員サイトの「新規登録」からアカウントを作ってもらう
+2. 管理者でログイン →「会員一覧」→ 該当の会員を開く
+3. 「プラン」を **ユーキャン制** に、「利用期限」を受講の最終日に設定して **保存する**
+4. 期限を過ぎると、自動的に動画提出ができなくなります
+
+「次回の面談日時」を入れておくと、会員のマイページに表示されます。
+
+## 9. テスト（テストモード）
 
 1. 別のメールアドレスで会員登録 → プランを選ぶ
 2. Stripe の決済ページでテストカード `4242 4242 4242 4242`（有効期限は未来の日付、CVC は任意）を入力
@@ -134,7 +142,7 @@ update public.profiles set role = 'admin' where email = 'coach@example.com';
 5. 管理者で「レッスンを書く」→ 会員側の「履歴」に表示されることを確認
 6. 会員の「アカウント → 契約・お支払い」から解約 → 期間終了後にプラン選択画面に戻ることを確認
 
-## 9. 本番運用への切り替え
+## 10. 本番運用への切り替え
 
 - [ ] Stripe を本番モードに切り替え、手順4〜6を本番用のキー・価格 ID・Webhook でやり直す
 - [ ] Supabase を Pro プランに変更（自動停止の防止・毎日バックアップ）

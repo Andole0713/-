@@ -11,11 +11,13 @@ create table public.profiles (
   role                 text not null default 'member' check (role in ('member', 'admin')),
   name                 text not null default '',
   email                text,
-  plan                 text check (plan in ('BASIC', 'STANDARD', 'PREMIUM')),
+  plan                 text check (plan in ('SUBSCRIPTION', 'YOUCAN')),
   goal                 text not null default '',
   best_score           integer check (best_score between 40 and 200),
   avg_score            integer check (avg_score between 40 and 200),
   theme                text not null default '',
+  next_meeting_at      timestamptz,             -- 次回の面談日時（管理者が設定）
+  access_until         date,                    -- 利用期限（LINE・電話で申し込んだ会員用。管理者が設定）
   stripe_customer_id   text unique,
   subscription_id      text,
   subscription_status  text not null default 'none',
@@ -98,7 +100,8 @@ set search_path = ''
 as $$
   select exists (
     select 1 from public.profiles
-    where id = auth.uid() and subscription_status in ('active', 'trialing')
+    where id = auth.uid()
+      and (subscription_status in ('active', 'trialing') or access_until >= current_date)
   );
 $$;
 
@@ -177,6 +180,8 @@ begin
   or new.best_score          is distinct from old.best_score
   or new.avg_score           is distinct from old.avg_score
   or new.theme               is distinct from old.theme
+  or new.next_meeting_at     is distinct from old.next_meeting_at
+  or new.access_until        is distinct from old.access_until
   or new.stripe_customer_id  is distinct from old.stripe_customer_id
   or new.subscription_id     is distinct from old.subscription_id
   or new.subscription_status is distinct from old.subscription_status
