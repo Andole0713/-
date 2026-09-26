@@ -156,6 +156,6 @@ supabase/
     stripe-webhook/          Stripe からの通知で契約状態を更新
   config.toml
 docs/SETUP.md                この手順書
-index.html                   旧デモ（ブラウザ内保存の試作品）
-golf_lesson_member_site.html 旧デモ
+index.html                   スクール紹介ページ（トップ）
+prototype/                   旧デモ（ブラウザ内保存の試作品）
 ```

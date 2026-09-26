@@ -1,21 +1,407 @@
-<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Golf Lesson Prototype</title><style>
-*{box-sizing:border-box}body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Noto Sans JP",sans-serif;background:#f5f6f7;color:#172018}button,input,textarea,select{font:inherit}button{cursor:pointer;border:0;border-radius:12px;padding:12px 16px;background:#172018;color:#fff}.app{max-width:760px;margin:auto;min-height:100vh;background:#fff}.top{padding:18px 20px;border-bottom:1px solid #eee;display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;background:#fff;z-index:2}.brand{font-weight:800}.muted{color:#777;font-size:13px}.content{padding:20px}.hero{background:#172018;color:white;border-radius:20px;padding:22px;margin-bottom:16px}.hero h1{margin:6px 0 10px;font-size:25px}.pill{display:inline-block;background:#e8efe9;color:#172018;border-radius:999px;padding:5px 10px;font-size:12px;font-weight:700}.card{border:1px solid #e6e8e6;border-radius:16px;padding:17px;margin:12px 0;background:#fff}.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.stat{background:#f5f7f5;border-radius:14px;padding:14px}.stat b{font-size:22px;display:block;margin-top:5px}.section-title{display:flex;justify-content:space-between;align-items:center;margin-top:24px}.section-title h2{font-size:18px;margin:0}.task{display:flex;gap:12px;align-items:center}.check{width:28px;height:28px;border-radius:50%;background:#e9eee9;color:#172018;display:grid;place-items:center;font-weight:800}.nav{position:sticky;bottom:0;background:#fff;border-top:1px solid #eee;display:grid;grid-template-columns:repeat(3,1fr);padding:8px}.nav button{background:white;color:#555;padding:10px 4px}.nav button.active{color:#172018;font-weight:800}.tabs{display:flex;gap:8px;overflow:auto;margin-bottom:16px}.tabs button{white-space:nowrap;background:#eef1ee;color:#263127}.tabs button.active{background:#172018;color:#fff}.form label{display:block;font-size:13px;font-weight:700;margin:14px 0 6px}.form input,.form textarea,.form select{width:100%;padding:12px;border:1px solid #ddd;border-radius:10px;background:#fff}.row{display:flex;gap:8px;align-items:center}.row>*{flex:1}.notice{background:#fff7dc;border:1px solid #f1dfa0;padding:12px;border-radius:12px;font-size:13px}.login{padding:40px 24px;min-height:100vh;display:grid;align-content:center}.login h1{font-size:30px}.danger{background:#eee;color:#333}.small{font-size:12px}.hidden{display:none!important}
-</style></head><body><div class="app" id="app"></div><script>
-const defaultData={member:{name:'○○さん',plan:'STANDARD',goal:'90切り',best:'94',avg:'98',theme:'ドライバーの方向性を安定させる',tasks:[{t:'ドライバー ハーフスイング',d:'20球',done:false},{t:'7I インパクト練習',d:'30球',done:false},{t:'ドライバー 実戦イメージ',d:'20球',done:false}],lesson:{date:'2026.09.25',title:'ドライバーの右プッシュ',point:'切り返しで上体が先行している',feedback:'今回は上体から切り返すことでフェースが開きやすくなっています。まずは下半身から動き出す感覚を作りましょう。'},history:[{date:'2026.09.25',title:'ドライバーの右プッシュ'},{date:'2026.09.18',title:'アイアンのコンタクト'},{date:'2026.09.11',title:'切り返しの順序'}]},members:[{id:'001',name:'○○さん',plan:'STANDARD',goal:'90切り',best:'94',avg:'98'}]};
-let data=JSON.parse(localStorage.getItem('golfData')||JSON.stringify(defaultData));let role=localStorage.getItem('golfRole');let view='home';
-function save(){localStorage.setItem('golfData',JSON.stringify(data))}function esc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
-function login(){app.innerHTML=`<div class="login"><div><span class="pill">ONLINE GOLF LESSON</span><h1>あなた専用の<br>ゴルフカルテ</h1><p class="muted">試作品：会員側と管理者側の画面を体験できます。</p><button onclick="enter('member')" style="width:100%;margin-top:14px">会員として見る</button><button onclick="enter('admin')" class="danger" style="width:100%;margin-top:8px">管理者として見る</button><p class="small muted">※第1版はブラウザ内にデータを保存するデモです。本番公開時は安全な認証・データベースへ移行します。</p></div></div>`}
-function enter(r){role=r;localStorage.setItem('golfRole',r);view=r==='admin'?'members':'home';render()}
-function header(title){return `<div class="top"><div><div class="brand">${title}</div><div class="muted">Online Golf Lesson</div></div><button class="danger" onclick="logout()">ログアウト</button></div>`}function logout(){localStorage.removeItem('golfRole');login()}
-function memberHome(){const m=data.member;return header('マイページ')+`<div class="content"><div class="hero"><div class="pill">${esc(m.plan)}</div><h1>${esc(m.name)}、おかえりなさい。</h1><div class="muted" style="color:#d9e1da">現在の目標</div><h2 style="margin:5px 0 0">${esc(m.goal)}</h2><div style="margin-top:14px">今月のテーマ：${esc(m.theme)}</div></div><div class="grid"><div class="stat"><div class="muted">Best Score</div><b>${esc(m.best)}</b></div><div class="stat"><div class="muted">平均スコア</div><b>${esc(m.avg)}</b></div></div><div class="section-title"><h2>🔥 今週の課題</h2><span class="muted">${m.tasks.filter(x=>x.done).length}/${m.tasks.length}</span></div>${m.tasks.map((x,i)=>`<div class="card task"><div class="check">${x.done?'✓':''}</div><div><b>${esc(x.t)}</b><div class="muted">${esc(x.d)}</div></div></div>`).join('')}<div class="section-title"><h2>🎥 最新レッスン</h2></div><div class="card"><div class="muted">${esc(m.lesson.date)}</div><h3 style="margin:7px 0">${esc(m.lesson.title)}</h3><b>今回のポイント</b><p>${esc(m.lesson.point)}</p><button onclick="view='lesson';render()">レッスンを見る</button></div><button onclick="view='submit';render()" style="width:100%;margin-top:8px">＋ 動画を提出する</button><div class="section-title"><h2>📈 上達記録</h2></div><div class="grid"><div class="stat"><div class="muted">Best</div><b>94 → ${esc(m.best)}</b></div><div class="stat"><div class="muted">平均</div><b>98 → ${esc(m.avg)}</b></div></div></div>${memberNav('home')}`}
-function memberNav(active){return `<div class="nav"><button class="${active==='home'?'active':''}" onclick="view='home';render()">🏠<br><span class="small">ホーム</span></button><button class="${active==='submit'?'active':''}" onclick="view='submit';render()">📹<br><span class="small">動画提出</span></button><button class="${active==='history'?'active':''}" onclick="view='history';render()">📚<br><span class="small">履歴</span></button></div>`}
-function submitPage(){return header('動画を提出')+`<div class="content"><div class="notice">動画を送る前に、正面または後方から全身とクラブが入るように撮影してください。</div><div class="card form"><label>クラブ</label><select id="club"><option>ドライバー</option><option>7I</option><option>ウェッジ</option><option>パター</option><option>その他</option></select><label>撮影方向</label><select id="angle"><option>正面</option><option>後方</option></select><label>動画</label><input id="file" type="file" accept="video/*"><label>今回気になっていること</label><textarea id="question" rows="5" placeholder="例：最近ドライバーが右に出ます"></textarea><button style="width:100%;margin-top:14px" onclick="submitVideo()">動画を提出する</button></div></div>${memberNav('submit')}`}
-function submitVideo(){alert('試作品：動画提出データを受け付けました。\n本番版では管理者画面に届きます。');view='home';render()}
-function lessonPage(){const m=data.member;return header('レッスン詳細')+`<div class="content"><div class="muted">${esc(m.lesson.date)}</div><h1>${esc(m.lesson.title)}</h1><div class="card"><b>今回の診断</b><h2>${esc(m.lesson.point)}</h2><p>${esc(m.lesson.feedback)}</p></div><div class="card"><b>次回までの練習</b><p>① ハーフスイング 20球</p><p>② 7I 30球</p><p>③ ドライバー 20球</p></div><button onclick="view='home';render()">ホームへ戻る</button></div>${memberNav('home')}`}
-function historyPage(){return header('レッスン履歴')+`<div class="content">${data.member.history.map(h=>`<div class="card"><div class="muted">${esc(h.date)}</div><h3>${esc(h.title)}</h3><button onclick="view='lesson';render()">詳細を見る</button></div>`).join('')}</div>${memberNav('history')}`}
-function adminMembers(){return header('管理者ダッシュボード')+`<div class="content"><div class="hero"><div class="pill">ADMIN</div><h1>会員を管理する</h1><p style="color:#d9e1da">会員情報を変更すると、会員ページに反映されます。</p></div><div class="section-title"><h2>会員一覧</h2><button onclick="view='edit';render()">＋ 新規</button></div>${data.members.map((m,i)=>`<div class="card"><div class="row"><div><b>${esc(m.name)}</b><div class="muted">${esc(m.plan)} / ${esc(m.goal)}</div></div><button onclick="editMember(${i})">編集</button></div></div>`).join('')}<div class="card"><b>現在の会員ページを確認</b><p class="muted">管理者が編集した内容がどのように表示されるか確認できます。</p><button onclick="enter('member')">会員画面を見る</button></div></div>`}
-function editMember(i=0){const m=data.members[i]||data.member; data.editIndex=i; view='edit'; render()}function editPage(){const i=data.editIndex??0;const m=data.members[i]||data.member;return header('会員情報を編集')+`<div class="content form"><div class="card"><label>会員名</label><input id="name" value="${esc(m.name)}"><label>プラン</label><select id="plan"><option ${m.plan==='BASIC'?'selected':''}>BASIC</option><option ${m.plan==='STANDARD'?'selected':''}>STANDARD</option><option ${m.plan==='PREMIUM'?'selected':''}>PREMIUM</option></select><label>目標</label><input id="goal" value="${esc(m.goal)}"><label>Best Score</label><input id="best" value="${esc(m.best)}"><label>平均スコア</label><input id="avg" value="${esc(m.avg)}"><label>今月のテーマ</label><input id="theme" value="${esc(data.member.theme)}"><label>今週の練習①</label><input id="task1" value="${esc(data.member.tasks[0].t)}"><label>今週の練習②</label><input id="task2" value="${esc(data.member.tasks[1].t)}"><label>今週の練習③</label><input id="task3" value="${esc(data.member.tasks[2].t)}"><label>最新レッスンのタイトル</label><input id="ltitle" value="${esc(data.member.lesson.title)}"><label>今回のポイント</label><input id="lpoint" value="${esc(data.member.lesson.point)}"><label>フィードバック</label><textarea id="feedback" rows="5">${esc(data.member.lesson.feedback)}</textarea><button style="width:100%;margin-top:15px" onclick="saveMember()">保存する</button><button class="danger" style="width:100%;margin-top:8px" onclick="view='members';render()">戻る</button></div></div>`}
-function saveMember(){const i=data.editIndex??0;const m=data.members[i]||data.member;Object.assign(m,{name:document.getElementById('name').value,plan:document.getElementById('plan').value,goal:document.getElementById('goal').value,best:document.getElementById('best').value,avg:document.getElementById('avg').value});Object.assign(data.member,m,{theme:document.getElementById('theme').value,tasks:[{t:document.getElementById('task1').value,d:'20球',done:false},{t:document.getElementById('task2').value,d:'30球',done:false},{t:document.getElementById('task3').value,d:'20球',done:false}],lesson:{date:'2026.09.26',title:document.getElementById('ltitle').value,point:document.getElementById('lpoint').value,feedback:document.getElementById('feedback').value}});save();alert('保存しました。会員ページに反映されます。');view='members';render()}
-function render(){if(!role)return login();if(role==='member'){if(view==='home')app.innerHTML=memberHome();else if(view==='submit')app.innerHTML=submitPage();else if(view==='lesson')app.innerHTML=lessonPage();else app.innerHTML=historyPage()}else{if(view==='members')app.innerHTML=adminMembers();else app.innerHTML=editPage()}}
-render();
-</script></body></html>
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ALLTIME GOLF（オルタイムゴルフ）｜オンラインゴルフレッスン</title>
+<meta name="description" content="ALLTIME GOLF（オルタイムゴルフ）は、スイング動画を送るだけでプロコーチの診断と練習メニューが届くオンラインゴルフレッスンです。">
+<meta property="og:title" content="ALLTIME GOLF（オルタイムゴルフ）">
+<meta property="og:description" content="いつでも、どこでも、あなた専属のゴルフコーチを。">
+<meta property="og:type" content="website">
+<meta name="theme-color" content="#0f1712">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600&family=Noto+Sans+JP:wght@400;500;700&family=Noto+Serif+JP:wght@500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#0f1712; --ink-2:#17221b; --ink-3:#1f2d24;
+  --gold:#c8a96a; --gold-2:#e2cc9a; --gold-line:rgba(200,169,106,.35);
+  --paper:#f7f4ee; --paper-2:#efe9de; --text:#1b231e; --muted:#6b726c;
+  --on-dark:#ece6da; --on-dark-muted:#a8ab9f;
+  --radius:14px; --wrap:1080px;
+  --serif:"Noto Serif JP",serif; --latin:"Cormorant Garamond","Noto Serif JP",serif; --sans:"Noto Sans JP",-apple-system,BlinkMacSystemFont,sans-serif;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth;scroll-padding-top:72px}
+body{margin:0;font-family:var(--sans);color:var(--text);background:var(--paper);line-height:1.85;letter-spacing:.03em;-webkit-font-smoothing:antialiased}
+img,svg{display:block;max-width:100%}
+a{color:inherit}
+.wrap{max-width:var(--wrap);margin:auto;padding:0 20px}
+.eyebrow{font-family:var(--latin);font-size:15px;letter-spacing:.3em;color:var(--gold);text-transform:uppercase;margin:0 0 10px}
+.h2{font-family:var(--serif);font-weight:600;font-size:clamp(24px,4.2vw,34px);line-height:1.5;margin:0 0 18px;letter-spacing:.06em}
+.lead{color:var(--muted);max-width:640px;margin:0}
+section{padding:96px 0}
+.center{text-align:center}.center .lead{margin:auto}
+
+/* ボタン */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:10px;min-height:54px;padding:0 28px;border-radius:999px;font-weight:700;font-size:15px;text-decoration:none;letter-spacing:.08em;transition:transform .15s ease,background .2s ease,box-shadow .2s ease;border:1px solid transparent;cursor:pointer}
+.btn:hover{transform:translateY(-1px)}
+.btn:focus-visible{outline:2px solid var(--gold-2);outline-offset:3px}
+.btn-line{background:#06c755;color:#fff;box-shadow:0 8px 24px rgba(6,199,85,.25)}
+.btn-gold{background:linear-gradient(135deg,var(--gold-2),var(--gold));color:#1a1407;box-shadow:0 8px 24px rgba(200,169,106,.25)}
+.btn-ghost{border-color:var(--gold-line);color:var(--on-dark);background:transparent}
+.btn svg{width:20px;height:20px;flex:none}
+
+/* ヘッダー */
+.header{position:fixed;inset:0 0 auto;z-index:20;transition:background .3s ease,border-color .3s ease;border-bottom:1px solid transparent}
+.header.scrolled{background:rgba(15,23,18,.92);backdrop-filter:blur(10px);border-color:var(--gold-line)}
+.header .wrap{display:flex;align-items:center;justify-content:space-between;height:68px}
+.logo{text-decoration:none;color:var(--on-dark);display:flex;flex-direction:column;line-height:1.1}
+.logo b{font-family:var(--latin);font-size:24px;font-weight:600;letter-spacing:.18em}
+.logo small{font-size:10px;letter-spacing:.3em;color:var(--gold)}
+.nav{display:flex;gap:28px;align-items:center}
+.nav a{color:var(--on-dark);text-decoration:none;font-size:13px;letter-spacing:.12em}
+.nav a:hover{color:var(--gold-2)}
+.nav .login{border:1px solid var(--gold-line);border-radius:999px;padding:8px 18px}
+
+/* ヒーロー */
+.hero{position:relative;min-height:100svh;display:flex;align-items:center;background:radial-gradient(1200px 600px at 80% 10%,#23372a 0%,transparent 60%),linear-gradient(180deg,var(--ink) 0%,var(--ink-2) 100%);color:var(--on-dark);overflow:hidden;padding:120px 0 90px}
+.hero-art{position:absolute;right:-120px;top:50%;transform:translateY(-50%);width:min(760px,90vw);opacity:.55;pointer-events:none}
+.hero .wrap{position:relative;width:100%}
+.hero h1{font-family:var(--serif);font-weight:600;font-size:clamp(32px,6.4vw,58px);line-height:1.45;letter-spacing:.08em;margin:0 0 22px}
+.hero h1 em{font-style:normal;color:var(--gold-2)}
+.hero p{color:var(--on-dark-muted);max-width:520px;margin:0 0 36px;font-size:15px}
+.hero .actions{display:flex;flex-wrap:wrap;gap:14px}
+.hero .brand-line{font-family:var(--latin);letter-spacing:.4em;color:var(--gold);font-size:14px;margin-bottom:20px;display:flex;align-items:center;gap:14px}
+.hero .brand-line::before{content:"";width:40px;height:1px;background:var(--gold)}
+.scroll-cue{position:absolute;left:50%;bottom:26px;transform:translateX(-50%);font-family:var(--latin);font-size:12px;letter-spacing:.3em;color:var(--on-dark-muted);text-decoration:none}
+
+/* コンセプト */
+.concept{background:var(--paper)}
+.features{display:grid;grid-template-columns:repeat(3,1fr);gap:22px;margin-top:52px}
+.feature{background:#fff;border:1px solid var(--paper-2);border-radius:var(--radius);padding:34px 28px}
+.feature .num{font-family:var(--latin);font-size:40px;color:var(--gold);line-height:1}
+.feature h3{font-family:var(--serif);font-size:19px;margin:14px 0 10px;letter-spacing:.06em}
+.feature p{margin:0;color:var(--muted);font-size:14px}
+
+/* 流れ */
+.flow{background:var(--ink);color:var(--on-dark)}
+.flow .lead{color:var(--on-dark-muted)}
+.steps{list-style:none;padding:0;margin:52px 0 0;display:grid;grid-template-columns:repeat(4,1fr);gap:18px;counter-reset:step}
+.step{border:1px solid var(--gold-line);border-radius:var(--radius);padding:28px 22px;position:relative;background:linear-gradient(180deg,rgba(255,255,255,.02),transparent)}
+.step::before{counter-increment:step;content:"STEP " counter(step,decimal-leading-zero);font-family:var(--latin);letter-spacing:.2em;color:var(--gold);font-size:14px}
+.step h3{font-family:var(--serif);font-size:18px;margin:10px 0 8px}
+.step p{margin:0;font-size:13.5px;color:var(--on-dark-muted)}
+.step .icon{width:34px;height:34px;color:var(--gold-2);margin-top:16px}
+
+/* プラン */
+.plans{display:grid;grid-template-columns:repeat(2,1fr);gap:24px;margin-top:52px;max-width:880px;margin-left:auto;margin-right:auto}
+.plan{background:#fff;border:1px solid var(--paper-2);border-radius:18px;padding:40px 34px;display:flex;flex-direction:column;position:relative}
+.plan.featured{border:1px solid var(--gold);box-shadow:0 20px 50px rgba(15,23,18,.08)}
+.plan .tag{position:absolute;top:-13px;left:34px;background:var(--ink);color:var(--gold-2);font-size:11px;letter-spacing:.2em;padding:4px 14px;border-radius:999px}
+.plan .en{font-family:var(--latin);letter-spacing:.25em;color:var(--gold);font-size:14px}
+.plan h3{font-family:var(--serif);font-size:24px;margin:6px 0 4px}
+.plan .price{font-family:var(--serif);font-size:20px;margin:18px 0;padding:16px 0;border-top:1px solid var(--paper-2);border-bottom:1px solid var(--paper-2)}
+.plan .price small{display:block;font-family:var(--sans);font-size:12px;color:var(--muted);letter-spacing:.05em}
+.plan ul{list-style:none;padding:0;margin:0 0 28px;flex:1}
+.plan li{padding:6px 0 6px 26px;position:relative;font-size:14px}
+.plan li::before{content:"";position:absolute;left:2px;top:15px;width:12px;height:6px;border-left:2px solid var(--gold);border-bottom:2px solid var(--gold);transform:rotate(-45deg)}
+.plan .btn{width:100%}
+.note{font-size:12px;color:var(--muted);text-align:center;margin-top:22px}
+
+/* コーチ */
+.coach{background:var(--paper-2)}
+.coach-card{display:grid;grid-template-columns:280px 1fr;gap:48px;align-items:center;margin-top:44px}
+.coach-photo{aspect-ratio:4/5;border-radius:18px;background:linear-gradient(160deg,var(--ink-3),var(--ink));display:grid;place-items:center;color:var(--gold);font-family:var(--latin);letter-spacing:.3em;font-size:13px;border:1px solid var(--gold-line)}
+.coach-name{font-family:var(--serif);font-size:24px;margin:0}
+.coach-name small{display:block;font-family:var(--latin);color:var(--gold);letter-spacing:.25em;font-size:14px}
+.coach p{color:var(--muted)}
+
+/* FAQ */
+.faq-list{max-width:760px;margin:44px auto 0}
+.faq-list details{border-bottom:1px solid var(--paper-2);padding:6px 0}
+.faq-list summary{list-style:none;cursor:pointer;padding:18px 40px 18px 0;font-weight:700;position:relative;font-size:15px}
+.faq-list summary::-webkit-details-marker{display:none}
+.faq-list summary::before{content:"Q.";font-family:var(--latin);color:var(--gold);font-size:20px;margin-right:12px}
+.faq-list summary::after{content:"";position:absolute;right:8px;top:26px;width:9px;height:9px;border-right:1.5px solid var(--text);border-bottom:1.5px solid var(--text);transform:rotate(45deg);transition:transform .2s}
+.faq-list details[open] summary::after{transform:rotate(-135deg);top:30px}
+.faq-list details p{margin:0 0 18px;padding-left:34px;color:var(--muted);font-size:14px}
+
+/* お問い合わせ */
+.contact{background:linear-gradient(180deg,var(--ink-2),var(--ink));color:var(--on-dark)}
+.contact .lead{color:var(--on-dark-muted)}
+.contact-grid{display:grid;grid-template-columns:1fr 1fr;gap:22px;max-width:820px;margin:48px auto 0}
+.contact-card{border:1px solid var(--gold-line);border-radius:18px;padding:34px 28px;text-align:center}
+.contact-card h3{font-family:var(--serif);margin:0 0 6px;font-size:19px}
+.contact-card p{margin:0 0 22px;color:var(--on-dark-muted);font-size:13.5px}
+.contact-card .tel{font-family:var(--latin);font-size:32px;letter-spacing:.1em;color:var(--gold-2);display:block;margin-bottom:4px;text-decoration:none}
+.contact-card .btn{width:100%}
+
+/* フッター */
+.footer{background:var(--ink);color:var(--on-dark-muted);padding:48px 0 110px;border-top:1px solid var(--gold-line);font-size:12px}
+.footer .wrap{display:flex;flex-wrap:wrap;justify-content:space-between;gap:20px;align-items:center}
+.footer nav{display:flex;flex-wrap:wrap;gap:20px}
+.footer a{text-decoration:none}
+.footer a:hover{color:var(--gold-2)}
+
+/* スマホ下部の固定ボタン */
+.sticky-cta{position:fixed;left:0;right:0;bottom:0;z-index:30;display:none;gap:10px;padding:10px 12px calc(10px + env(safe-area-inset-bottom));background:rgba(15,23,18,.94);backdrop-filter:blur(10px);border-top:1px solid var(--gold-line);transform:translateY(110%);transition:transform .3s ease}
+.sticky-cta.show{transform:none}
+.sticky-cta .btn{flex:1;min-height:50px;padding:0 10px;font-size:14px}
+
+/* 表示アニメーション */
+.reveal{opacity:0;transform:translateY(18px);transition:opacity .8s ease,transform .8s ease}
+.reveal.in{opacity:1;transform:none}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}.reveal{opacity:1;transform:none;transition:none}.btn{transition:none}}
+
+@media (max-width:900px){
+  .features{grid-template-columns:1fr}
+  .steps{grid-template-columns:1fr 1fr}
+  .coach-card{grid-template-columns:1fr;gap:28px}
+  .coach-photo{max-width:260px}
+}
+@media (max-width:720px){
+  section{padding:72px 0}
+  .nav a:not(.login){display:none}
+  .plans,.contact-grid{grid-template-columns:1fr}
+  .steps{grid-template-columns:1fr}
+  .hero{padding:110px 0 80px}
+  .hero h1{font-size:clamp(26px,7.4vw,32px);letter-spacing:.04em}
+  .logo b{font-size:19px;letter-spacing:.12em;white-space:nowrap}
+  .hero .actions .btn{flex:1 1 100%}
+  .hero-art{right:-220px;opacity:.35}
+  .sticky-cta{display:flex}
+}
+</style>
+</head>
+<body>
+
+<header class="header" id="header">
+  <div class="wrap">
+    <a href="#top" class="logo" aria-label="ALLTIME GOLF トップへ"><b>ALLTIME GOLF</b><small>オルタイムゴルフ</small></a>
+    <nav class="nav" aria-label="メインメニュー">
+      <a href="#concept">特徴</a>
+      <a href="#flow">レッスンの流れ</a>
+      <a href="#plan">料金プラン</a>
+      <a href="#faq">よくある質問</a>
+      <a href="#contact">お申し込み</a>
+      <a href="app/" class="login">会員ログイン</a>
+    </nav>
+  </div>
+</header>
+
+<main id="top">
+  <!-- ヒーロー -->
+  <section class="hero">
+    <svg class="hero-art" viewBox="0 0 600 600" fill="none" aria-hidden="true">
+      <circle cx="300" cy="300" r="280" stroke="#c8a96a" stroke-opacity=".18"/>
+      <circle cx="300" cy="300" r="210" stroke="#c8a96a" stroke-opacity=".14"/>
+      <circle cx="300" cy="300" r="140" stroke="#c8a96a" stroke-opacity=".1"/>
+      <path d="M40 470 C 160 120, 420 60, 560 250" stroke="url(#arc)" stroke-width="2" stroke-linecap="round"/>
+      <circle cx="560" cy="250" r="9" fill="#e2cc9a"/>
+      <defs><linearGradient id="arc" x1="40" y1="470" x2="560" y2="250" gradientUnits="userSpaceOnUse">
+        <stop stop-color="#c8a96a" stop-opacity="0"/><stop offset="1" stop-color="#e2cc9a"/></linearGradient></defs>
+    </svg>
+    <div class="wrap">
+      <div class="brand-line">ONLINE GOLF LESSON</div>
+      <h1>いつでも、どこでも。<br>あなた<em>専属</em>の<br>ゴルフコーチを。</h1>
+      <p>スイング動画を送るだけで、コーチがあなたのスイングを診断。<br>一人ひとりに合わせた練習メニューで、上達までを伴走します。</p>
+      <div class="actions">
+        <a class="btn btn-line" data-line href="#contact">
+          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 3C6.5 3 2 6.6 2 11c0 3.9 3.5 7.2 8.3 7.9.3.1.8.2.9.5.1.3.1.7 0 1l-.1.9c0 .3-.2 1 .9.5s6-3.5 8.2-6.1c1.5-1.6 2.2-3.2 2.2-4.8C22.4 6.6 17.9 3 12 3z"/></svg>
+          LINEで相談する
+        </a>
+        <a class="btn btn-ghost" href="#plan">料金プランを見る</a>
+      </div>
+    </div>
+    <a class="scroll-cue" href="#concept">SCROLL</a>
+  </section>
+
+  <!-- 特徴 -->
+  <section class="concept" id="concept">
+    <div class="wrap center">
+      <p class="eyebrow reveal">Concept</p>
+      <h2 class="h2 reveal">練習場でも、自宅でも。<br>上達の時間を、あなたのペースで。</h2>
+      <p class="lead reveal">ALLTIME GOLF は、スマートフォンで撮影したスイング動画をもとに、コーチがオンラインでレッスンを行うゴルフスクールです。通う時間がなくても、本格的な指導を受けられます。</p>
+      <div class="features">
+        <div class="feature reveal"><div class="num">01</div><h3>一人ひとりに合わせた診断</h3><p>スイング動画をコーチが丁寧に確認。今のあなたに必要なポイントを、わかりやすい言葉でお伝えします。</p></div>
+        <div class="feature reveal"><div class="num">02</div><h3>毎週の練習メニュー</h3><p>「次に何を練習すればいいか」が明確に。課題は会員ページでいつでも確認でき、練習の迷いがなくなります。</p></div>
+        <div class="feature reveal"><div class="num">03</div><h3>上達の記録が残る</h3><p>過去のレッスンやフィードバックは会員ページに蓄積。自分の成長を振り返りながら、目標スコアを目指せます。</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- レッスンの流れ -->
+  <section class="flow" id="flow">
+    <div class="wrap">
+      <p class="eyebrow reveal">Lesson Flow</p>
+      <h2 class="h2 reveal">レッスンの流れ</h2>
+      <p class="lead reveal">スマートフォンがあれば、今日から始められます。</p>
+      <ol class="steps">
+        <li class="step reveal"><h3>お申し込み</h3><p>LINE またはお電話でお気軽にご相談ください。目標やお悩みをお聞きします。</p>
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M4 5h16v11H8l-4 4z"/></svg></li>
+        <li class="step reveal"><h3>スイングを撮影</h3><p>正面または後方から、スマートフォンでスイングを撮影して会員ページから送るだけ。</p>
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10l5-3v10l-5-3z"/></svg></li>
+        <li class="step reveal"><h3>コーチが診断</h3><p>動画をもとに、スイングの課題と改善のポイントをフィードバックします。</p>
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/></svg></li>
+        <li class="step reveal"><h3>練習して上達</h3><p>届いた練習メニューに取り組み、また動画を送る。この繰り返しで確実に上達します。</p>
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M4 18l6-6 4 4 6-8"/><path d="M15 8h5v5"/></svg></li>
+      </ol>
+    </div>
+  </section>
+
+  <!-- 料金プラン -->
+  <section id="plan">
+    <div class="wrap center">
+      <p class="eyebrow reveal">Plan</p>
+      <h2 class="h2 reveal">料金プラン</h2>
+      <p class="lead reveal">ライフスタイルや目標に合わせて、2つのプランからお選びいただけます。</p>
+      <div class="plans">
+        <div class="plan featured reveal">
+          <span class="tag">RECOMMEND</span>
+          <div class="en">Subscription</div>
+          <h3>サブスクリプション制</h3>
+          <p class="lead" style="font-size:14px">月額制で、継続的にコーチのサポートを受けられるプランです。</p>
+          <div class="price">料金は近日公開<small>詳しくはお問い合わせください</small></div>
+          <ul>
+            <li>スイング動画の診断・フィードバック</li>
+            <li>毎週の練習メニュー</li>
+            <li>会員ページでレッスン履歴を確認</li>
+          </ul>
+          <a class="btn btn-gold" href="#contact">このプランを相談する</a>
+        </div>
+        <div class="plan reveal">
+          <div class="en">You Can</div>
+          <h3>ユーキャン制</h3>
+          <p class="lead" style="font-size:14px">プランの詳細は現在準備中です。</p>
+          <div class="price">料金は近日公開<small>詳しくはお問い合わせください</small></div>
+          <ul>
+            <li>スイング動画の診断・フィードバック</li>
+            <li>会員ページでレッスン履歴を確認</li>
+          </ul>
+          <a class="btn btn-gold" href="#contact">このプランを相談する</a>
+        </div>
+      </div>
+      <p class="note reveal">※ 料金・内容は変更になる場合があります。</p>
+    </div>
+  </section>
+
+  <!-- コーチ -->
+  <section class="coach" id="coach">
+    <div class="wrap">
+      <p class="eyebrow reveal">Coach</p>
+      <h2 class="h2 reveal">コーチ紹介</h2>
+      <div class="coach-card reveal">
+        <div class="coach-photo">PHOTO</div>
+        <div>
+          <p class="coach-name"><small>HEAD COACH</small>コーチ名（準備中）</p>
+          <p>ここにコーチのプロフィール、指導歴、資格、指導で大切にしていることなどが入ります。<br>「どんな人に教わるのか」は、お申し込みを決める大切なポイントです。</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- よくある質問 -->
+  <section id="faq">
+    <div class="wrap">
+      <div class="center">
+        <p class="eyebrow reveal">FAQ</p>
+        <h2 class="h2 reveal">よくある質問</h2>
+      </div>
+      <div class="faq-list reveal">
+        <details><summary>ゴルフ初心者でも受講できますか？</summary>
+          <p>はい、受講いただけます。レベルや目標をお聞きしたうえで、今のあなたに合ったポイントからお伝えします。</p></details>
+        <details><summary>撮影にはどんな機材が必要ですか？</summary>
+          <p>スマートフォンがあれば大丈夫です。全身とクラブが画面に入るように、正面または後方から撮影してください。</p></details>
+        <details><summary>練習場に行けない週があっても大丈夫ですか？</summary>
+          <p>もちろんです。ご自身のペースで動画を送っていただければ、そのタイミングに合わせてフィードバックします。</p></details>
+        <details><summary>申し込み前に相談だけすることはできますか？</summary>
+          <p>はい。LINE またはお電話で、お気軽にご相談ください。</p></details>
+      </div>
+    </div>
+  </section>
+
+  <!-- お問い合わせ -->
+  <section class="contact" id="contact">
+    <div class="wrap center">
+      <p class="eyebrow reveal">Contact</p>
+      <h2 class="h2 reveal">お申し込み・ご相談</h2>
+      <p class="lead reveal">ご不明な点やプランのご相談も、お気軽にお問い合わせください。</p>
+      <div class="contact-grid">
+        <div class="contact-card reveal">
+          <h3>LINEで相談する</h3>
+          <p>友だち追加後、メッセージをお送りください。<br>24時間受付・順次ご返信します。</p>
+          <a class="btn btn-line" data-line href="#contact">
+            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 3C6.5 3 2 6.6 2 11c0 3.9 3.5 7.2 8.3 7.9.3.1.8.2.9.5.1.3.1.7 0 1l-.1.9c0 .3-.2 1 .9.5s6-3.5 8.2-6.1c1.5-1.6 2.2-3.2 2.2-4.8C22.4 6.6 17.9 3 12 3z"/></svg>
+            LINEで友だち追加
+          </a>
+        </div>
+        <div class="contact-card reveal">
+          <h3>お電話で相談する</h3>
+          <p data-hours>受付時間は準備中です</p>
+          <a class="tel" data-tel data-tel-text href="#contact">000-0000-0000</a>
+          <a class="btn btn-gold" data-tel href="#contact" style="margin-top:14px">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2"/></svg>
+            電話をかける
+          </a>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="footer">
+  <div class="wrap">
+    <div>
+      <div class="logo"><b>ALLTIME GOLF</b><small>オルタイムゴルフ</small></div>
+      <p style="margin:14px 0 0">&copy; <span id="year"></span> ALLTIME GOLF</p>
+    </div>
+    <nav aria-label="フッターメニュー">
+      <a href="app/">会員ログイン</a>
+      <a href="#contact">お問い合わせ</a>
+      <!-- 公開前に各ページを用意してリンクを差し替えてください -->
+      <a href="#" aria-disabled="true">特定商取引法に基づく表記</a>
+      <a href="#" aria-disabled="true">プライバシーポリシー</a>
+    </nav>
+  </div>
+</footer>
+
+<div class="sticky-cta" id="stickyCta" aria-label="お問い合わせ">
+  <a class="btn btn-line" data-line href="#contact">LINEで相談</a>
+  <a class="btn btn-gold" data-tel href="#contact">電話する</a>
+</div>
+
+<script>
+// ===== 連絡先の設定（ここを書き換えるだけでページ全体に反映されます） =====
+const CONTACT = {
+  tel: '',          // 例：'0312345678'（ハイフンなし）
+  telDisplay: '',   // 例：'03-1234-5678'（表示用）
+  hours: '',        // 例：'受付時間 10:00〜19:00（火曜定休）'
+  lineUrl: '',      // 例：'https://lin.ee/xxxxxxx'（LINE公式アカウントの友だち追加URL）
+};
+
+if (CONTACT.lineUrl) {
+  document.querySelectorAll('[data-line]').forEach((a) => { a.href = CONTACT.lineUrl; a.target = '_blank'; a.rel = 'noopener'; });
+}
+if (CONTACT.tel) {
+  document.querySelectorAll('[data-tel]').forEach((a) => { a.href = 'tel:' + CONTACT.tel; });
+  document.querySelectorAll('[data-tel-text]').forEach((a) => { a.textContent = CONTACT.telDisplay || CONTACT.tel; });
+}
+if (CONTACT.hours) document.querySelectorAll('[data-hours]').forEach((p) => { p.textContent = CONTACT.hours; });
+document.getElementById('year').textContent = new Date().getFullYear();
+
+// ヘッダーの背景・スマホ下部ボタンの表示
+const header = document.getElementById('header');
+const sticky = document.getElementById('stickyCta');
+const contact = document.getElementById('contact');
+function onScroll() {
+  const y = window.scrollY;
+  header.classList.toggle('scrolled', y > 40);
+  const contactTop = contact.getBoundingClientRect().top;
+  sticky.classList.toggle('show', y > window.innerHeight * 0.6 && contactTop > window.innerHeight * 0.5);
+}
+window.addEventListener('scroll', onScroll, { passive: true });
+onScroll();
+
+// スクロールでふわっと表示
+if ('IntersectionObserver' in window) {
+  const io = new IntersectionObserver((entries) => {
+    entries.forEach((e) => { if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); } });
+  }, { rootMargin: '0px 0px -8% 0px' });
+  document.querySelectorAll('.reveal').forEach((el) => io.observe(el));
+} else {
+  document.querySelectorAll('.reveal').forEach((el) => el.classList.add('in'));
+}
+</script>
+</body>
+</html>
