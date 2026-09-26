@@ -3,9 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ALLTIME GOLF（オルタイムゴルフ）｜オンラインゴルフレッスン</title>
-<meta name="description" content="ALLTIME GOLF（オルタイムゴルフ）は、スイング動画を送るだけでプロコーチの診断と練習メニューが届くオンラインゴルフレッスンです。">
-<meta property="og:title" content="ALLTIME GOLF（オルタイムゴルフ）">
+<title>All Time Golf（オルタイムゴルフ）｜オンラインゴルフレッスン</title>
+<meta name="description" content="All Time Golf（オルタイムゴルフ）は、スイング動画を送るだけで、PGAプロの診断と課題動画・練習ドリルが届くオンラインゴルフレッスンです。">
+<meta property="og:title" content="All Time Golf（オルタイムゴルフ）">
 <meta property="og:description" content="いつでも、どこでも、あなた専属のゴルフコーチを。">
 <meta property="og:type" content="website">
 <meta name="theme-color" content="#0f1712">
@@ -47,7 +47,7 @@ section{padding:96px 0}
 .header.scrolled{background:rgba(15,23,18,.92);backdrop-filter:blur(10px);border-color:var(--gold-line)}
 .header .wrap{display:flex;align-items:center;justify-content:space-between;height:68px}
 .logo{text-decoration:none;color:var(--on-dark);display:flex;flex-direction:column;line-height:1.1}
-.logo b{font-family:var(--latin);font-size:24px;font-weight:600;letter-spacing:.18em}
+.logo b{font-family:var(--latin);font-size:26px;font-weight:600;letter-spacing:.06em;font-style:italic}
 .logo small{font-size:10px;letter-spacing:.3em;color:var(--gold)}
 .nav{display:flex;gap:28px;align-items:center}
 .nav a{color:var(--on-dark);text-decoration:none;font-size:13px;letter-spacing:.12em}
@@ -82,15 +82,24 @@ section{padding:96px 0}
 .step::before{counter-increment:step;content:"STEP " counter(step,decimal-leading-zero);font-family:var(--latin);letter-spacing:.2em;color:var(--gold);font-size:14px}
 .step h3{font-family:var(--serif);font-size:18px;margin:10px 0 8px}
 .step p{margin:0;font-size:13.5px;color:var(--on-dark-muted)}
-.step .icon{width:34px;height:34px;color:var(--gold-2);margin-top:16px}
+.who{position:absolute;top:24px;right:18px;font-size:11px;letter-spacing:.1em;padding:2px 10px;border-radius:999px}
+.who.coach{background:rgba(200,169,106,.16);color:var(--gold-2)}
+.who.you{background:rgba(236,230,218,.1);color:var(--on-dark)}
 
 /* プラン */
 .plans{display:grid;grid-template-columns:repeat(2,1fr);gap:24px;margin-top:52px;max-width:880px;margin-left:auto;margin-right:auto}
-.plan{background:#fff;border:1px solid var(--paper-2);border-radius:18px;padding:40px 34px;display:flex;flex-direction:column;position:relative}
+.plan{text-align:left;background:#fff;border:1px solid var(--paper-2);border-radius:18px;padding:40px 34px;display:flex;flex-direction:column;position:relative}
 .plan.featured{border:1px solid var(--gold);box-shadow:0 20px 50px rgba(15,23,18,.08)}
-.plan .tag{position:absolute;top:-13px;left:34px;background:var(--ink);color:var(--gold-2);font-size:11px;letter-spacing:.2em;padding:4px 14px;border-radius:999px}
+.plan .tag{position:absolute;top:-13px;left:34px;white-space:nowrap;background:var(--ink);color:var(--gold-2);font-size:11px;letter-spacing:.2em;padding:4px 14px;border-radius:999px}
 .plan .en{font-family:var(--latin);letter-spacing:.25em;color:var(--gold);font-size:14px}
 .plan h3{font-family:var(--serif);font-size:24px;margin:6px 0 4px}
+.plan-lead{color:var(--muted);font-size:14px;margin:6px 0 0;text-align:left}
+.spec{margin:20px 0 0;text-align:left;font-size:14px}
+.spec div{display:grid;grid-template-columns:78px 1fr;gap:10px;padding:10px 0;border-top:1px solid var(--paper-2)}
+.spec dt{color:var(--gold);font-weight:700;font-size:12.5px;letter-spacing:.1em;padding-top:2px}
+.spec dd{margin:0}
+.spec dd span{color:var(--muted);font-size:12.5px}
+.plan ul{text-align:left}
 .plan .price{font-family:var(--serif);font-size:20px;margin:18px 0;padding:16px 0;border-top:1px solid var(--paper-2);border-bottom:1px solid var(--paper-2)}
 .plan .price small{display:block;font-family:var(--sans);font-size:12px;color:var(--muted);letter-spacing:.05em}
 .plan ul{list-style:none;padding:0;margin:0 0 28px;flex:1}
@@ -157,7 +166,7 @@ section{padding:96px 0}
   .steps{grid-template-columns:1fr}
   .hero{padding:110px 0 80px}
   .hero h1{font-size:clamp(26px,7.4vw,32px);letter-spacing:.04em}
-  .logo b{font-size:19px;letter-spacing:.12em;white-space:nowrap}
+  .logo b{font-size:22px;letter-spacing:.04em;white-space:nowrap}
   .hero .actions .btn{flex:1 1 100%}
   .hero-art{right:-220px;opacity:.35}
   .sticky-cta{display:flex}
@@ -168,7 +177,7 @@ section{padding:96px 0}
 
 <header class="header" id="header">
   <div class="wrap">
-    <a href="#top" class="logo" aria-label="ALLTIME GOLF トップへ"><b>ALLTIME GOLF</b><small>オルタイムゴルフ</small></a>
+    <a href="#top" class="logo" aria-label="All Time Golf トップへ"><b>All Time Golf</b><small>オルタイムゴルフ</small></a>
     <nav class="nav" aria-label="メインメニュー">
       <a href="#concept">特徴</a>
       <a href="#flow">レッスンの流れ</a>
@@ -195,7 +204,7 @@ section{padding:96px 0}
     <div class="wrap">
       <div class="brand-line">ONLINE GOLF LESSON</div>
       <h1>いつでも、どこでも。<br>あなた<em>専属</em>の<br>ゴルフコーチを。</h1>
-      <p>スイング動画を送るだけで、コーチがあなたのスイングを診断。<br>一人ひとりに合わせた練習メニューで、上達までを伴走します。</p>
+      <p>スイング動画を送るだけで、PGAプロがあなたのスイングを診断。<br>課題動画と練習ドリルで、自宅から着実に上達へ導きます。</p>
       <div class="actions">
         <a class="btn btn-line" data-line href="#contact">
           <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 3C6.5 3 2 6.6 2 11c0 3.9 3.5 7.2 8.3 7.9.3.1.8.2.9.5.1.3.1.7 0 1l-.1.9c0 .3-.2 1 .9.5s6-3.5 8.2-6.1c1.5-1.6 2.2-3.2 2.2-4.8C22.4 6.6 17.9 3 12 3z"/></svg>
@@ -212,11 +221,11 @@ section{padding:96px 0}
     <div class="wrap center">
       <p class="eyebrow reveal">Concept</p>
       <h2 class="h2 reveal">練習場でも、自宅でも。<br>上達の時間を、あなたのペースで。</h2>
-      <p class="lead reveal">ALLTIME GOLF は、スマートフォンで撮影したスイング動画をもとに、コーチがオンラインでレッスンを行うゴルフスクールです。通う時間がなくても、本格的な指導を受けられます。</p>
+      <p class="lead reveal">All Time Golf は、スマートフォンで撮影したスイング動画をもとに、PGAプロがオンラインでレッスンを行うゴルフスクールです。自宅で、自分のペースで、着実にスキルアップできます。</p>
       <div class="features">
-        <div class="feature reveal"><div class="num">01</div><h3>一人ひとりに合わせた診断</h3><p>スイング動画をコーチが丁寧に確認。今のあなたに必要なポイントを、わかりやすい言葉でお伝えします。</p></div>
-        <div class="feature reveal"><div class="num">02</div><h3>毎週の練習メニュー</h3><p>「次に何を練習すればいいか」が明確に。課題は会員ページでいつでも確認でき、練習の迷いがなくなります。</p></div>
-        <div class="feature reveal"><div class="num">03</div><h3>上達の記録が残る</h3><p>過去のレッスンやフィードバックは会員ページに蓄積。自分の成長を振り返りながら、目標スコアを目指せます。</p></div>
+        <div class="feature reveal"><div class="num">01</div><h3>PGAプロが比較・判断</h3><p>提出いただいた動画を理想の動作と比較し、今いちばん取り組むべき課題を1つ程度に絞ってお伝えします。</p></div>
+        <div class="feature reveal"><div class="num">02</div><h3>課題動画と練習ドリル</h3><p>毎月の課題動画と練習ドリルに加え、あなたの動画への添削動画もお届け。「次に何を練習するか」が明確になります。</p></div>
+        <div class="feature reveal"><div class="num">03</div><h3>会員ページで一括管理</h3><p>カリキュラム、課題動画、ドリル、提出動画、添削動画、お知らせまで、専用の会員ページでいつでも確認できます。</p></div>
       </div>
     </div>
   </section>
@@ -225,17 +234,17 @@ section{padding:96px 0}
   <section class="flow" id="flow">
     <div class="wrap">
       <p class="eyebrow reveal">Lesson Flow</p>
-      <h2 class="h2 reveal">レッスンの流れ</h2>
-      <p class="lead reveal">スマートフォンがあれば、今日から始められます。</p>
+      <h2 class="h2 reveal">レッスンの進め方</h2>
+      <p class="lead reveal">毎月この流れをくり返しながら、一つずつ課題をクリアしていきます。</p>
       <ol class="steps">
-        <li class="step reveal"><h3>お申し込み</h3><p>LINE またはお電話でお気軽にご相談ください。目標やお悩みをお聞きします。</p>
-          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M4 5h16v11H8l-4 4z"/></svg></li>
-        <li class="step reveal"><h3>スイングを撮影</h3><p>正面または後方から、スマートフォンでスイングを撮影して会員ページから送るだけ。</p>
-          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10l5-3v10l-5-3z"/></svg></li>
-        <li class="step reveal"><h3>コーチが診断</h3><p>動画をもとに、スイングの課題と改善のポイントをフィードバックします。</p>
-          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/></svg></li>
-        <li class="step reveal"><h3>練習して上達</h3><p>届いた練習メニューに取り組み、また動画を送る。この繰り返しで確実に上達します。</p>
-          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M4 18l6-6 4 4 6-8"/><path d="M15 8h5v5"/></svg></li>
+        <li class="step reveal"><span class="who coach">コーチ</span><h3>その月の課題を配信</h3><p>課題動画1本＋必須ドリル1本。必要に応じて補足ドリルもお届けします。</p></li>
+        <li class="step reveal"><span class="who you">あなた</span><h3>内容を確認して練習</h3><p>会員ページで課題動画とドリルを確認し、練習に取り組みます。</p></li>
+        <li class="step reveal"><span class="who you">あなた</span><h3>撮影して提出</h3><p>指定の条件でスイングを撮影し、会員ページから提出します。</p></li>
+        <li class="step reveal"><span class="who coach">コーチ</span><h3>提出動画をチェック</h3><p>届いた動画をコーチが確認します。</p></li>
+        <li class="step reveal"><span class="who coach">コーチ</span><h3>PGAプロが比較・判断</h3><p>理想の動作と比較し、課題を1つ程度に絞って抽出します。</p></li>
+        <li class="step reveal"><span class="who coach">コーチ</span><h3>添削動画・ドリルを送付</h3><p>課題動画・指導動画・ドリルを作成してお届けします。</p></li>
+        <li class="step reveal"><span class="who you">あなた</span><h3>添削をもとに再練習</h3><p>添削動画を見ながら、ポイントを意識して練習します。</p></li>
+        <li class="step reveal"><span class="who coach">コーチ</span><h3>次の課題へ</h3><p>課題ができたら、会員ページで次の課題が見られるようになります。</p></li>
       </ol>
     </div>
   </section>
@@ -245,34 +254,51 @@ section{padding:96px 0}
     <div class="wrap center">
       <p class="eyebrow reveal">Plan</p>
       <h2 class="h2 reveal">料金プラン</h2>
-      <p class="lead reveal">ライフスタイルや目標に合わせて、2つのプランからお選びいただけます。</p>
+      <p class="lead reveal">レベルや目標に合わせて、2つのプランからお選びいただけます。</p>
       <div class="plans">
         <div class="plan featured reveal">
-          <span class="tag">RECOMMEND</span>
+          <span class="tag">中級〜上級者におすすめ</span>
           <div class="en">Subscription</div>
           <h3>サブスクリプション制</h3>
-          <p class="lead" style="font-size:14px">月額制で、継続的にコーチのサポートを受けられるプランです。</p>
+          <p class="plan-lead">いつでも、どこでも、継続的に。毎月の面談でPGAプロがあなたのゴルフをサポートします。</p>
+          <dl class="spec">
+            <div><dt>対象</dt><dd>初級〜上級者<br><span>（メインは中級〜上級者）</span></dd></div>
+            <div><dt>お支払い</dt><dd>1か月ごとの月額制<br><span>（最低4か月）</span></dd></div>
+            <div><dt>面談</dt><dd>月1回・25分のオンライン面談</dd></div>
+          </dl>
           <div class="price">料金は近日公開<small>詳しくはお問い合わせください</small></div>
           <ul>
-            <li>スイング動画の診断・フィードバック</li>
-            <li>毎週の練習メニュー</li>
-            <li>会員ページでレッスン履歴を確認</li>
+            <li>初回カウンセリングでスイングチェック</li>
+            <li>簡易カルテでスイングレベルと課題を数値で見える化</li>
+            <li>課題動画 毎月2本・練習ドリル 毎月2本</li>
+            <li>AI見本動画</li>
+            <li>月1回の面談で、悩み相談・進捗確認・今後のアドバイス</li>
           </ul>
           <a class="btn btn-gold" href="#contact">このプランを相談する</a>
         </div>
         <div class="plan reveal">
+          <span class="tag">初心者〜初級者におすすめ</span>
           <div class="en">You Can</div>
           <h3>ユーキャン制</h3>
-          <p class="lead" style="font-size:14px">プランの詳細は現在準備中です。</p>
+          <p class="plan-lead">カリキュラムを順番に進める通信教育型。月ごとの課題をクリアしながら、12か月で体系的に上達します。</p>
+          <dl class="spec">
+            <div><dt>対象</dt><dd>初心者〜初級者</dd></div>
+            <div><dt>期間</dt><dd>12か月</dd></div>
+            <div><dt>お支払い</dt><dd>一括払い</dd></div>
+            <div><dt>面談</dt><dd>年4回程度のオンライン面談</dd></div>
+          </dl>
           <div class="price">料金は近日公開<small>詳しくはお問い合わせください</small></div>
           <ul>
-            <li>スイング動画の診断・フィードバック</li>
-            <li>会員ページでレッスン履歴を確認</li>
+            <li>毎月の課題動画・練習ドリル</li>
+            <li>提出動画へのPGAプロの添削</li>
+            <li>自分のペースで進められる（受講期限あり）</li>
+            <li>面談では疑問の相談・進捗と今後の課題を確認</li>
+            <li>追加の面談も可能（別途料金）</li>
           </ul>
           <a class="btn btn-gold" href="#contact">このプランを相談する</a>
         </div>
       </div>
-      <p class="note reveal">※ 料金・内容は変更になる場合があります。</p>
+      <p class="note reveal">※ 料金・内容は変更になる場合があります。進捗に応じて、運営からフォローのメッセージをお送りする場合があります。</p>
     </div>
   </section>
 
@@ -300,13 +326,17 @@ section{padding:96px 0}
       </div>
       <div class="faq-list reveal">
         <details><summary>ゴルフ初心者でも受講できますか？</summary>
-          <p>はい、受講いただけます。レベルや目標をお聞きしたうえで、今のあなたに合ったポイントからお伝えします。</p></details>
+          <p>はい。初心者〜初級者の方には、カリキュラムを順番に進める「ユーキャン制」がおすすめです。</p></details>
+        <details><summary>どちらのプランを選べばいいですか？</summary>
+          <p>基礎から体系的に学びたい初心者〜初級者の方は「ユーキャン制」、毎月の面談で継続的にスイングを磨きたい中級〜上級者の方は「サブスクリプション制」がおすすめです。迷ったらお気軽にご相談ください。</p></details>
         <details><summary>撮影にはどんな機材が必要ですか？</summary>
-          <p>スマートフォンがあれば大丈夫です。全身とクラブが画面に入るように、正面または後方から撮影してください。</p></details>
-        <details><summary>練習場に行けない週があっても大丈夫ですか？</summary>
-          <p>もちろんです。ご自身のペースで動画を送っていただければ、そのタイミングに合わせてフィードバックします。</p></details>
+          <p>スマートフォンがあれば大丈夫です。撮影の条件（方向・距離など）は課題ごとにご案内します。</p></details>
+        <details><summary>面談はどのように行いますか？</summary>
+          <p>オンラインで行います。ドリルを画面で共有しながら、PGAプロが解説します（サブスクリプション制は月1回25分、ユーキャン制は年4回程度）。</p></details>
+        <details><summary>サブスクリプション制に最低契約期間はありますか？</summary>
+          <p>最低4か月のご契約をお願いしています。</p></details>
         <details><summary>申し込み前に相談だけすることはできますか？</summary>
-          <p>はい。LINE またはお電話で、お気軽にご相談ください。</p></details>
+          <p>はい。LINE またはお電話（11:00〜20:00）で、お気軽にご相談ください。</p></details>
       </div>
     </div>
   </section>
@@ -328,8 +358,8 @@ section{padding:96px 0}
         </div>
         <div class="contact-card reveal">
           <h3>お電話で相談する</h3>
-          <p data-hours>受付時間は準備中です</p>
-          <a class="tel" data-tel data-tel-text href="#contact">000-0000-0000</a>
+          <p data-hours>受付時間 11:00〜20:00</p>
+          <a class="tel" data-tel data-tel-text href="tel:0527004909">052-700-4909</a>
           <a class="btn btn-gold" data-tel href="#contact" style="margin-top:14px">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2"/></svg>
             電話をかける
@@ -343,8 +373,8 @@ section{padding:96px 0}
 <footer class="footer">
   <div class="wrap">
     <div>
-      <div class="logo"><b>ALLTIME GOLF</b><small>オルタイムゴルフ</small></div>
-      <p style="margin:14px 0 0">&copy; <span id="year"></span> ALLTIME GOLF</p>
+      <div class="logo"><b>All Time Golf</b><small>オルタイムゴルフ</small></div>
+      <p style="margin:14px 0 0">&copy; <span id="year"></span> All Time Golf</p>
     </div>
     <nav aria-label="フッターメニュー">
       <a href="app/">会員ログイン</a>
@@ -364,9 +394,9 @@ section{padding:96px 0}
 <script>
 // ===== 連絡先の設定（ここを書き換えるだけでページ全体に反映されます） =====
 const CONTACT = {
-  tel: '',          // 例：'0312345678'（ハイフンなし）
-  telDisplay: '',   // 例：'03-1234-5678'（表示用）
-  hours: '',        // 例：'受付時間 10:00〜19:00（火曜定休）'
+  tel: '0527004909',
+  telDisplay: '052-700-4909',
+  hours: '受付時間 11:00〜20:00',
   lineUrl: '',      // 例：'https://lin.ee/xxxxxxx'（LINE公式アカウントの友だち追加URL）
 };
 
