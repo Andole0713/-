@@ -111,49 +111,61 @@ async function callFunction(name, body) {
 
 // ---------- 画面：未設定・ログイン ----------
 
-function viewNotConfigured() {
-  return `<div class="auth"><span class="pill">SETUP</span><h1>初期設定が必要です</h1>
-    <p><code>app/config.js</code> に Supabase の URL と anon key を設定してください。</p>
-    <p class="muted">手順は <code>docs/SETUP.md</code> を参照してください。</p></div>`;
+function authShell(inner) {
+  return `<div class="auth-page"><div class="auth">
+    <a class="auth-logo" href="../" aria-label="${esc(SCHOOL_NAME)} トップページへ"><b>${esc(SCHOOL_NAME)}</b><small>MEMBERS</small></a>
+    <div class="auth-card">${inner}</div>
+    <a class="auth-back" href="../">‹ トップページへ戻る</a>
+  </div></div>`;
 }
 
 function viewAuth() {
   const t = state.authTab;
+  const notice = !configured
+    ? '<div class="notice">会員ログインは現在準備中です。開設まで今しばらくお待ちください。</div>'
+    : state.authMessage ? `<div class="notice">${esc(state.authMessage)}</div>` : '';
   const forms = {
     login: `<form class="form" data-form="login">
-        <label for="email">メールアドレス</label><input id="email" name="email" type="email" autocomplete="email" required>
-        <label for="password">パスワード</label><input id="password" name="password" type="password" autocomplete="current-password" required>
-        <button class="btn-block" type="submit">ログイン</button></form>`,
+        <label for="email">メールアドレス</label><input id="email" name="email" type="email" autocomplete="email" inputmode="email" required>
+        <label for="password">パスワード</label>
+        <div class="pw"><input id="password" name="password" type="password" autocomplete="current-password" required>
+          <button type="button" class="pw-toggle" data-action="toggle-password" aria-label="パスワードを表示">表示</button></div>
+        <button class="btn-block btn-gold" type="submit">ログイン</button>
+        <button type="button" class="link" data-action="auth-tab" data-tab="reset">パスワードをお忘れの方</button>
+      </form>`,
     signup: `<form class="form" data-form="signup">
         <label for="name">お名前</label><input id="name" name="name" autocomplete="name" maxlength="50" required>
-        <label for="email">メールアドレス</label><input id="email" name="email" type="email" autocomplete="email" required>
-        <label for="password">パスワード（8文字以上）</label><input id="password" name="password" type="password" autocomplete="new-password" minlength="8" required>
-        <button class="btn-block" type="submit">新規登録</button></form>`,
+        <label for="email">メールアドレス</label><input id="email" name="email" type="email" autocomplete="email" inputmode="email" required>
+        <label for="password">パスワード（8文字以上）</label>
+        <div class="pw"><input id="password" name="password" type="password" autocomplete="new-password" minlength="8" required>
+          <button type="button" class="pw-toggle" data-action="toggle-password" aria-label="パスワードを表示">表示</button></div>
+        <button class="btn-block btn-gold" type="submit">登録する</button>
+      </form>`,
     reset: `<form class="form" data-form="reset">
-        <p class="muted">登録したメールアドレスに、パスワード再設定用のリンクを送ります。</p>
-        <label for="email">メールアドレス</label><input id="email" name="email" type="email" autocomplete="email" required>
-        <button class="btn-block" type="submit">再設定メールを送る</button></form>`,
+        <p class="muted">ご登録のメールアドレスに、パスワード再設定用のリンクをお送りします。</p>
+        <label for="email">メールアドレス</label><input id="email" name="email" type="email" autocomplete="email" inputmode="email" required>
+        <button class="btn-block btn-gold" type="submit">再設定メールを送る</button>
+        <button type="button" class="link" data-action="auth-tab" data-tab="login">ログイン画面に戻る</button>
+      </form>`,
   };
-  return `<div class="auth"><div>
-    <span class="pill">ONLINE GOLF LESSON</span>
-    <h1>あなた専用の<br>ゴルフカルテ</h1>
-    <div class="tabs">
-      <button type="button" data-action="auth-tab" data-tab="login" class="${t === 'login' ? 'active' : ''}">ログイン</button>
-      <button type="button" data-action="auth-tab" data-tab="signup" class="${t === 'signup' ? 'active' : ''}">新規登録</button>
-      <button type="button" data-action="auth-tab" data-tab="reset" class="${t === 'reset' ? 'active' : ''}">パスワードを忘れた</button>
-    </div>
-    ${state.authMessage ? `<div class="notice">${esc(state.authMessage)}</div>` : ''}
-    ${forms[t]}
-  </div></div>`;
+  const heading = { login: '会員ログイン', signup: '新規会員登録', reset: 'パスワードの再設定' }[t];
+  return authShell(`
+    ${t === 'reset' ? '' : `<div class="seg" role="tablist">
+      <button type="button" role="tab" aria-selected="${t === 'login'}" data-action="auth-tab" data-tab="login" class="${t === 'login' ? 'active' : ''}">ログイン</button>
+      <button type="button" role="tab" aria-selected="${t === 'signup'}" data-action="auth-tab" data-tab="signup" class="${t === 'signup' ? 'active' : ''}">新規登録</button>
+    </div>`}
+    <h1>${heading}</h1>
+    ${notice}
+    ${forms[t]}`);
 }
 
 function viewRecovery() {
-  return `<div class="auth"><div><span class="pill">PASSWORD</span><h1>新しいパスワード</h1>
+  return authShell(`<h1>新しいパスワード</h1>
     <form class="form" data-form="new-password">
       <label for="password">新しいパスワード（8文字以上）</label>
       <input id="password" name="password" type="password" autocomplete="new-password" minlength="8" required>
-      <button class="btn-block" type="submit">パスワードを変更する</button>
-    </form></div></div>`;
+      <button class="btn-block btn-gold" type="submit">パスワードを変更する</button>
+    </form>`);
 }
 
 // ---------- 画面：未契約（プラン選択） ----------
@@ -417,9 +429,13 @@ async function viewLessonForm(route) {
 
 async function render() {
   const seq = ++renderSeq;
-  const paint = (html) => { if (seq === renderSeq) { $app.innerHTML = html; window.scrollTo(0, 0); } };
+  const paint = (html) => {
+    if (seq !== renderSeq) return;
+    document.body.classList.toggle('on-auth', html.startsWith('<div class="auth-page">'));
+    $app.innerHTML = html; window.scrollTo(0, 0);
+  };
   try {
-    if (!configured) return paint(viewNotConfigured());
+    if (!configured) return paint(viewAuth());
     if (state.recovery) return paint(viewRecovery());
     if (!state.session) return paint(viewAuth());
     if (!state.profile) await loadProfile();
@@ -456,6 +472,13 @@ async function render() {
 
 const actions = {
   'auth-tab': (el) => { state.authTab = el.dataset.tab; state.authMessage = ''; render(); },
+  'toggle-password': (el) => {
+    const input = el.parentElement.querySelector('input');
+    const show = input.type === 'password';
+    input.type = show ? 'text' : 'password';
+    el.textContent = show ? '隠す' : '表示';
+    el.setAttribute('aria-label', show ? 'パスワードを隠す' : 'パスワードを表示');
+  },
   reload: () => location.reload(),
   logout: async () => { await sb.auth.signOut(); location.hash = ''; },
   checkout: async (el) => {
@@ -604,6 +627,7 @@ document.addEventListener('submit', async (ev) => {
   const f = ev.target.closest('form[data-form]');
   if (!f || !forms[f.dataset.form]) return;
   ev.preventDefault();
+  if (!sb) { toast('会員ログインは現在準備中です', true); return; }
   const btn = f.querySelector('button[type="submit"]');
   if (btn) btn.disabled = true;
   try { await forms[f.dataset.form](f); } catch (e) { console.error(e); toast(e.message || 'エラーが発生しました', true); }

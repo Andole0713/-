@@ -48,8 +48,29 @@ button:disabled{opacity:.5;cursor:default}
 .between{display:flex;justify-content:space-between;align-items:center;gap:10px}
 .notice{background:#fff7dc;border:1px solid #f1dfa0;padding:12px;border-radius:12px;font-size:13px;margin:12px 0}
 .error{background:#fbeaea;border:1px solid #efc2c2;color:#8d1f1f;padding:12px;border-radius:12px;font-size:13px;margin:12px 0}
-.auth{padding:40px 24px;min-height:100vh;display:grid;align-content:center;max-width:440px;margin:auto;width:100%}
-.auth h1{font-size:28px;margin:10px 0}
+/* ログイン画面 */
+body.on-auth{background:radial-gradient(900px 500px at 85% 0%,#23372a 0%,transparent 60%),linear-gradient(180deg,#0f1712,#17221b);background-attachment:fixed}
+body.on-auth .app{background:transparent;max-width:none}
+.auth-page{min-height:100vh;min-height:100svh;display:grid;place-items:center;padding:32px 16px}
+.auth{width:100%;max-width:420px}
+.auth-logo{display:flex;flex-direction:column;align-items:center;text-decoration:none;color:#ece6da;margin-bottom:26px;line-height:1.1}
+.auth-logo b{font-family:"Cormorant Garamond","Noto Serif JP",serif;font-style:italic;font-weight:600;font-size:34px;letter-spacing:.04em}
+.auth-logo small{font-size:11px;letter-spacing:.4em;color:#c8a96a;margin-top:6px}
+.auth-card{background:#fff;border-radius:20px;padding:28px 24px 24px;box-shadow:0 24px 60px rgba(0,0,0,.35);border:1px solid rgba(200,169,106,.35)}
+.auth-card h1{font-family:"Noto Serif JP",serif;font-size:22px;font-weight:600;letter-spacing:.06em;margin:18px 0 4px;text-align:center}
+.auth-card .seg+h1{margin-top:22px}
+.auth-card .form input{min-height:50px;font-size:16px}
+.auth-card .form input:focus{outline:none;border-color:#c8a96a;box-shadow:0 0 0 3px rgba(200,169,106,.25)}
+.seg{display:grid;grid-template-columns:1fr 1fr;background:#f1efe9;border-radius:999px;padding:4px}
+.seg button{background:transparent;color:#6b726c;border-radius:999px;padding:10px;font-weight:700;font-size:14px}
+.seg button.active{background:#0f1712;color:#e2cc9a}
+.btn-gold{background:linear-gradient(135deg,#e2cc9a,#c8a96a);color:#1a1407;font-weight:700;letter-spacing:.1em;min-height:52px;border-radius:999px;margin-top:22px}
+.link{display:block;margin:14px auto 0;background:none;color:#6b726c;font-size:13px;text-decoration:underline;padding:6px}
+.pw{position:relative}
+.pw input{padding-right:64px}
+.pw-toggle{position:absolute;right:6px;top:50%;transform:translateY(-50%);background:#f1efe9;color:#1b231e;font-size:12px;padding:6px 10px;border-radius:8px}
+.auth-back{display:block;text-align:center;color:#a8ab9f;font-size:13px;margin-top:22px;text-decoration:none}
+.auth-back:hover{color:#e2cc9a}
 .tabs{display:flex;gap:8px;overflow:auto;margin:16px 0}
 .tabs button{white-space:nowrap;background:#eef1ee;color:#263127;padding:9px 14px}
 .tabs button.active{background:#172018;color:#fff}
