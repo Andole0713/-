@@ -167,6 +167,16 @@ function meetingWhen(iso) {
   return `<b class="when">${d.getMonth() + 1}/${d.getDate()}<small>（${WEEK[d.getDay()]}）</small><em>${hm}</em></b>`;
 }
 const monthStart = () => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1).toISOString(); };
+// 今月の1日（YYYY-MM-01）。追加本数が有効な月の判定に使う
+const monthKey = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`; };
+// 今月の追加本数（LINE で申し込み → コーチが会員詳細で設定。月が変わると 0 本）
+const extraThisMonth = (p) => (p.extra_submissions_month === monthKey() ? p.extra_submissions || 0 : 0);
+// 今月送れる本数（上限のないプランは null）。データベースの can_submit_video() と同じ計算
+function quotaOf(p) {
+  const base = planOf(p.plan)?.monthly?.submissions;
+  return base ? base + extraThisMonth(p) : null;
+}
+const lineBtn = (label) => `<a class="btn btn-block btn-line" href="${esc(CONTACT.lineUrl)}" target="_blank" rel="noopener">${label}</a>`;
 
 function getRoute() {
   return location.hash.replace(/^#\/?/, '').split('/').filter(Boolean);
@@ -324,7 +334,8 @@ async function viewMemberHome() {
   const latest = lessons[0];
   const done = tasks.filter((t) => t.done).length;
   const plan = planOf(p.plan);
-  const quota = plan?.monthly?.submissions;
+  const quota = quotaOf(p);
+  const extra = extraThisMonth(p);
   return header('マイページ') + `<div class="content">
     <div class="hero">${plan ? `<span class="pill">${esc(plan.name)}</span>` : ''}
       <h1>${esc(p.name)}さん、おかえりなさい。</h1>
@@ -342,7 +353,12 @@ async function viewMemberHome() {
         <div><span class="label">解説動画</span><b>${monthLessons.length}<small>本</small></b></div>
         <div><span class="label">次回の面談</span>${p.next_meeting_at ? meetingWhen(p.next_meeting_at) : '<b class="none">未定</b>'}</div>
       </div>
+      ${extra ? `<p class="muted small" style="margin:10px 0 0">今月は追加の ${extra} 本を含みます。</p>` : ''}
       ${plan?.monthly ? '<p class="muted small" style="margin:10px 0 0">毎月、動画2本の提出と25分のオンライン面談1回が受けられます。</p>' : ''}
+      <div class="meeting-book">
+        <p class="muted small">面談のご予約はLINEで承ります。日時が決まると「次回の面談」に表示されます。</p>
+        ${lineBtn('LINEで面談を予約する')}
+      </div>
     </div>
     <div class="section-title"><div><div class="eyebrow">Practice</div><h2>今月の課題</h2></div><span class="muted">${done}/${tasks.length}</span></div>
     ${tasks.length ? tasks.map((t) => `<button type="button" class="task${t.done ? ' done' : ''}" data-action="toggle-task" data-id="${t.id}" data-done="${t.done}" aria-pressed="${t.done}">
@@ -362,12 +378,26 @@ async function viewMemberHome() {
 
 async function viewSubmit() {
   const p = state.profile;
-  const quota = planOf(p.plan)?.monthly?.submissions;
+  const quota = quotaOf(p);
+  const extra = extraThisMonth(p);
   const myClubs = p.clubs || [];
   const monthSubs = quota ? await must(sb.from('submissions').select('id').eq('member_id', p.id).gte('created_at', monthStart())) : [];
+  const usage = quota ? `<div class="card"><div class="between"><span>今月の提出</span><b>${monthSubs.length} / ${quota} 本</b></div>
+      <div class="meter"><i style="width:${Math.min(100, (monthSubs.length / quota) * 100)}%"></i></div>
+      ${extra ? `<p class="muted small" style="margin:8px 0 0">追加の ${extra} 本を含みます。</p>` : ''}</div>` : '';
+  if (quota && monthSubs.length >= quota) {
+    return header('スイング動画を送る') + `<div class="content">${usage}
+      <div class="card limit">
+        <b>今月の提出本数に達しました</b>
+        <p>${extra ? '追加分も含めて、今月送れる本数をすべて使いました。' : `今月の動画（${quota}本）はすべて送信済みです。`}さらに動画を送りたい場合は、追加料金でお送りいただけます。</p>
+        <p class="muted small">LINEで「動画を追加したい」とお送りください。お支払いの確認後、コーチが追加の設定をすると、この画面から送れるようになります。</p>
+        ${lineBtn('LINEで追加を申し込む')}
+      </div>
+      <p class="muted small center">来月1日になると、また${planOf(p.plan).monthly.submissions}本送れるようになります。</p>
+    </div>` + memberNav('submit');
+  }
   return header('スイング動画を送る') + `<div class="content">
-    ${quota ? `<div class="card"><div class="between"><span>今月の提出</span><b>${monthSubs.length} / ${quota} 本</b></div>
-      <div class="meter"><i style="width:${Math.min(100, (monthSubs.length / quota) * 100)}%"></i></div></div>` : ''}
+    ${usage}
     <div class="notice">正面または後方から、全身とクラブが入るように撮影してください。<br>送った動画は<b>${RETENTION_LABEL}</b>保存され、その後自動で削除されます。</div>
     <form class="card form" data-form="submit">
       <label for="video">スイング動画</label>
@@ -535,11 +565,12 @@ async function viewMembers() {
 }
 
 async function viewMemberDetail(id) {
-  const [m, tasks, lessons, subs] = await Promise.all([
+  const [m, tasks, lessons, subs, monthSubs] = await Promise.all([
     must(sb.from('profiles').select('*').eq('id', id).maybeSingle()),
     must(sb.from('tasks').select('*').eq('member_id', id).order('sort_order').order('created_at')),
     must(sb.from('lessons').select('id, lesson_date, title').eq('member_id', id).order('lesson_date', { ascending: false }).order('created_at', { ascending: false })),
     must(sb.from('submissions').select('id, created_at, club, angle, status').eq('member_id', id).order('created_at', { ascending: false }).limit(20)),
+    must(sb.from('submissions').select('id').eq('member_id', id).gte('created_at', monthStart())),
   ]);
   if (!m) return header('会員詳細', 'admin/members') + '<div class="content"><div class="empty">会員が見つかりません</div></div>';
   const self = m.id === state.profile.id;
@@ -561,6 +592,9 @@ async function viewMemberDetail(id) {
       <label for="access_until">利用期限 <span class="muted">（LINE・電話で申し込んだ会員用。カード決済の会員は空欄）</span></label>
       <input id="access_until" name="access_until" type="date" value="${esc(m.access_until || '')}">
       <label for="next_meeting_at">次回の面談日時</label><input id="next_meeting_at" name="next_meeting_at" type="datetime-local" value="${esc(toLocalInput(m.next_meeting_at))}">
+      <label for="extra_submissions">今月の追加本数 <span class="muted">（LINEで追加の申し込み・お支払いがあった分。来月は自動で0本に戻ります）</span></label>
+      <input id="extra_submissions" name="extra_submissions" type="number" min="0" max="20" value="${extraThisMonth(m)}">
+      <p class="muted small" style="margin:4px 0 0">今月の提出：${monthSubs.length}本${quotaOf(m) ? ` ／ 送れる本数：${quotaOf(m)}本` : ''}</p>
       ${self ? '' : `<label for="role">権限</label><select id="role" name="role">
         <option value="member" ${m.role === 'member' ? 'selected' : ''}>会員</option>
         <option value="admin" ${m.role === 'admin' ? 'selected' : ''}>管理者（コーチ）</option></select>`}
@@ -796,6 +830,10 @@ const forms = {
     const file = f.video.files[0];
     if (!file) throw new Error('送る動画を選んでください');
     if (file.type && !file.type.startsWith('video/')) throw new Error('動画ファイルを選んでください');
+    if (!(await must(sb.rpc('can_submit_video')))) {
+      render();
+      throw new Error('今月の提出本数に達しています。追加はLINEでお申し込みください。');
+    }
     const path = `${state.profile.id}/${videoFileName(file)}`;
     const box = document.getElementById('upload-progress');
     const bar = document.getElementById('upload-bar');
@@ -825,6 +863,8 @@ const forms = {
       best_score: num(f.best_score.value), avg_score: num(f.avg_score.value), theme: f.theme.value.trim(),
       next_meeting_at: f.next_meeting_at.value ? new Date(f.next_meeting_at.value).toISOString() : null,
       access_until: f.access_until.value || null,
+      extra_submissions: Number(f.extra_submissions.value) || 0,
+      extra_submissions_month: monthKey(),
     };
     if (f.role) update.role = f.role.value;
     await must(sb.from('profiles').update(update).eq('id', f.dataset.id));
