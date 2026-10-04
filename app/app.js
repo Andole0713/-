@@ -583,12 +583,17 @@ async function viewSubmit() {
 
 // レッスンのカード（動画あり・練習の進み具合・NEW が一目で分かる）
 function lessonCard(l) {
+  const yt = l.video_url ? youtubeId(l.video_url) : null;
   return `<a class="lesson-card${l.read_at ? '' : ' unread'}" href="#/lesson/${l.id}">
-    <div class="lc-top"><span class="lc-date">${fmtDate(l.lesson_date)}</span>${newBadge(l)}
-      ${l.video_url ? '<span class="lc-tag">▶ 解説動画</span>' : ''}</div>
+    <div class="lc-top"><span class="lc-date">${fmtDate(l.lesson_date)}</span>${newBadge(l)}</div>
     <h3>${esc(l.title)}</h3>
     ${l.point ? `<p class="lc-point">${esc(l.point)}</p>` : ''}
-    <div class="lc-foot">${practiceProgress(l)}<span class="go">レッスンを見る <i aria-hidden="true">›</i></span></div>
+    ${yt ? `<div class="lc-video">
+        <img src="https://i.ytimg.com/vi/${yt}/hqdefault.jpg" alt="" loading="lazy" onerror="this.remove()">
+        <span class="lc-play" aria-hidden="true"></span>
+        <span class="lc-video-label">▶ コーチの解説動画を見る</span>
+      </div>` : ''}
+    <div class="lc-foot">${practiceProgress(l)}<span class="go">${yt ? 'レッスンの詳細' : 'レッスンを見る'} <i aria-hidden="true">›</i></span></div>
   </a>`;
 }
 function keepLabel(s) {
