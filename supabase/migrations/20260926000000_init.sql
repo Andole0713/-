@@ -16,6 +16,7 @@ create table public.profiles (
   best_score           integer check (best_score between 40 and 200),
   avg_score            integer check (avg_score between 40 and 200),
   theme                text not null default '',
+  clubs                text[] not null default '{}' check (cardinality(clubs) <= 30 and char_length(array_to_string(clubs, '')) <= 600), -- Myクラブセッティング
   next_meeting_at      timestamptz,             -- 次回の面談日時（管理者が設定）
   access_until         date,                    -- 利用期限（LINE・電話で申し込んだ会員用。管理者が設定）
   stripe_customer_id   text unique,
