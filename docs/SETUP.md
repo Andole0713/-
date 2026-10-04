@@ -39,7 +39,7 @@
    - Region は **Northeast Asia (Tokyo)** を選択
    - Database Password は安全な場所に保管
 2. 左メニュー **SQL Editor** を開き、`supabase/migrations/20260926000000_init.sql` の中身をすべて貼り付けて **Run**
-   - あとから追加された設定ファイル（`supabase/migrations/` の日付が新しいもの。例：`20261004000000_my_clubs.sql`、`20261005000000_extra_submissions.sql`、`20261006000000_member_experience.sql`）も、同じように古い順に実行してください。初期設定を新しく実行した場合も、重ねて実行して問題ありません
+   - あとから追加された設定ファイル（`supabase/migrations/` の日付が新しいもの。例：`20261004000000_my_clubs.sql`、`20261005000000_extra_submissions.sql`、`20261006000000_member_experience.sql`、`20261007000000_drills.sql`）も、同じように古い順に実行してください。初期設定を新しく実行した場合も、重ねて実行して問題ありません
 3. 動画の保存場所を確認
    - 左メニュー **Storage** に `swing-videos`（非公開）ができていることを確認
    - **Project Settings → Storage** の **Upload file size limit** を大きめ（例：5GB）に変更（1本あたりの上限は設けない運用のため。Pro プランで変更できます）
@@ -211,6 +211,15 @@ update public.profiles set role = 'admin' where email = 'coach@example.com';
 
 本数の制限はデータベース側（`can_submit_video()`）でも確認しているため、画面を操作しても上限を超えて送ることはできません。
 
+### ドリル動画（ドリル集）
+
+管理画面の「ドリル集」でドリル（動画ファイル または YouTube のリンク）を登録し、レッスン作成画面で選んで会員に送ります。
+
+- 同じドリルを何人の会員にも使い回せます（動画は1回だけ保存されるので、容量を節約できます）
+- 会員ページの「ドリル」に、これまで届いたドリルがたまっていきます。**契約中（利用期限内）はいつでも見られ**、契約が終わると見られなくなります
+- ドリルは自動では削除されません。不要になったら「ドリル集」から削除してください
+- 動画ファイルは Storage の `drill-videos` に保存されます。大きな動画を扱うため、Supabase の **Storage → Settings → Upload file size limit** を 500MB 程度に上げてください（無料プランは 50MB が上限）
+
 ## 9. テスト（テストモード）
 
 1. 別のメールアドレスで会員登録 → プランを選ぶ
@@ -241,7 +250,7 @@ supabase/
     create-checkout-session/ 決済ページを作成
     create-portal-session/   カード変更・プラン変更・解約ページを作成
     stripe-webhook/          Stripe からの通知で契約状態を更新
-    purge-old-videos/        3か月を過ぎたお客様の動画を自動削除
+    purge-old-videos/        3か月を過ぎたお客様の動画を自動削除（ドリル動画は対象外）
     notify-lesson/           レッスン到着のお知らせメール
     meeting-reminders/       面談前日のお知らせメール
   config.toml
