@@ -285,3 +285,17 @@ html[data-fs="xl"] .app,html[data-fs="xl"] .toast{zoom:1.25}
 .filter-chips button.on{background:var(--ink);border-color:var(--ink);color:var(--gold-2)}
 .pair-sub:hover{border-color:var(--gold);border-left-color:var(--ink)}
 .pair-sub .muted{color:#5c635d}
+/* 確認画面 */
+.modal-backdrop{position:fixed;inset:0;background:rgba(15,23,18,.55);display:grid;place-items:center;padding:16px;z-index:20;animation:fade .15s ease-out}
+.modal{width:100%;max-width:400px;background:#fff;border-radius:18px;padding:22px 20px 18px;border-top:4px solid var(--gold);box-shadow:0 20px 50px rgba(0,0,0,.3)}
+.modal h2{margin:0 0 10px;font-size:18px;color:var(--ink)}
+.modal-body p{margin:0 0 6px;font-size:14.5px}
+.modal-diff{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;margin:0;background:var(--paper);border-radius:12px;padding:12px 14px;font-size:15px}
+.modal-diff dt{color:var(--muted);font-size:13px;align-self:center}
+.modal-diff dd{margin:0;word-break:break-all}
+.modal-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:18px}
+.modal-actions button{margin:0;min-height:48px}
+@keyframes fade{from{opacity:0}}
+@media (prefers-reduced-motion:reduce){.modal-backdrop{animation:none}}
+html[data-fs="l"] .modal{zoom:1.12}
+html[data-fs="xl"] .modal{zoom:1.25}

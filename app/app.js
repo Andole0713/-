@@ -27,6 +27,44 @@ function toast(msg, bad = false) {
   toastTimer = setTimeout(() => $toast.classList.add('hidden'), 3500);
 }
 
+// 確認画面（「変更する」を押すと true、「キャンセル」・背景・Esc で false）
+function confirmDialog({ title, body, ok = '変更する' }) {
+  return new Promise((resolve) => {
+    const prev = document.activeElement;
+    const wrap = document.createElement('div');
+    wrap.className = 'modal-backdrop';
+    wrap.innerHTML = `<div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+      <h2 id="modal-title">${esc(title)}</h2>
+      <div class="modal-body">${body}</div>
+      <div class="modal-actions">
+        <button type="button" class="btn-sub" data-modal="cancel">キャンセル</button>
+        <button type="button" class="btn-gold" data-modal="ok">${esc(ok)}</button>
+      </div></div>`;
+    const close = (result) => {
+      document.removeEventListener('keydown', onKey, true);
+      wrap.remove();
+      prev?.focus?.();
+      resolve(result);
+    };
+    const onKey = (e) => {
+      if (e.key === 'Escape') { e.preventDefault(); close(false); }
+      if (e.key === 'Tab') { // フォーカスを確認画面の中に留める
+        const btns = [...wrap.querySelectorAll('button')];
+        const i = btns.indexOf(document.activeElement);
+        e.preventDefault();
+        btns[(i + (e.shiftKey ? btns.length - 1 : 1)) % btns.length].focus();
+      }
+    };
+    wrap.addEventListener('click', (e) => {
+      if (e.target === wrap || e.target.dataset.modal === 'cancel') close(false);
+      else if (e.target.dataset.modal === 'ok') close(true);
+    });
+    document.addEventListener('keydown', onKey, true);
+    document.body.appendChild(wrap);
+    wrap.querySelector('[data-modal="ok"]').focus();
+  });
+}
+
 // この端末だけの設定（文字の大きさ・ホーム画面追加の案内を閉じたか）。保存できない環境でも動くようにする
 const local = {
   get(key) { try { return localStorage.getItem(key); } catch { return null; } },
@@ -1060,6 +1098,11 @@ const forms = {
     render();
   },
   'change-password': async (f) => {
+    const ok = await confirmDialog({
+      title: 'パスワードを変更しますか？',
+      body: '<p>変更すると、次回のログインから新しいパスワードが必要になります。</p><p class="muted small">新しいパスワードは忘れないよう控えておいてください。</p>',
+    });
+    if (!ok) return;
     const { error } = await sb.auth.updateUser({ password: f.password.value });
     if (error) throw error;
     f.reset(); toast('パスワードを変更しました');
@@ -1083,8 +1126,16 @@ const forms = {
     toast(f.email_notify.checked ? 'お知らせメールを受け取る設定にしました' : 'お知らせメールを停止しました');
   },
   'profile-name': async (f) => {
-    await must(sb.from('profiles').update({ name: f.name.value.trim() }).eq('id', state.profile.id));
-    await loadProfile(); toast('保存しました');
+    const name = f.name.value.trim();
+    if (!name) throw new Error('お名前を入力してください');
+    if (name === state.profile.name) { toast('お名前は変更されていません'); return; }
+    const ok = await confirmDialog({
+      title: 'お名前を変更しますか？',
+      body: `<dl class="modal-diff"><dt>変更前</dt><dd>${esc(state.profile.name || '（未設定）')}</dd><dt>変更後</dt><dd><b>${esc(name)}</b></dd></dl>`,
+    });
+    if (!ok) return;
+    await must(sb.from('profiles').update({ name }).eq('id', state.profile.id));
+    await loadProfile(); toast('お名前を変更しました');
   },
   submit: async (f) => {
     const file = f.video.files[0];
