@@ -45,3 +45,9 @@ export const CONTACT = {
   hours: '11:00〜20:00',
   lineUrl: 'https://lin.ee/ssvLEAZ',
 };
+
+// 使い方ガイド
+// SwingFrame（動画の撮影アプリ）のダウンロードページの URL を入れると、ガイドにボタンが表示されます。空欄なら表示しません。
+export const GUIDE = {
+  swingFrame: { ios: '', android: '' },
+};
