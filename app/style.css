@@ -210,3 +210,49 @@ summary{cursor:pointer;font-weight:700;font-size:14px}
 .my-q{margin-top:10px;background:var(--paper);border-radius:12px;padding:10px 14px}
 .my-q span{font-size:12px;color:var(--muted);font-weight:700}
 .my-q p{margin:2px 0 0;font-size:14px}
+/* 文字の大きさ（アカウント画面で切り替え。この端末だけ） */
+html[data-fs="l"] .app,html[data-fs="l"] .toast{zoom:1.12}
+html[data-fs="xl"] .app,html[data-fs="xl"] .toast{zoom:1.25}
+/* 未読（NEW） */
+.nav a{position:relative}
+.nav-badge{position:absolute;top:2px;left:calc(50% + 6px);min-width:18px;height:18px;padding:0 5px;border-radius:999px;background:#d64b3c;color:#fff;font-style:normal;font-size:11px;font-weight:700;line-height:18px;text-align:center;font-variant-numeric:lining-nums}
+.new-badge{display:inline-block;margin-left:8px;background:#d64b3c;color:#fff;font-size:11px;font-weight:800;letter-spacing:.08em;border-radius:999px;padding:1px 9px;vertical-align:2px;line-height:1.6}
+.card.link.unread{border-color:var(--gold);box-shadow:0 4px 14px rgba(200,169,106,.18)}
+.practice-progress{display:inline-block;margin-top:10px;font-size:12.5px;font-weight:700;color:var(--ink);background:var(--paper-2);border-radius:999px;padding:2px 12px}
+.practice-progress.all{background:var(--gold);color:var(--ink)}
+.lesson-feature .practice-progress{display:table;margin:10px 0 4px}
+/* 練習のチェック */
+.drill-btn{all:unset;box-sizing:border-box;display:flex;align-items:center;gap:12px;width:100%;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.drill-btn:focus-visible{outline:2px solid var(--gold);outline-offset:4px;border-radius:8px}
+.drill li:has(.drill-btn){display:block}
+.drill .drill-btn .n{background:#fff;border:2px solid var(--gold);color:var(--ink)}
+.drill li.done .drill-btn .n{background:var(--gold);color:var(--ink)}
+.drill li.done .t{color:var(--muted);text-decoration:line-through;text-decoration-color:var(--gold)}
+/* ホーム画面に追加の案内 */
+.install-banner{display:flex;align-items:center;gap:10px;background:#fff;border:1px solid var(--gold);border-radius:14px;padding:12px 10px 12px 14px;margin:0 0 12px}
+.install-banner div{flex:1;min-width:0}
+.install-banner b{display:block;font-size:14px}
+.install-banner span{font-size:12px;color:var(--muted)}
+.install-banner .btn-gold{margin:0;min-height:0}
+.install-close{background:none;color:var(--muted);padding:4px 6px;font-size:20px;line-height:1}
+/* アカウント画面の設定 */
+.switch{display:flex;align-items:flex-start;gap:10px;margin:10px 0 4px;font-weight:400;cursor:pointer}
+.switch input{width:22px;height:22px;flex:none;margin:2px 0 0;accent-color:var(--ink)}
+.seg{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:10px}
+.seg button{background:var(--paper-2);color:var(--text);padding:10px 4px;border-radius:12px;font-weight:700}
+.seg button:nth-child(2){font-size:16px}
+.seg button:nth-child(3){font-size:18px}
+.seg button.on{background:var(--ink);color:var(--gold-2)}
+.card.links{padding-top:6px;padding-bottom:6px}
+.card.links .list-item{color:var(--text);text-decoration:none}
+/* 使い方ガイド */
+.guide-step{position:relative}
+.guide-step h2{font-size:18px;margin:0 0 8px}
+.guide-step h2 small{display:block;font-size:12.5px;color:var(--muted);font-weight:400}
+.guide-step ol{margin:0 0 10px;padding-left:1.3em;font-size:15px;line-height:1.85}
+.guide-step ol li{margin:4px 0}
+.guide-step.current{border-color:var(--gold)}
+.step-no{display:inline-flex;align-items:baseline;gap:4px;background:var(--ink);color:var(--gold-2);border-radius:999px;padding:2px 12px;margin-bottom:8px;font-weight:800;font-size:18px;font-variant-numeric:lining-nums}
+.step-no span{font-size:10.5px;letter-spacing:.18em}
+.tip-box{background:#fbf8f1;border-radius:12px;padding:10px 14px;font-size:14px}
+.tip-box ul{margin:4px 0 0;padding-left:1.2em;line-height:1.8}

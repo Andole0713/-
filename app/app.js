@@ -1,13 +1,13 @@
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/+esm';
 import { Upload as TusUpload } from 'https://cdn.jsdelivr.net/npm/tus-js-client@4.3.1/+esm';
-import { SUPABASE_URL, SUPABASE_ANON_KEY, SCHOOL_NAME, PLANS, CONTACT } from './config.js';
+import { SUPABASE_URL, SUPABASE_ANON_KEY, SCHOOL_NAME, PLANS, CONTACT, GUIDE } from './config.js';
 
 const configured = !SUPABASE_URL.includes('YOUR-PROJECT') && !SUPABASE_ANON_KEY.includes('YOUR-');
 const sb = configured ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
 const $app = document.getElementById('app');
 const $toast = document.getElementById('toast');
 
-const state = { session: null, profile: null, recovery: false, authTab: 'login', authMessage: '' };
+const state = { session: null, profile: null, recovery: false, authTab: 'login', authMessage: '', unread: 0 };
 let renderSeq = 0;
 
 // ---------- ユーティリティ ----------
@@ -26,6 +26,23 @@ function toast(msg, bad = false) {
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => $toast.classList.add('hidden'), 3500);
 }
+
+// この端末だけの設定（文字の大きさ・ホーム画面追加の案内を閉じたか）。保存できない環境でも動くようにする
+const local = {
+  get(key) { try { return localStorage.getItem(key); } catch { return null; } },
+  set(key, value) { try { localStorage.setItem(key, value); } catch { /* noop */ } },
+};
+const FONT_SIZES = [['m', '標準'], ['l', '大きめ'], ['xl', '特大']];
+function applyFontSize(size = local.get('atg-font-size') || 'm') {
+  document.documentElement.dataset.fs = FONT_SIZES.some(([k]) => k === size) ? size : 'm';
+}
+applyFontSize();
+
+// ホーム画面に追加（Android の Chrome などはボタンから追加できる。iPhone は共有メニューから）
+let installPrompt = null;
+window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); installPrompt = e; });
+const isStandalone = () => window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+const isIOS = () => /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
 // YouTube の URL から動画 ID を取り出し、https://youtu.be/ID の形にそろえる
 function normalizeYoutube(input) {
@@ -205,10 +222,11 @@ const ICON = {
 const icon = (name) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[name]}</svg>`;
 function nav(items, active) {
   return `<nav class="nav" style="grid-template-columns:repeat(${items.length},1fr)">${items
-    .map(([path, ic, label]) => `<a href="#/${path}" class="${active === path ? 'active' : ''}"${active === path ? ' aria-current="page"' : ''}>${icon(ic)}<span>${label}</span></a>`)
+    .map(([path, ic, label, badge]) => `<a href="#/${path}" class="${active === path ? 'active' : ''}"${active === path ? ' aria-current="page"' : ''}>${icon(ic)}<span>${label}</span>${badge ? `<em class="nav-badge" aria-label="未読${badge}件">${badge}</em>` : ''}</a>`)
     .join('')}</nav>`;
 }
-const memberNav = (active) => nav([['home', 'home', 'ホーム'], ['submit', 'video', '動画提出'], ['history', 'book', '履歴'], ['account', 'user', 'アカウント']], active);
+const memberNav = (active) => nav([['home', 'home', 'ホーム'], ['submit', 'video', '動画提出'], ['history', 'book', '履歴', state.unread], ['account', 'user', 'アカウント']], active);
+const newBadge = (l) => (l.read_at ? '' : '<span class="new-badge">NEW</span>');
 const adminNav = (active) => nav([['admin/inbox', 'inbox', '提出動画'], ['admin/members', 'users', '会員一覧'], ['account', 'user', 'アカウント']], active);
 
 async function must(promise) {
@@ -326,7 +344,7 @@ async function viewMemberHome() {
   const since = monthStart();
   const [tasks, lessons, subs, monthSubs, monthLessons] = await Promise.all([
     must(sb.from('tasks').select('*').eq('member_id', p.id).order('sort_order').order('created_at')),
-    must(sb.from('lessons').select('id, lesson_date, title, point').eq('member_id', p.id).order('lesson_date', { ascending: false }).order('created_at', { ascending: false }).limit(1)),
+    must(sb.from('lessons').select('id, lesson_date, title, point, practice, practice_done, read_at').eq('member_id', p.id).order('lesson_date', { ascending: false }).order('created_at', { ascending: false }).limit(1)),
     must(sb.from('submissions').select('id, created_at, club, status').eq('member_id', p.id).eq('status', 'pending').order('created_at', { ascending: false })),
     must(sb.from('submissions').select('id').eq('member_id', p.id).gte('created_at', since)),
     must(sb.from('lessons').select('id').eq('member_id', p.id).gte('created_at', since)),
@@ -345,6 +363,10 @@ async function viewMemberHome() {
       <div class="stat"><div class="label">ベストスコア</div><b>${esc(p.best_score ?? '—')}</b></div>
       <div class="stat"><div class="label">平均スコア</div><b>${esc(p.avg_score ?? '—')}</b></div>
     </div>
+    ${!isStandalone() && !local.get('atg-install-dismissed') ? `<div class="install-banner">
+        <div><b>ホーム画面に追加しませんか？</b><span>アプリのようにワンタップで開けます</span></div>
+        <a class="btn btn-sm btn-gold" href="#/install">やり方</a>
+        <button type="button" class="install-close" data-action="dismiss-install" aria-label="閉じる">×</button></div>` : ''}
     <div class="section-title"><div><div class="eyebrow">This Month</div><h2>今月のサポート</h2></div></div>
     <div class="card">
       <div class="support">
@@ -366,9 +388,10 @@ async function viewMemberHome() {
       : '<div class="empty">コーチから課題が届くとここに表示されます</div>'}
     <div class="section-title"><div><div class="eyebrow">Lesson</div><h2>最新のレッスン</h2></div>${latest ? '<a href="#/history">すべて見る</a>' : ''}</div>
     ${latest ? `<a class="lesson-feature" href="#/lesson/${latest.id}">
-        <span class="date">${fmtDate(latest.lesson_date)}</span>
+        <span class="date">${fmtDate(latest.lesson_date)}</span>${newBadge(latest)}
         <h3>${esc(latest.title)}</h3>
         ${latest.point ? `<div class="point"><span>今回のポイント</span><p>${esc(latest.point)}</p></div>` : ''}
+        ${practiceProgress(latest)}
         <span class="go">レッスンを見る <i aria-hidden="true">›</i></span></a>`
       : '<div class="empty">まだレッスンはありません。まずは動画を送りましょう。</div>'}
     ${subs.length ? `<div class="notice">確認待ちの動画が ${subs.length} 件あります。コーチからのレッスンをお待ちください。</div>` : ''}
@@ -398,7 +421,7 @@ async function viewSubmit() {
   }
   return header('スイング動画を送る') + `<div class="content">
     ${usage}
-    <div class="notice">正面または後方から、全身とクラブが入るように撮影してください。<br>送った動画は<b>${RETENTION_LABEL}</b>保存され、その後自動で削除されます。</div>
+    <div class="notice">正面または後方から、全身とクラブが入るように撮影してください。<a href="#/guide">撮り方ガイドを見る</a><br>送った動画は<b>${RETENTION_LABEL}</b>保存され、その後自動で削除されます。</div>
     <form class="card form" data-form="submit">
       <label for="video">スイング動画</label>
       <input id="video" name="video" type="file" accept="video/*" required class="visually-hidden">
@@ -430,12 +453,12 @@ async function viewSubmit() {
 async function viewHistory() {
   const p = state.profile;
   const [lessons, subs] = await Promise.all([
-    must(sb.from('lessons').select('id, lesson_date, title, point').eq('member_id', p.id).order('lesson_date', { ascending: false }).order('created_at', { ascending: false })),
+    must(sb.from('lessons').select('id, lesson_date, title, point, practice, practice_done, read_at').eq('member_id', p.id).order('lesson_date', { ascending: false }).order('created_at', { ascending: false })),
     must(sb.from('submissions').select('id, created_at, club, angle, status, video_deleted_at').eq('member_id', p.id).order('created_at', { ascending: false }).limit(20)),
   ]);
   return header('レッスン履歴') + `<div class="content">
-    ${lessons.length ? lessons.map((l) => `<a class="card link" href="#/lesson/${l.id}"><div class="muted">${fmtDate(l.lesson_date)}</div>
-        <h3>${esc(l.title)}</h3>${l.point ? `<div class="muted">${esc(l.point)}</div>` : ''}</a>`).join('')
+    ${lessons.length ? lessons.map((l) => `<a class="card link${l.read_at ? '' : ' unread'}" href="#/lesson/${l.id}"><div class="muted">${fmtDate(l.lesson_date)}${newBadge(l)}</div>
+        <h3>${esc(l.title)}</h3>${l.point ? `<div class="muted">${esc(l.point)}</div>` : ''}${practiceProgress(l)}</a>`).join('')
       : '<div class="empty">まだレッスンはありません</div>'}
     <div class="section-title"><div><div class="eyebrow">My Swing</div><h2>送った動画</h2></div></div>
     <p class="muted small" style="margin:4px 0 0">動画は送信から${RETENTION_LABEL}見られます。その後は自動で削除されます。</p>
@@ -471,12 +494,24 @@ function richText(text) {
   }).join('');
 }
 // 練習メニューを1行ずつ番号付きで表示。行末の「20球」「10回」などは量として右に出す
-function drillList(text) {
-  const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-  return `<ol class="drill">${lines.map((line, i) => {
+const practiceLines = (text) => (text || '').split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+// 練習のチェック数（例：練習 1/3）
+function practiceProgress(l) {
+  const total = practiceLines(l.practice).length;
+  if (!total) return '';
+  const done = (l.practice_done || []).filter((i) => i < total).length;
+  return `<div class="practice-progress${done === total ? ' all' : ''}">練習 ${done}/${total}${done === total ? ' ✓ 完了' : ''}</div>`;
+}
+// lessonId を渡すと、会員が1行ずつチェックできる
+function drillList(text, done = [], lessonId = null) {
+  return `<ol class="drill">${practiceLines(text).map((line, i) => {
     const body = line.replace(/^(?:[①-⑳]|\d{1,2}[.)．）])\s*/, '');
     const m = body.match(/^(.+?)[\s　]+(\d+\s*(?:球|回|分|秒|本|セット|set))$/i);
-    return `<li><span class="n">${i + 1}</span><span class="t">${esc(m ? m[1] : body)}</span>${m ? `<span class="amt">${esc(m[2])}</span>` : ''}</li>`;
+    const on = done.includes(i);
+    const inner = `<span class="n">${on ? '✓' : i + 1}</span><span class="t">${esc(m ? m[1] : body)}</span>${m ? `<span class="amt">${esc(m[2])}</span>` : ''}`;
+    return lessonId
+      ? `<li class="${on ? 'done' : ''}"><button type="button" class="drill-btn" data-action="toggle-practice" data-lesson="${esc(lessonId)}" data-index="${i}" aria-pressed="${on}">${inner}</button></li>`
+      : `<li>${inner}</li>`;
   }).join('')}</ol>`;
 }
 const secTitle = (icon, label) => `<h2 class="sec-h"><i aria-hidden="true">${icon}</i>${label}</h2>`;
@@ -485,6 +520,11 @@ async function viewLesson(id, back = 'history') {
   const l = await must(sb.from('lessons').select('*, submissions(video_path, video_deleted_at, question)').eq('id', id).maybeSingle());
   if (!l) return header('レッスン詳細', back) + '<div class="content"><div class="empty">レッスンが見つかりません</div></div>';
   const urls = await signedVideoUrls([l.submissions]);
+  const mine = l.member_id === state.profile.id;
+  if (mine && !l.read_at) {
+    const { error } = await sb.rpc('mark_lesson_read', { p_lesson: l.id });
+    if (!error) state.unread = Math.max(0, state.unread - 1);
+  }
   return header('レッスン詳細', back) + `<div class="content lesson-page">
     <div class="lesson-head">
       <span class="date">${fmtDate(l.lesson_date)}</span>
@@ -493,7 +533,9 @@ async function viewLesson(id, back = 'history') {
     </div>
     ${l.video_url ? `<section class="card lesson-sec">${secTitle('▶', 'コーチの解説動画')}${videoEmbed(l.video_url)}</section>` : ''}
     ${l.feedback ? `<section class="card lesson-sec">${secTitle('✎', 'コーチからのフィードバック')}<div class="fb">${richText(l.feedback)}</div></section>` : ''}
-    ${l.practice ? `<section class="card lesson-sec practice">${secTitle('✓', '次回までの練習')}${drillList(l.practice)}</section>` : ''}
+    ${l.practice ? `<section class="card lesson-sec practice">${secTitle('✓', '次回までの練習')}
+        ${mine ? '<p class="muted small" style="margin:-4px 0 4px">練習したらタップしてチェックしましょう。</p>' : ''}
+        ${drillList(l.practice, l.practice_done || [], mine ? l.id : null)}</section>` : ''}
     ${l.submissions ? `<section class="card lesson-sec">${secTitle('◎', '送った動画')}${swingVideo(l.submissions, urls)}
         ${l.submissions.question ? `<div class="my-q"><span>送ったときのお悩み・質問</span><p class="pre">${esc(l.submissions.question)}</p></div>` : ''}</section>` : ''}
   </div>` + (state.profile.role === 'admin' ? '' : memberNav('history'));
@@ -554,6 +596,20 @@ function viewAccount() {
         : isActive(p) ? `<p class="muted small" style="margin:10px 0 0">ご契約内容の変更は、LINE またはお電話（${esc(CONTACT.telDisplay)}）でお問い合わせください。</p>`
         : '<a class="btn btn-block" href="#/plans">プランを選ぶ</a>'}
     </div>`}
+    ${admin ? '' : `<form class="card form" data-form="notify">
+      <b>お知らせメール</b>
+      <label class="switch"><input type="checkbox" name="email_notify"${p.email_notify !== false ? ' checked' : ''}>
+        <span>レッスンが届いたとき・面談の前日にメールで知らせる</span></label>
+      <button class="btn-block btn-sub" type="submit">保存</button>
+    </form>`}
+    <div class="card">
+      <b>文字の大きさ</b> <span class="muted small">（この端末だけに反映）</span>
+      <div class="seg" role="group" aria-label="文字の大きさ">${FONT_SIZES.map(([k, label]) => `<button type="button" data-action="font-size" data-size="${k}" aria-pressed="${document.documentElement.dataset.fs === k}" class="${document.documentElement.dataset.fs === k ? 'on' : ''}">${label}</button>`).join('')}</div>
+    </div>
+    ${admin ? '' : `<div class="card links">
+      <a class="list-item" href="#/guide"><span>使い方ガイド（動画の撮り方・送り方）</span><span aria-hidden="true">›</span></a>
+      <a class="list-item" href="#/install"><span>ホーム画面に追加する方法</span><span aria-hidden="true">›</span></a>
+    </div>`}
     <form class="card form" data-form="change-password">
       <b>パスワード変更</b>
       <label for="password">新しいパスワード（8文字以上）</label>
@@ -562,6 +618,80 @@ function viewAccount() {
     </form>
     <button class="btn-block btn-danger" data-action="logout">ログアウト</button>
   </div>` + navHtml;
+}
+
+// 使い方ガイド（初回ログイン時に自動で表示。アカウント画面からいつでも見られる）
+function viewGuide() {
+  const first = !state.profile.onboarded_at;
+  const sf = GUIDE.swingFrame;
+  const apps = [sf.ios && `<a class="btn btn-sm btn-sub" href="${esc(sf.ios)}" target="_blank" rel="noopener">App Store</a>`,
+    sf.android && `<a class="btn btn-sm btn-sub" href="${esc(sf.android)}" target="_blank" rel="noopener">Google Play</a>`].filter(Boolean).join(' ');
+  return header('使い方ガイド', first ? '' : 'account') + `<div class="content guide">
+    ${first ? `<div class="hero"><div class="eyebrow">Welcome</div><h1>${esc(state.profile.name || '')}さん、ようこそ。</h1>
+      <p style="margin:0">レッスンの受け方を3つのステップでご紹介します。</p></div>` : ''}
+    <section class="card guide-step">
+      <div class="step-no"><span>STEP</span>1</div>
+      <h2>動画を撮る <small>SwingFrame を使います</small></h2>
+      <ol>
+        <li>スマホで <b>SwingFrame</b> アプリを開いて撮影します${apps ? '' : '（お持ちでない場合は、アプリストアで「SwingFrame」と検索してください）'}</li>
+        <li>撮影した動画を、スマホに保存します</li>
+      </ol>
+      ${apps ? `<div class="row" style="gap:8px;margin:4px 0 10px">${apps}</div>` : ''}
+      <div class="tip-box"><b>きれいに撮るコツ</b>
+        <ul>
+          <li><b>正面</b>（体の正面）または<b>後方</b>（打つ方向の後ろ）から撮る</li>
+          <li>頭から足先まで、クラブ全体が画面に入るようにする</li>
+          <li>スマホは腰くらいの高さで固定する（三脚などがあると安定します）</li>
+        </ul></div>
+    </section>
+    <section class="card guide-step">
+      <div class="step-no"><span>STEP</span>2</div>
+      <h2>動画を送る</h2>
+      <ol>
+        <li>下のメニューの「<b>動画提出</b>」を開く</li>
+        <li>「<b>動画を選ぶ・撮影する</b>」から、SwingFrame で保存した動画を選ぶ</li>
+        <li>クラブ・撮影方向・お悩みを入力して「<b>動画を送信する</b>」</li>
+      </ol>
+      <p class="muted small" style="margin:0">サブスクリプション制は毎月2本まで送れます。送った動画は3か月間、履歴から見返せます。</p>
+    </section>
+    <section class="card guide-step">
+      <div class="step-no"><span>STEP</span>3</div>
+      <h2>レッスンを見て練習する</h2>
+      <ol>
+        <li>コーチからレッスンが届くと、<b>メールでお知らせ</b>が届き、「履歴」に <span class="new-badge">NEW</span> が付きます</li>
+        <li>解説動画とフィードバックを確認します</li>
+        <li>「次回までの練習」は、練習したらタップして<b>チェック</b>しましょう</li>
+      </ol>
+      <p class="muted small" style="margin:0">月1回のオンライン面談は、マイページの「LINEで面談を予約する」から予約できます。</p>
+    </section>
+    <button class="btn-block btn-gold" data-action="finish-guide">${first ? 'はじめる' : 'マイページへ'}</button>
+  </div>` + (first ? '' : memberNav('account'));
+}
+
+// ホーム画面に追加する方法
+function viewInstall() {
+  const done = isStandalone();
+  return header('ホーム画面に追加', 'account') + `<div class="content">
+    <div class="card"><p style="margin:0">ホーム画面に追加すると、アプリのようにアイコンをタップするだけで会員ページが開けます。</p></div>
+    ${done ? '<div class="notice">すでにホーム画面から開いています。</div>' : ''}
+    ${installPrompt ? '<button class="btn-block btn-gold" data-action="install-app">ホーム画面に追加する</button>' : ''}
+    <section class="card guide-step${isIOS() ? ' current' : ''}">
+      <h2>iPhone（Safari）の場合</h2>
+      <ol>
+        <li>Safari でこのページを開く</li>
+        <li>画面下の <b>共有ボタン</b>（四角から矢印が出ているマーク）をタップ</li>
+        <li>「<b>ホーム画面に追加</b>」をタップ →「<b>追加</b>」</li>
+      </ol>
+    </section>
+    <section class="card guide-step${!isIOS() ? ' current' : ''}">
+      <h2>Android（Chrome）の場合</h2>
+      <ol>
+        <li>Chrome でこのページを開く</li>
+        <li>右上の <b>︙</b>（メニュー）をタップ</li>
+        <li>「<b>ホーム画面に追加</b>」または「<b>アプリをインストール</b>」をタップ</li>
+      </ol>
+    </section>
+  </div>` + memberNav('account');
 }
 
 // ---------- 画面：管理者 ----------
@@ -689,6 +819,7 @@ async function viewLessonForm(route) {
       <p class="muted small" style="margin:4px 0 0">空行で段落が分かれます。行の先頭に「・」を付けると箇条書きになり、その直前の短い行（例：ポイント）は見出しになります。</p>
       <label for="practice">次回までの練習</label><textarea id="practice" name="practice" rows="4" maxlength="2000" placeholder="① ハーフスイング 20球&#10;② 7I 30球">${esc(lesson.practice)}</textarea>
       <label for="video_url">コーチの解説動画（YouTube・任意）</label><input id="video_url" name="video_url" type="url" value="${esc(lesson.video_url || '')}" placeholder="https://youtu.be/...">
+      ${lesson.id ? '' : '<label class="switch"><input type="checkbox" name="notify" checked><span>会員にメールでお知らせする</span></label>'}
       <button class="btn-block" type="submit">${lesson.id ? '更新する' : '保存して会員に公開する'}</button>
     </form>
     ${lesson.id ? `<button class="btn-block btn-danger" data-action="delete-lesson" data-id="${lesson.id}" data-member="${esc(memberId)}">このレッスンを削除</button>` : ''}
@@ -730,6 +861,10 @@ async function render() {
       if (r[0] !== 'plans') return go('plans');
       return paint(viewPlans());
     }
+    if (r[0] === 'guide') return paint(viewGuide());
+    if (r[0] === 'install') return paint(viewInstall());
+    if (!p.onboarded_at) return go('guide');
+    state.unread = (await sb.from('lessons').select('id', { count: 'exact', head: true }).eq('member_id', p.id).is('read_at', null)).count || 0;
     if (r[0] === 'submit') return paint(await viewSubmit());
     if (r[0] === 'history') return paint(await viewHistory());
     if (r[0] === 'lesson' && r[1]) return paint(await viewLesson(r[1]));
@@ -747,6 +882,45 @@ async function render() {
 
 const actions = {
   'auth-tab': (el) => { state.authTab = el.dataset.tab; state.authMessage = ''; render(); },
+  'toggle-practice': async (el) => {
+    const on = el.getAttribute('aria-pressed') !== 'true';
+    el.disabled = true;
+    try {
+      await must(sb.rpc('set_practice_done', { p_lesson: el.dataset.lesson, p_index: Number(el.dataset.index), p_done: on }));
+      el.setAttribute('aria-pressed', String(on));
+      el.parentElement.classList.toggle('done', on);
+      el.querySelector('.n').textContent = on ? '✓' : Number(el.dataset.index) + 1;
+      const list = el.closest('.drill');
+      if (on && list.querySelectorAll('li.done').length === list.children.length) toast('すべての練習が完了しました！ナイスです⛳');
+    } catch (e) { toast('更新できませんでした', true); }
+    el.disabled = false;
+  },
+  'font-size': (el) => {
+    local.set('atg-font-size', el.dataset.size);
+    applyFontSize(el.dataset.size);
+    document.querySelectorAll('[data-action="font-size"]').forEach((b) => {
+      const on = b === el; b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on));
+    });
+  },
+  'dismiss-install': (el) => {
+    local.set('atg-install-dismissed', '1');
+    el.closest('.install-banner').remove();
+  },
+  'install-app': async () => {
+    if (!installPrompt) return;
+    installPrompt.prompt();
+    const { outcome } = await installPrompt.userChoice;
+    installPrompt = null;
+    if (outcome === 'accepted') { local.set('atg-install-dismissed', '1'); toast('ホーム画面に追加しました'); }
+    render();
+  },
+  'finish-guide': async () => {
+    if (!state.profile.onboarded_at) {
+      await must(sb.from('profiles').update({ onboarded_at: new Date().toISOString() }).eq('id', state.profile.id));
+      await loadProfile();
+    }
+    go('home');
+  },
   'add-club': () => {
     const input = document.getElementById('club-custom');
     const name = input.value.trim().slice(0, 20);
@@ -857,6 +1031,11 @@ const forms = {
     toast(clubs.length ? `Myクラブセッティングを保存しました（${clubs.length}本）` : 'Myクラブセッティングを解除しました');
     render();
   },
+  notify: async (f) => {
+    await must(sb.from('profiles').update({ email_notify: f.email_notify.checked }).eq('id', state.profile.id));
+    await loadProfile();
+    toast(f.email_notify.checked ? 'お知らせメールを受け取る設定にしました' : 'お知らせメールを停止しました');
+  },
   'profile-name': async (f) => {
     await must(sb.from('profiles').update({ name: f.name.value.trim() }).eq('id', state.profile.id));
     await loadProfile(); toast('保存しました');
@@ -921,13 +1100,22 @@ const forms = {
       lesson_date: f.lesson_date.value, title: f.title.value.trim(), point: f.point.value.trim(),
       feedback: f.feedback.value.trim(), practice: f.practice.value.trim(), video_url: videoUrl,
     };
+    let notice = 'レッスンを保存しました';
     if (f.dataset.id) {
       await must(sb.from('lessons').update(row).eq('id', f.dataset.id));
     } else {
-      await must(sb.from('lessons').insert({ ...row, member_id: f.dataset.member, submission_id: f.dataset.submission || null }));
+      const created = await must(sb.from('lessons').insert({ ...row, member_id: f.dataset.member, submission_id: f.dataset.submission || null }).select('id').single());
       if (f.dataset.submission) await must(sb.from('submissions').update({ status: 'reviewed' }).eq('id', f.dataset.submission));
+      if (f.notify?.checked) {
+        try {
+          const r = await callFunction('notify-lesson', { lesson_id: created.id });
+          notice = r?.sent ? 'レッスンを保存し、会員にメールでお知らせしました' : 'レッスンを保存しました（この会員はお知らせメールを停止しています）';
+        } catch {
+          notice = 'レッスンを保存しました（お知らせメールは送れませんでした）';
+        }
+      }
     }
-    toast('レッスンを保存しました');
+    toast(notice);
     go(f.dataset.submission && !f.dataset.id ? 'admin/inbox' : `admin/member/${f.dataset.member}`);
   },
 };

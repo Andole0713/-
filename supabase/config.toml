@@ -10,3 +10,8 @@ verify_jwt = false
 # （代わりに CRON_SECRET を確認している）
 [functions.purge-old-videos]
 verify_jwt = false
+
+# 面談前日のお知らせメールは定期実行から呼ばれるため、JWT 検証を無効にする
+# （代わりに CRON_SECRET を確認している）
+[functions.meeting-reminders]
+verify_jwt = false

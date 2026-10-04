@@ -39,7 +39,7 @@
    - Region は **Northeast Asia (Tokyo)** を選択
    - Database Password は安全な場所に保管
 2. 左メニュー **SQL Editor** を開き、`supabase/migrations/20260926000000_init.sql` の中身をすべて貼り付けて **Run**
-   - あとから追加された設定ファイル（`supabase/migrations/` の日付が新しいもの。例：`20261004000000_my_clubs.sql`、`20261005000000_extra_submissions.sql`）も、同じように古い順に実行してください。初期設定を新しく実行した場合も、重ねて実行して問題ありません
+   - あとから追加された設定ファイル（`supabase/migrations/` の日付が新しいもの。例：`20261004000000_my_clubs.sql`、`20261005000000_extra_submissions.sql`、`20261006000000_member_experience.sql`）も、同じように古い順に実行してください。初期設定を新しく実行した場合も、重ねて実行して問題ありません
 3. 動画の保存場所を確認
    - 左メニュー **Storage** に `swing-videos`（非公開）ができていることを確認
    - **Project Settings → Storage** の **Upload file size limit** を大きめ（例：5GB）に変更（1本あたりの上限は設けない運用のため。Pro プランで変更できます）
@@ -123,6 +123,41 @@ select cron.schedule(
 );
 ```
 
+### お知らせメール（レッスン到着・面談の前日）
+
+会員へのお知らせメールは [Resend](https://resend.com)（無料プラン：1日100通・月3,000通まで）から送ります。
+
+1. Resend に登録し、**Domains** で送信に使うドメイン（例：`tefcas-creation.com`）を追加して、表示される DNS の設定をドメインの管理画面に登録する（確認が終わるまで、会員宛てには送れません）
+2. **API Keys** でキーを作成する（`re_` で始まる文字列。**このキーは誰にも送らないでください**）
+3. ターミナルで次を実行
+
+```bash
+npx supabase secrets set \
+  RESEND_API_KEY=re_... \
+  MAIL_FROM="All Time Golf <info@送信に使うドメイン>" \
+  SITE_URL=https://andole0713.github.io/-/app
+npx supabase functions deploy notify-lesson
+npx supabase functions deploy meeting-reminders --no-verify-jwt
+```
+
+- **レッスン到着**：管理者がレッスンを新しく保存すると、自動でメールが送られます（作成画面の「会員にメールでお知らせする」を外すと送りません）
+- **面談の前日**：毎日1回、翌日（日本時間）に面談がある会員へ送ります。**SQL Editor** で次を実行してください（`CRON_SECRET` は動画の自動削除と同じもの）
+
+```sql
+select cron.schedule(
+  'meeting-reminders',
+  '0 1 * * *',  -- 毎日 1:00（UTC）＝日本時間 10:00
+  $$
+  select net.http_post(
+    url := 'https://<プロジェクトID>.supabase.co/functions/v1/meeting-reminders',
+    headers := jsonb_build_object('Authorization', 'Bearer <CRON_SECRET>')
+  );
+  $$
+);
+```
+
+会員は「アカウント → お知らせメール」でいつでも停止できます。
+
 ## 6. Stripe Webhook を登録
 
 1. Stripe の **開発者 → Webhook → エンドポイントを追加**
@@ -198,7 +233,8 @@ update public.profiles set role = 'admin' where email = 'coach@example.com';
 ```
 app/                         会員サイト（画面）
   index.html  style.css  app.js
-  config.js                  ← Supabase の URL・キー、プラン表示を設定
+  config.js                  ← Supabase の URL・キー、プラン表示、SwingFrame のリンクを設定
+  manifest.webmanifest       ホーム画面に追加したときの名前・アイコン
 supabase/
   migrations/…_init.sql      データベースの表とアクセス権限（RLS）
   functions/
@@ -206,6 +242,8 @@ supabase/
     create-portal-session/   カード変更・プラン変更・解約ページを作成
     stripe-webhook/          Stripe からの通知で契約状態を更新
     purge-old-videos/        3か月を過ぎたお客様の動画を自動削除
+    notify-lesson/           レッスン到着のお知らせメール
+    meeting-reminders/       面談前日のお知らせメール
   config.toml
 docs/SETUP.md                この手順書
 index.html                   スクール紹介ページ（トップ）

@@ -1,0 +1,15 @@
+{
+  "name": "All Time Golf 会員ページ",
+  "short_name": "All Time Golf",
+  "start_url": "./#/home",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0f1712",
+  "theme_color": "#0f1712",
+  "lang": "ja",
+  "icons": [
+    { "src": "../assets/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "../assets/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "../assets/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
