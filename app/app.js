@@ -482,6 +482,14 @@ async function viewMemberHome() {
       <h1>${esc(p.name)}さん、おかえりなさい。</h1>
       <div class="muted">現在の目標</div><h2 style="margin:4px 0 0;font-size:24px">${esc(p.goal || '未設定')}</h2>
       ${p.theme ? `<div style="margin-top:12px">今月のテーマ：${esc(p.theme)}</div>` : ''}</div>
+    ${rmNow ? `<a class="rm-home" href="#/drills">
+        <div class="rm-home-head"><span class="rm-badge">今月のドリル</span>${rmNow.seen_at ? '' : '<span class="new-badge">NEW</span>'}
+          <span class="rm-home-step"><b>${rmOpened.length}</b>/${roadmap.length}か月目</span></div>
+        <h3>${esc(rmNow.theme || rmNow.drills?.title || 'ドリル')}</h3>
+        ${rmNow.drills && rmNow.theme ? `<p class="rm-home-drill">🎯 ${esc(rmNow.drills.title)}</p>` : ''}
+        <div class="rm-home-meter" aria-hidden="true"><i style="width:${Math.round((rmOpened.length / roadmap.length) * 100)}%"></i></div>
+        <div class="rm-home-foot"><span class="rm-home-days">${rmDays ? `✓ 今月の練習 <b>${rmDays}</b>日` : 'まだ練習の記録がありません'}</span>
+          <span class="rm-home-btn">ドリルを見る <i aria-hidden="true">›</i></span></div></a>` : ''}
     <div class="grid">
       <div class="stat"><div class="label">ベストスコア</div><b>${esc(p.best_score ?? '—')}</b></div>
       <div class="stat"><div class="label">平均スコア</div><b>${esc(p.avg_score ?? '—')}</b></div>
@@ -505,11 +513,6 @@ async function viewMemberHome() {
         ${lineBtn('LINEで面談を予約する')}
       </div>
     </div>
-    ${rmNow ? `<a class="rm-home" href="#/drills">
-        <span class="rm-badge">今月のドリル</span>${rmNow.seen_at ? '' : '<span class="new-badge">NEW</span>'}<span class="rm-home-step">${rmOpened.length}/${roadmap.length}か月目</span>
-        <h3>${esc(rmNow.theme || rmNow.drills?.title || 'ドリル')}</h3>
-        ${rmNow.drills && rmNow.theme ? `<p>${esc(rmNow.drills.title)}</p>` : ''}
-        <div class="rm-home-foot"><span class="practice-progress${rmDays ? ' all' : ''}">練習 ${rmDays}日</span><span class="go">ドリルを見る <i aria-hidden="true">›</i></span></div></a>` : ''}
     <div class="section-title"><div><div class="eyebrow">Practice</div><h2>今月の課題</h2></div><span class="muted">${done}/${tasks.length}</span></div>
     ${tasks.length ? tasks.map((t) => `<button type="button" class="task${t.done ? ' done' : ''}" data-action="toggle-task" data-id="${t.id}" data-done="${t.done}" aria-pressed="${t.done}">
         <span class="check">${t.done ? '✓' : ''}</span><span><b>${esc(t.title)}</b><div class="muted">${esc(t.detail)}</div></span></button>`).join('')
