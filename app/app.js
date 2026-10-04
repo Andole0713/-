@@ -802,6 +802,36 @@ function viewAccount() {
 }
 
 // 会員：これまでに届いたドリル（契約中はずっと見られる）
+// ロードマップのマス目：段の端に折り返しの矢印を付け、開いた月の詳細をその段のすぐ下に差し込む
+const RM_COLS = () => (window.matchMedia('(min-width:700px)').matches ? 4 : 3);
+function rmLayout(openIndex) {
+  const grid = document.getElementById('rm-grid');
+  if (!grid) return;
+  const cols = RM_COLS();
+  grid.style.setProperty('--cols', cols);
+  const tiles = [...grid.querySelectorAll('.rm-tile')];
+  const store = grid.parentElement.querySelector('.rm-panels');
+  grid.querySelectorAll('.rm-panel').forEach((p) => store.appendChild(p));
+  tiles.forEach((t, i) => {
+    t.classList.toggle('rowend', (i + 1) % cols === 0 || i === tiles.length - 1);
+    t.classList.toggle('last', i === tiles.length - 1);
+    t.classList.toggle('active', i === openIndex);
+    t.setAttribute('aria-expanded', String(i === openIndex));
+    t.classList.remove('has-panel');
+  });
+  if (openIndex == null || openIndex < 0 || !tiles[openIndex]) { grid.dataset.open = ''; return; }
+  const endIndex = Math.min(tiles.length - 1, Math.floor(openIndex / cols) * cols + cols - 1);
+  const panel = store.querySelector(`.rm-panel[data-i="${openIndex}"]`);
+  panel.style.setProperty('--px', `${(((openIndex % cols) + 0.5) / cols) * 100}%`);
+  tiles[endIndex].after(panel);
+  tiles[endIndex].classList.add('has-panel');
+  grid.dataset.open = String(openIndex);
+}
+window.addEventListener('resize', () => {
+  const grid = document.getElementById('rm-grid');
+  if (grid && Number(grid.style.getPropertyValue('--cols')) !== RM_COLS()) rmLayout(grid.dataset.open === '' ? null : Number(grid.dataset.open));
+});
+
 // 会員：ロードマップ（毎月1本のドリルの定期公開）
 // その月の期間（公開日〜次の月の公開日の前日。最大31日）
 function rmPeriod(items, i) {
@@ -837,7 +867,7 @@ function roadmapView(items, urls, extra = {}) {
   const current = open[open.length - 1];
   const step = open.length;
   const last = items[items.length - 1];
-  return `<section class="roadmap">
+  return `<section class="roadmap" data-current="${items.indexOf(current)}">
     <div class="rm-head">
       <div><div class="eyebrow">Roadmap</div><h2>あなたのロードマップ</h2></div>
       <div class="rm-step"><b>${step}</b><small>/${items.length}か月</small></div>
@@ -845,26 +875,35 @@ function roadmapView(items, urls, extra = {}) {
     <div class="meter"><i style="width:${Math.round((step / items.length) * 100)}%"></i></div>
     ${goal ? `<p class="rm-goal-top">🏁 ゴール：<b>${esc(goal)}</b></p>` : ''}
     <p class="muted small" style="margin:8px 0 0">毎月1本、あなた専用のドリルが公開されます。ご契約中はいつでも見返せます。</p>
-    <ol class="rm-timeline">${items.map((r, i) => {
+    <div class="rm-grid" id="rm-grid">${items.map((r, i) => {
+      const isOpen = rmOpen(r);
+      const isCurrent = r === current;
+      const isNew = isOpen && !r.seen_at;
+      const cls = isCurrent ? 'current' : isOpen ? 'done' : 'locked';
+      const icon = isCurrent ? '▶' : isOpen ? '✓' : '🔒';
+      return `<button type="button" class="rm-tile ${cls}" data-action="rm-open" data-i="${i}" aria-expanded="false" aria-controls="rm-panel-${i}">
+          <span class="no">${i + 1}か月目</span><span class="st" aria-hidden="true">${icon}</span>
+          ${isNew ? '<span class="dot" aria-label="NEW"></span>' : ''}
+          <b>${esc(r.theme || (r.drills?.title ?? 'テーマ準備中'))}</b></button>`;
+    }).join('')}
+      <div class="rm-goal-tile">🏁 ゴール：${esc(goal || '目標達成')}</div>
+    </div>
+    <div class="rm-panels" hidden>${items.map((r, i) => {
       const isOpen = rmOpen(r);
       const isCurrent = r === current;
       const isNew = isOpen && !r.seen_at;
       const days = logOf(r.id).length;
-      const head = `<div class="rm-month">${i + 1}か月目・${fmtMonth(r.publish_on)}${isNew ? '<span class="new-badge">NEW</span>' : ''}${!isCurrent && isOpen && days ? `<span class="rm-days">練習 ${days}日</span>` : ''}</div><h3>${esc(r.theme || (r.drills?.title ?? 'テーマ準備中'))}</h3>`;
+      const head = `${isCurrent ? '<span class="rm-badge">今月のドリル</span>' : ''}
+        <div class="rm-month">${i + 1}か月目・${fmtMonth(r.publish_on)}${isNew ? '<span class="new-badge">NEW</span>' : ''}${!isCurrent && isOpen && days ? `<span class="rm-days">練習 ${days}日</span>` : ''}</div>
+        <h3>${esc(r.theme || (r.drills?.title ?? 'テーマ準備中'))}</h3>`;
       const body = isOpen
         ? `${r.note ? `<p class="rm-note pre">${esc(r.note)}</p>` : ''}${r.drills ? drillCard(r.drills, urls) : '<p class="muted small">ドリルは準備中です。もうしばらくお待ちください。</p>'}
            ${isCurrent ? practiceBlock(r, rmPeriod(items, i), logOf(r.id)) : ''}${reflectionForm(r, refOf(r.id))}`
         : `<p class="rm-lock">🔒 ${r.hidden ? '公開準備中' : `${fmtMD(r.publish_on)} に公開予定`}</p>`;
-      const cls = isCurrent ? 'current' : isOpen ? 'done' : 'locked';
-      return `<li class="rm-item ${cls}"><span class="rm-dot" aria-hidden="true">${isOpen && !isCurrent ? '✓' : i + 1}</span>
-        <div class="rm-body">${isCurrent ? `<span class="rm-badge">今月のドリル</span>${head}${body}`
-          : isOpen ? `<details><summary>${head}</summary>${body}</details>` : head + body}</div></li>`;
-    }).join('')}
-      <li class="rm-item rm-finish"><span class="rm-dot" aria-hidden="true">🏁</span>
-        <div class="rm-body"><div class="rm-month">${fmtMonth(addMonths(last.publish_on, 1))}・ゴール</div>
-          <h3>${esc(goal || '目標達成')}</h3>
-          <p class="rm-lock">${items.length}か月のロードマップを走りきって、ゴールを目指しましょう。</p></div></li>
-    </ol>
+      return `<section class="rm-panel ${isCurrent ? 'current' : isOpen ? 'done' : 'locked'}" id="rm-panel-${i}" data-i="${i}">
+          <button type="button" class="rm-close" data-action="rm-open" data-i="${i}" aria-label="閉じる">×</button>${head}${body}</section>`;
+    }).join('')}</div>
+    <p class="muted small" style="margin:10px 0 0">各月を押すと、その下にドリルが表示されます。</p>
   </section>`;
 }
 
@@ -1293,7 +1332,13 @@ async function render() {
     state.drillUnread = unreadDrills.count || 0;
     if (r[0] === 'submit') return paint(await viewSubmit());
     if (r[0] === 'history') return paint(await viewHistory());
-    if (r[0] === 'drills') return paint(await viewMemberDrills());
+    if (r[0] === 'drills') {
+      paint(await viewMemberDrills());
+      // 今月のドリルを、その段のすぐ下に開いておく
+      const rm = document.querySelector('.roadmap');
+      if (rm) rmLayout(Number(rm.dataset.current));
+      return;
+    }
     if (r[0] === 'lesson' && r[1]) return paint(await viewLesson(r[1]));
     if (r[0] === 'submission' && r[1]) return paint(await viewSubmission(r[1]));
     if (r[0] !== 'home') return go('home');
@@ -1425,6 +1470,13 @@ const actions = {
     const future = el.dataset.date > today();
     await must(sb.from('roadmap_items').update({ hidden: false, published_at: future ? null : new Date().toISOString() }).eq('id', el.dataset.id));
     toast(future ? `取り消しをやめました（${fmtMD(el.dataset.date)} に公開されます）` : '再公開しました'); render();
+  },
+  'rm-open': (el) => {
+    const grid = document.getElementById('rm-grid');
+    const i = Number(el.dataset.i);
+    const next = grid.dataset.open === String(i) ? null : i;
+    rmLayout(next);
+    if (next != null) document.getElementById(`rm-panel-${i}`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   },
   'practice-today': async (el) => {
     const item = el.dataset.item;

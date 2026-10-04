@@ -406,3 +406,35 @@ details.rm-edit[open] .rm-no::before{content:"▾ "}
 .practice-log .between{gap:8px}.practice-log .between b{white-space:nowrap}
 .rm-act{flex:none;display:flex;flex-direction:column;align-items:flex-end;gap:4px}
 .rm-act .btn-sm{padding:4px 10px;font-size:11.5px;min-height:0}
+/* ロードマップのマス目（すごろく形式） */
+.rm-grid{--cols:3;--gap:18px;display:grid;grid-template-columns:repeat(var(--cols),minmax(0,1fr));column-gap:var(--gap);row-gap:34px;margin-top:16px}
+.rm-tile{all:unset;box-sizing:border-box;position:relative;display:block;cursor:pointer;border:1.5px solid var(--line);border-radius:12px;padding:8px 8px 10px;background:#fff;min-height:84px;color:var(--text);-webkit-tap-highlight-color:transparent}
+.rm-tile:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+.rm-tile .no{display:block;font-size:11px;font-weight:700;color:var(--muted)}
+.rm-tile .st{position:absolute;top:6px;right:7px;font-size:12px}
+.rm-tile .dot{position:absolute;top:-5px;left:-5px;width:12px;height:12px;border-radius:50%;background:#d64b3c;border:2px solid #fff}
+.rm-tile b{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-size:13px;line-height:1.4;margin-top:2px;word-break:break-all}
+.rm-tile.done{border-color:var(--gold);background:#fbf8f1}
+.rm-tile.current{border:2px solid var(--ink);background:var(--ink);color:#fff}
+.rm-tile.current .no{color:var(--gold-2)}
+.rm-tile.locked{color:#8d938e}
+.rm-tile.active{box-shadow:0 0 0 3px rgba(200,169,106,.55)}
+/* 横の矢印 */
+.rm-tile:not(.rowend)::after{content:"";position:absolute;right:calc(-1 * var(--gap) + 4px);top:50%;width:calc(var(--gap) - 10px);height:2px;background:var(--gold)}
+.rm-tile:not(.rowend)::before{content:"";position:absolute;right:calc(-1 * var(--gap) + 1px);top:calc(50% - 4px);border:5px solid transparent;border-left-color:var(--gold);border-right:0}
+/* 段の端から、次の段の左へ戻る矢印 */
+.rm-tile.rowend:not(.last)::after{content:"";position:absolute;top:100%;right:50%;width:calc((100% + var(--gap)) * (var(--cols) - 1));height:14px;border-right:2px solid var(--gold);border-bottom:2px solid var(--gold);box-sizing:content-box;pointer-events:none}
+.rm-tile.rowend:not(.last)::before{content:"";position:absolute;top:calc(100% + 16px);left:calc(-1 * (100% + var(--gap)) * (var(--cols) - 1) + 50% - 5px);border:5px solid transparent;border-top-color:var(--gold);border-bottom:0;pointer-events:none}
+.rm-tile.has-panel::after,.rm-tile.has-panel::before{display:none}
+.rm-goal-tile{grid-column:1/-1;text-align:center;border:2px dashed var(--gold);border-radius:12px;padding:10px;font-weight:700;font-size:14px}
+/* 開いた月の詳細（その段のすぐ下） */
+.rm-panel{grid-column:1/-1;position:relative;margin:-18px 0 0;border:2px solid var(--gold);border-radius:14px;padding:14px 12px 12px;background:#fbf8f1}
+.rm-panel::before{content:"";position:absolute;top:-11px;left:calc(var(--px, 50%) - 10px);border:10px solid transparent;border-bottom-color:var(--gold);border-top:0}
+.rm-panel::after{content:"";position:absolute;top:-8px;left:calc(var(--px, 50%) - 8px);border:8px solid transparent;border-bottom-color:#fbf8f1;border-top:0}
+.rm-panel h3{margin:2px 0 6px;font-size:16px;color:var(--ink)}
+.rm-panel .drill-card{border:0;padding:6px 0 0;background:none;margin:0}
+.rm-panel.locked{background:#fff;border-color:var(--line)}
+.rm-panel.locked::after{border-bottom-color:#fff}
+.rm-panel.locked::before{border-bottom-color:var(--line)}
+.rm-close{position:absolute;top:6px;right:8px;background:none;color:var(--muted);font-size:20px;padding:2px 8px;line-height:1}
+@media (min-width:700px){.rm-grid{--gap:22px}.rm-tile{min-height:92px}.rm-tile b{font-size:14px}}
