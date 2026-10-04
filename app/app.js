@@ -1085,6 +1085,14 @@ async function render() {
     return paint(await viewMemberHome());
   } catch (e) {
     console.error(e);
+    // データベースの更新（SQL の実行）がまだのときは、分かりやすく案内する
+    const needsSql = ['42P01', '42703', 'PGRST200', 'PGRST204', 'PGRST205', '42883'].includes(e.code) || /schema cache|does not exist/i.test(e.message || '');
+    if (needsSql) {
+      return paint(`<div class="content"><div class="error"><b>この画面はまだ準備中です。</b><br>${state.profile?.role === 'admin'
+        ? 'データベースの更新が必要です。Supabase の SQL Editor で、supabase/migrations/ の新しい SQL ファイルを実行してください。'
+        : '時間をおいてもう一度お試しください。'}<br><span class="muted small">（${esc(e.message)}）</span></div>
+        <button data-action="reload">再読み込み</button> <a class="btn btn-sub" href="#/">ホームへ</a></div>`);
+    }
     paint(`<div class="content"><div class="error">読み込みに失敗しました：${esc(e.message)}</div>
       <button data-action="reload">再読み込み</button> <button class="btn-sub" data-action="logout">ログアウト</button></div>`);
   }
