@@ -49,6 +49,15 @@ function youtubeId(url) {
   return n ? n.slice(-11) : null;
 }
 // ---------- お客様のスイング動画（Storage に保存） ----------
+// Myクラブセッティングで選べる一般的なクラブ（自由入力で追加もできる）
+const CLUB_PRESETS = ['ドライバー', '3W', '5W', '7W', '3U', '4U', '5U', '4I', '5I', '6I', '7I', '8I', '9I', 'PW', 'AW', 'SW', 'LW', 'パター'];
+// Myクラブセッティングを登録していない会員に出す、これまでの選択肢
+const DEFAULT_CLUB_OPTIONS = ['ドライバー', 'フェアウェイウッド', 'ユーティリティ', 'アイアン', 'ウェッジ', 'パター', 'その他'];
+
+function clubChip(name, checked) {
+  return `<label class="chip"><input type="checkbox" name="club" value="${esc(name)}"${checked ? ' checked' : ''}><span>${esc(name)}</span></label>`;
+}
+
 const VIDEO_BUCKET = 'swing-videos';
 const RETENTION_LABEL = '3か月';
 
@@ -354,6 +363,7 @@ async function viewMemberHome() {
 async function viewSubmit() {
   const p = state.profile;
   const quota = planOf(p.plan)?.monthly?.submissions;
+  const myClubs = p.clubs || [];
   const monthSubs = quota ? await must(sb.from('submissions').select('id').eq('member_id', p.id).gte('created_at', monthStart())) : [];
   return header('スイング動画を送る') + `<div class="content">
     ${quota ? `<div class="card"><div class="between"><span>今月の提出</span><b>${monthSubs.length} / ${quota} 本</b></div>
@@ -369,10 +379,12 @@ async function viewSubmit() {
       <video id="video-preview" class="swing-video hidden" controls playsinline muted></video>
       <div class="grid">
         <div><label for="club">クラブ</label><select id="club" name="club">
-          <option>ドライバー</option><option>フェアウェイウッド</option><option>ユーティリティ</option>
-          <option>アイアン</option><option>ウェッジ</option><option>パター</option><option>その他</option></select></div>
+          ${(myClubs.length ? [...myClubs, 'その他'] : DEFAULT_CLUB_OPTIONS).map((c) => `<option>${esc(c)}</option>`).join('')}</select></div>
         <div><label for="angle">撮影方向</label><select id="angle" name="angle"><option>正面</option><option>後方</option><option>その他</option></select></div>
       </div>
+      ${myClubs.length
+        ? '<p class="muted small" style="margin:8px 0 0">クラブはMyクラブセッティングから表示しています。<a href="#/account/clubs">変更する</a></p>'
+        : '<p class="tip">アカウントの<a href="#/account/clubs">「Myクラブセッティング」</a>を登録すると、お使いのクラブから選べるようになります。</p>'}
       <label for="question">お悩み・質問（文章で）</label>
       <textarea id="question" name="question" rows="5" maxlength="2000" placeholder="例：最近ドライバーが右に出ます。前回の課題はだいぶできるようになりました。"></textarea>
       <div id="upload-progress" class="hidden" aria-live="polite">
@@ -456,6 +468,19 @@ function viewAccount() {
       <label>メールアドレス</label><div>${esc(p.email || state.session.user.email)}</div>
       <button class="btn-block btn-sub" type="submit">名前を保存</button>
     </form>
+    ${admin ? '' : (() => {
+      const mine = p.clubs || [];
+      const custom = mine.filter((c) => !CLUB_PRESETS.includes(c));
+      return `<form class="card form" data-form="clubs" id="clubs">
+        <div class="between"><b>Myクラブセッティング</b><span class="muted small">${mine.length ? `${mine.length}本登録中` : '未登録'}</span></div>
+        <p class="muted small" style="margin:6px 0 0">お使いのクラブを選んで保存すると、動画を送るときにこのクラブから選べるようになります。</p>
+        <div class="club-grid" id="club-grid">${CLUB_PRESETS.map((c) => clubChip(c, mine.includes(c))).join('')}${custom.map((c) => clubChip(c, true)).join('')}</div>
+        <label for="club-custom">リストにないクラブを追加</label>
+        <div class="row"><input id="club-custom" class="grow" maxlength="20" placeholder="例：ユーティリティ 22°、52° ウェッジ">
+          <button type="button" class="btn-sub" data-action="add-club" style="flex:none">追加</button></div>
+        <button class="btn-block btn-gold" type="submit">Myクラブセッティングを保存</button>
+      </form>`;
+    })()}
     ${admin ? '<div class="card"><span class="pill">ADMIN</span> 管理者アカウントです</div>' : `<div class="card">
       <div class="between"><b>ご契約</b>${memberPill(p)}</div>
       <div class="list-item"><span>プラン</span><b>${esc(planLabel(p.plan) || '—')}</b></div>
@@ -618,7 +643,11 @@ async function render() {
 
     const p = state.profile;
     const r = getRoute();
-    if (r[0] === 'account') return paint(viewAccount());
+    if (r[0] === 'account') {
+      paint(viewAccount());
+      if (r[1] === 'clubs') document.getElementById('clubs')?.scrollIntoView({ block: 'start' });
+      return;
+    }
 
     if (p.role === 'admin') {
       if (r[0] !== 'admin') return go('admin/inbox');
@@ -649,6 +678,16 @@ async function render() {
 
 const actions = {
   'auth-tab': (el) => { state.authTab = el.dataset.tab; state.authMessage = ''; render(); },
+  'add-club': () => {
+    const input = document.getElementById('club-custom');
+    const name = input.value.trim().slice(0, 20);
+    if (!name) { input.focus(); return; }
+    const grid = document.getElementById('club-grid');
+    const exists = [...grid.querySelectorAll('input[name="club"]')].find((i) => i.value === name);
+    if (exists) { exists.checked = true; } else { grid.insertAdjacentHTML('beforeend', clubChip(name, true)); }
+    input.value = '';
+    toast(`「${name}」を追加しました。保存すると反映されます`);
+  },
   'toggle-password': (el) => {
     const input = el.parentElement.querySelector('input');
     const show = input.type === 'password';
@@ -735,6 +774,19 @@ const forms = {
     const { error } = await sb.auth.updateUser({ password: f.password.value });
     if (error) throw error;
     f.reset(); toast('パスワードを変更しました');
+  },
+  clubs: async (f) => {
+    const picked = [...f.querySelectorAll('input[name="club"]:checked')].map((i) => i.value.trim()).filter(Boolean);
+    const clubs = [...new Set(picked)];
+    clubs.sort((a, b) => {
+      const ia = CLUB_PRESETS.indexOf(a); const ib = CLUB_PRESETS.indexOf(b);
+      return (ia < 0 ? 999 : ia) - (ib < 0 ? 999 : ib);
+    });
+    if (clubs.length > 30) throw new Error('登録できるクラブは30本までです');
+    await must(sb.from('profiles').update({ clubs }).eq('id', state.profile.id));
+    await loadProfile();
+    toast(clubs.length ? `Myクラブセッティングを保存しました（${clubs.length}本）` : 'Myクラブセッティングを解除しました');
+    render();
   },
   'profile-name': async (f) => {
     await must(sb.from('profiles').update({ name: f.name.value.trim() }).eq('id', state.profile.id));

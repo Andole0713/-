@@ -122,6 +122,17 @@ body.on-auth .app{background:transparent;max-width:none}
 .video{position:relative;padding-top:56.25%;border-radius:14px;overflow:hidden;background:#000;margin:10px 0}
 .video iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
 .pre{white-space:pre-wrap;word-break:break-word}
+/* Myクラブセッティング */
+#clubs{scroll-margin-top:84px}
+.club-grid{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.form label.chip{margin:0;font-weight:500;letter-spacing:.02em}
+.chip{position:relative;cursor:pointer}
+.chip input{position:absolute;opacity:0;width:1px;height:1px}
+.chip span{display:inline-block;min-width:56px;text-align:center;padding:8px 14px;border:1px solid var(--line);border-radius:999px;background:#fff;font-size:14px;color:var(--text)}
+.chip input:checked + span{background:var(--ink);border-color:var(--ink);color:var(--gold-2);font-weight:700}
+.chip input:focus-visible + span{outline:2px solid var(--gold);outline-offset:2px}
+.tip{margin:10px 0 0;font-size:12.5px;background:#fbf5e6;border:1px dashed var(--gold);border-radius:10px;padding:8px 12px;color:var(--text)}
+.tip a{color:var(--gold);font-weight:700}
 /* 最新のレッスン */
 .lesson-feature{display:block;text-decoration:none;color:var(--text);background:#fff;border:2px solid var(--gold);border-radius:18px;padding:20px 20px 18px;margin:12px 0;box-shadow:0 8px 24px rgba(15,23,18,.07);transition:transform .15s}
 .lesson-feature:hover{transform:translateY(-1px)}

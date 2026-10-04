@@ -39,6 +39,7 @@
    - Region は **Northeast Asia (Tokyo)** を選択
    - Database Password は安全な場所に保管
 2. 左メニュー **SQL Editor** を開き、`supabase/migrations/20260926000000_init.sql` の中身をすべて貼り付けて **Run**
+   - あとから追加された設定ファイル（`supabase/migrations/` の日付が新しいもの。例：`20261004000000_my_clubs.sql`）も、同じように古い順に実行してください。初期設定を新しく実行した場合も、重ねて実行して問題ありません
 3. 動画の保存場所を確認
    - 左メニュー **Storage** に `swing-videos`（非公開）ができていることを確認
    - **Project Settings → Storage** の **Upload file size limit** を大きめ（例：5GB）に変更（1本あたりの上限は設けない運用のため。Pro プランで変更できます）
