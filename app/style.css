@@ -177,3 +177,9 @@ summary{cursor:pointer;font-weight:700;font-size:14px}
 .list-item{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:12px 0;border-bottom:1px solid var(--line)}
 .list-item:last-child{border-bottom:0}
 @media(max-width:420px){.content{padding:16px 14px 24px}.hero h1{font-size:20px}}
+.meeting-book{margin-top:14px;padding-top:12px;border-top:1px solid var(--line, #e6e0d2)}
+.meeting-book p{margin:0 0 8px}
+.limit{border:1px solid var(--gold);text-align:center}
+.limit b{display:block;font-size:17px;margin-bottom:6px}
+.limit p{margin:0 0 10px}
+.center{text-align:center}
