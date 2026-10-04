@@ -881,7 +881,7 @@ async function viewDrills() {
   ]);
   const used = links.reduce((m, x) => m.set(x.drill_id, (m.get(x.drill_id) || 0) + 1), new Map());
   return header('ドリル集') + `<div class="content">
-    <p class="muted small" style="margin:0 0 8px">ここに登録したドリルは、レッスン作成画面で選んで会員に送れます。同じドリルを何人にでも使い回せるので、保存容量を節約できます。</p>
+    <p class="muted small" style="margin:0 0 8px">ここに登録したドリルは、レッスン作成画面の「ドリル動画」の欄にチェックで選べるようになり、会員に送れます。同じドリルを何人にでも使い回せるので、保存容量を節約できます。</p>
     <details class="card add-drill"${drills.length ? '' : ' open'}><summary><b>＋ 新しいドリルを登録</b></summary>
       <form class="form" data-form="drill-new">${drillFields('nd_')}
         <button class="btn-block" type="submit">ドリルを登録する</button></form>
@@ -1006,7 +1006,7 @@ async function viewLessonForm(route) {
   const [member, urls, library, picked] = await Promise.all([
     must(sb.from('profiles').select('id, name').eq('id', memberId).maybeSingle()),
     signedVideoUrls([submission]),
-    must(sb.from('drills').select('id, title, video_path').order('created_at', { ascending: false })),
+    must(sb.from('drills').select('id, title, description, video_path').order('created_at', { ascending: false })),
     lesson.id ? must(sb.from('lesson_drills').select('drill_id').eq('lesson_id', lesson.id)) : [],
   ]);
   const pickedIds = new Set(picked.map((x) => x.drill_id));
@@ -1023,10 +1023,14 @@ async function viewLessonForm(route) {
       <p class="muted small" style="margin:4px 0 0">空行で段落が分かれます。行の先頭に「・」を付けると箇条書きになり、その直前の短い行（例：ポイント）は見出しになります。</p>
       <label for="practice">次回までの練習</label><textarea id="practice" name="practice" rows="4" maxlength="2000" placeholder="① ハーフスイング 20球&#10;② 7I 30球">${esc(lesson.practice)}</textarea>
       <label for="video_url">コーチの解説動画（YouTube・任意）</label><input id="video_url" name="video_url" type="url" value="${esc(lesson.video_url || '')}" placeholder="https://youtu.be/...">
-      <fieldset class="drill-pick"><legend>ドリル動画（任意・複数選べます）</legend>
+      <fieldset class="drill-pick"><legend>ドリル動画（任意）</legend>
+        <div class="between small"><span>ドリル集から選ぶ（<b>${library.length}</b>件）</span><span class="drill-count" id="drill-count" aria-live="polite">選択中 <b>${pickedIds.size}</b>件</span></div>
         ${library.length ? `<input type="search" class="drill-search" placeholder="ドリル名で絞り込む" data-action="filter-drills" aria-label="ドリル名で絞り込む">
-        <div class="drill-options">${library.map((d) => `<label class="chip drill-opt"><input type="checkbox" name="drill" value="${d.id}"${pickedIds.has(d.id) ? ' checked' : ''}><span>${esc(d.title)}</span></label>`).join('')}</div>`
-          : '<p class="muted small">まだドリル集にドリルがありません。下から新しく登録できます。</p>'}
+        <div class="drill-options">${library.map((d) => `<label class="drill-opt">
+            <input type="checkbox" name="drill" value="${d.id}"${pickedIds.has(d.id) ? ' checked' : ''}>
+            <span class="grow"><b>${esc(d.title)}</b>${d.description ? `<small>${esc(d.description.split('\n')[0].slice(0, 40))}</small>` : ''}</span>
+            <span class="drill-type">${d.video_path ? '動画' : 'YouTube'}</span></label>`).join('')}</div>`
+          : '<p class="muted small">まだドリル集にドリルがありません。下の「新しいドリルを登録して付ける」か、メニューの<a href="#/admin/drills">ドリル集</a>から登録できます。</p>'}
         <details class="add-drill"><summary>＋ 新しいドリルを登録して付ける</summary>${drillFields('ld_')}</details>
       </fieldset>
       ${lesson.id ? '' : '<label class="switch"><input type="checkbox" name="notify" checked><span>会員にメールでお知らせする</span></label>'}
@@ -1415,6 +1419,12 @@ document.addEventListener('submit', async (ev) => {
 // 動画を選んだら、ファイル名と容量を表示してプレビューする
 let previewUrl = null;
 document.addEventListener('change', (ev) => {
+  if (ev.target.name === 'drill') {
+    const n = document.querySelectorAll('input[name="drill"]:checked').length;
+    const c = document.getElementById('drill-count');
+    if (c) c.innerHTML = `選択中 <b>${n}</b>件`;
+    return;
+  }
   if (ev.target.id !== 'video') return;
   const file = ev.target.files[0];
   const name = document.getElementById('video-name');
