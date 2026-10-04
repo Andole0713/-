@@ -438,3 +438,19 @@ details.rm-edit[open] .rm-no::before{content:"▾ "}
 .rm-panel.locked::before{border-bottom-color:var(--line)}
 .rm-close{position:absolute;top:6px;right:8px;background:none;color:var(--muted);font-size:20px;padding:2px 8px;line-height:1}
 @media (min-width:700px){.rm-grid{--gap:22px}.rm-tile{min-height:92px}.rm-tile b{font-size:14px}}
+/* 今月のマスを目立たせる */
+.rm-grid{padding-top:10px}
+.rm-tile.current{background:linear-gradient(150deg,#22342a,var(--ink) 70%);border:2px solid var(--gold);box-shadow:0 0 0 3px rgba(200,169,106,.35),0 10px 22px rgba(15,23,18,.28);transform:scale(1.06);z-index:1}
+.rm-tile.current b{color:#fff;font-size:13.5px}
+.rm-tile.current .st{color:var(--gold-2)}
+.rm-tile .now{position:absolute;top:-11px;left:50%;transform:translateX(-50%);white-space:nowrap;background:linear-gradient(135deg,var(--gold-2),var(--gold));color:var(--ink);font-size:11px;font-weight:800;letter-spacing:.1em;border-radius:999px;padding:1px 10px;box-shadow:0 2px 6px rgba(0,0,0,.2)}
+.rm-tile.current .no{color:var(--gold-2)}
+@keyframes rmGlow{0%,100%{box-shadow:0 0 0 3px rgba(200,169,106,.35),0 10px 22px rgba(15,23,18,.28)}50%{box-shadow:0 0 0 7px rgba(200,169,106,.18),0 10px 22px rgba(15,23,18,.28)}}
+.rm-tile.current:not(.active){animation:rmGlow 2.2s ease-in-out infinite}
+@media (prefers-reduced-motion:reduce){.rm-tile.current{animation:none!important}}
+.rm-tile.current.active{box-shadow:0 0 0 4px rgba(200,169,106,.7),0 10px 22px rgba(15,23,18,.28)}
+/* 開いた詳細が今月のときも金色を強く */
+.rm-panel.current{border-width:3px;background:linear-gradient(180deg,#fbf3df,#fbf8f1 120px)}
+.rm-panel.current::after{border-bottom-color:#fbf3df}
+.rm-panel.current .rm-badge{font-size:12.5px;padding:3px 12px;background:linear-gradient(135deg,var(--gold-2),var(--gold));color:var(--ink)}
+.rm-panel.current h3{font-size:18px}

@@ -882,7 +882,7 @@ function roadmapView(items, urls, extra = {}) {
       const cls = isCurrent ? 'current' : isOpen ? 'done' : 'locked';
       const icon = isCurrent ? '▶' : isOpen ? '✓' : '🔒';
       return `<button type="button" class="rm-tile ${cls}" data-action="rm-open" data-i="${i}" aria-expanded="false" aria-controls="rm-panel-${i}">
-          <span class="no">${i + 1}か月目</span><span class="st" aria-hidden="true">${icon}</span>
+          ${isCurrent ? '<span class="now">今月</span>' : ''}<span class="no">${i + 1}か月目</span><span class="st" aria-hidden="true">${icon}</span>
           ${isNew ? '<span class="dot" aria-label="NEW"></span>' : ''}
           <b>${esc(r.theme || (r.drills?.title ?? 'テーマ準備中'))}</b></button>`;
     }).join('')}
