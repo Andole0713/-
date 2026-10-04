@@ -288,6 +288,16 @@ function meetingWhen(iso) {
 }
 const monthStart = () => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1).toISOString(); };
 // 今月の1日（YYYY-MM-01）。追加本数が有効な月の判定に使う
+// 日付（YYYY-MM-DD）に月を足す。日は28日までにそろえる（どの月にもある日）
+function addMonths(ymd, n) {
+  const [y, m, d] = ymd.split('-').map(Number);
+  const t = new Date(y, m - 1 + n, Math.min(d, 28));
+  return t.toLocaleDateString('sv-SE');
+}
+const fmtMonth = (ymd) => `${Number(ymd.slice(0, 4))}年${Number(ymd.slice(5, 7))}月`;
+const fmtMD = (ymd) => `${Number(ymd.slice(5, 7))}/${Number(ymd.slice(8, 10))}`;
+// ロードマップの月が会員に公開済みか（公開日が来た、または前倒しで公開した）
+const rmOpen = (r) => Boolean(r.published_at) || r.publish_on <= today();
 const monthKey = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`; };
 // 今月の追加本数（LINE で申し込み → コーチが会員詳細で設定。月が変わると 0 本）
 const extraThisMonth = (p) => (p.extra_submissions_month === monthKey() ? p.extra_submissions || 0 : 0);
@@ -446,13 +456,16 @@ function viewPlans() {
 async function viewMemberHome() {
   const p = state.profile;
   const since = monthStart();
-  const [tasks, lessons, subs, monthSubs, monthLessons] = await Promise.all([
+  const [tasks, lessons, subs, monthSubs, monthLessons, roadmap] = await Promise.all([
     must(sb.from('tasks').select('*').eq('member_id', p.id).order('sort_order').order('created_at')),
     must(sb.from('lessons').select('id, lesson_date, title, point, practice, practice_done, read_at').eq('member_id', p.id).order('lesson_date', { ascending: false }).order('created_at', { ascending: false }).limit(1)),
     must(sb.from('submissions').select('id, created_at, club, status').eq('member_id', p.id).eq('status', 'pending').order('created_at', { ascending: false })),
     must(sb.from('submissions').select('id').eq('member_id', p.id).gte('created_at', since)),
     must(sb.from('lessons').select('id').eq('member_id', p.id).gte('created_at', since)),
+    must(sb.from('roadmap_items').select('id, publish_on, theme, published_at, drills(title)').eq('member_id', p.id).order('publish_on')),
   ]);
+  const rmOpened = roadmap.filter(rmOpen);
+  const rmNow = rmOpened[rmOpened.length - 1];
   const latest = lessons[0];
   const done = tasks.filter((t) => t.done).length;
   const plan = planOf(p.plan);
@@ -486,6 +499,11 @@ async function viewMemberHome() {
         ${lineBtn('LINEで面談を予約する')}
       </div>
     </div>
+    ${rmNow ? `<a class="rm-home" href="#/drills">
+        <span class="rm-badge">今月のドリル</span><span class="rm-home-step">${rmOpened.length}/${roadmap.length}か月目</span>
+        <h3>${esc(rmNow.theme || rmNow.drills?.title || 'ドリル')}</h3>
+        ${rmNow.drills && rmNow.theme ? `<p>${esc(rmNow.drills.title)}</p>` : ''}
+        <span class="go">ドリルを見る <i aria-hidden="true">›</i></span></a>` : ''}
     <div class="section-title"><div><div class="eyebrow">Practice</div><h2>今月の課題</h2></div><span class="muted">${done}/${tasks.length}</span></div>
     ${tasks.length ? tasks.map((t) => `<button type="button" class="task${t.done ? ' done' : ''}" data-action="toggle-task" data-id="${t.id}" data-done="${t.done}" aria-pressed="${t.done}">
         <span class="check">${t.done ? '✓' : ''}</span><span><b>${esc(t.title)}</b><div class="muted">${esc(t.detail)}</div></span></button>`).join('')
@@ -778,22 +796,54 @@ function viewAccount() {
 }
 
 // 会員：これまでに届いたドリル（契約中はずっと見られる）
+// 会員：ロードマップ（毎月1本のドリルの定期公開）
+function roadmapView(items, urls) {
+  if (!items.length) return '';
+  const open = items.filter(rmOpen);
+  const current = open[open.length - 1];
+  const step = open.length;
+  return `<section class="roadmap">
+    <div class="rm-head">
+      <div><div class="eyebrow">Roadmap</div><h2>あなたのロードマップ</h2></div>
+      <div class="rm-step"><b>${step}</b><small>/${items.length}か月</small></div>
+    </div>
+    <div class="meter"><i style="width:${Math.round((step / items.length) * 100)}%"></i></div>
+    <p class="muted small" style="margin:8px 0 0">毎月1本、あなた専用のドリルが公開されます。ご契約中はいつでも見返せます。</p>
+    <ol class="rm-timeline">${items.map((r, i) => {
+      const isOpen = rmOpen(r);
+      const isCurrent = r === current;
+      const head = `<div class="rm-month">${i + 1}か月目・${fmtMonth(r.publish_on)}</div><h3>${esc(r.theme || (r.drills?.title ?? 'テーマ準備中'))}</h3>`;
+      const body = isOpen
+        ? `${r.note ? `<p class="rm-note pre">${esc(r.note)}</p>` : ''}${r.drills ? drillCard(r.drills, urls) : '<p class="muted small">ドリルは準備中です。もうしばらくお待ちください。</p>'}`
+        : `<p class="rm-lock">🔒 ${fmtMD(r.publish_on)} に公開予定</p>`;
+      const cls = isCurrent ? 'current' : isOpen ? 'done' : 'locked';
+      return `<li class="rm-item ${cls}"><span class="rm-dot" aria-hidden="true">${isOpen && !isCurrent ? '✓' : i + 1}</span>
+        <div class="rm-body">${isCurrent ? `<span class="rm-badge">今月のドリル</span>${head}${body}`
+          : isOpen ? `<details><summary>${head}</summary>${body}</details>` : head + body}</div></li>`;
+    }).join('')}</ol>
+  </section>`;
+}
+
 async function viewMemberDrills() {
   const p = state.profile;
-  const rows = await must(sb.from('lesson_drills')
-    .select('sort_order, drills(*), lessons!inner(id, title, lesson_date, member_id)')
-    .eq('lessons.member_id', p.id));
+  const [rows, roadmap] = await Promise.all([
+    must(sb.from('lesson_drills')
+      .select('sort_order, drills(*), lessons!inner(id, title, lesson_date, member_id)')
+      .eq('lessons.member_id', p.id)),
+    must(sb.from('roadmap_items').select('id, publish_on, theme, note, published_at, drills(*)').eq('member_id', p.id).order('publish_on')),
+  ]);
   // 同じドリルが何度か届いた場合は、いちばん新しいレッスンにまとめる
   const byDrill = new Map();
   rows.filter((r) => r.drills).sort((a, b) => (a.lessons.lesson_date < b.lessons.lesson_date ? 1 : -1))
     .forEach((r) => { if (!byDrill.has(r.drills.id)) byDrill.set(r.drills.id, r); });
   const list = [...byDrill.values()];
-  const urls = await signedDrillUrls(list.map((r) => r.drills));
+  const urls = await signedDrillUrls([...list.map((r) => r.drills), ...roadmap.filter(rmOpen).map((r) => r.drills)]);
   return header('ドリル') + `<div class="content">
-    <p class="muted small" style="margin:0 0 8px">コーチから届いたドリル動画です。ご契約中は、いつでも見返せます。</p>
+    ${roadmapView(roadmap, urls)}
+    <div class="section-title"><div><div class="eyebrow">From Lessons</div><h2>レッスンで届いたドリル</h2></div></div>
     ${list.length ? list.map((r) => drillCard(r.drills, urls,
       `<a class="drill-from" href="#/lesson/${r.lessons.id}">${fmtDate(r.lessons.lesson_date)} のレッスン「${esc(r.lessons.title)}」より ›</a>`)).join('')
-      : '<div class="empty">まだドリルはありません。コーチからレッスンでドリルが届くと、ここにたまっていきます。</div>'}
+      : '<div class="empty">コーチからレッスンでドリルが届くと、ここにたまっていきます。</div>'}
   </div>` + memberNav('drills');
 }
 
@@ -873,6 +923,76 @@ function viewInstall() {
 
 // ---------- 画面：管理者 ----------
 
+// 会員詳細に出すロードマップの流れ（確認用）
+function adminRoadmapSummary(items) {
+  const done = items.filter(rmOpen).length;
+  return `<div class="between small"><span>${done}/${items.length}か月 公開済み</span><span class="muted">次回：${items.find((r) => !rmOpen(r)) ? fmtDate(items.find((r) => !rmOpen(r)).publish_on) : '—'}</span></div>
+    <div class="meter"><i style="width:${Math.round((done / items.length) * 100)}%"></i></div>
+    <ol class="rm-mini">${items.map((r, i) => `<li class="${rmOpen(r) ? 'open' : ''}">
+      <span class="n">${i + 1}</span>
+      <span class="grow"><b>${esc(r.theme || '（テーマ未定）')}</b><small>${fmtDate(r.publish_on)}・${r.drills ? esc(r.drills.title) : '<em>ドリル未定</em>'}</small></span>
+      <span class="pill ${rmOpen(r) ? 'ok' : ''}">${rmOpen(r) ? '公開済み' : '予定'}</span></li>`).join('')}</ol>`;
+}
+
+// ロードマップの編集（保存するまで画面の中だけで変更できる）
+let rmLibrary = [];
+function rmPreview(date, theme, drill) {
+  return `${date ? fmtDate(date) : '公開日未定'}・${esc(theme || 'テーマ未定')}${drill ? '' : '・<em>ドリル未定</em>'}`;
+}
+function rmRow(r, i, expand = false) {
+  const open = r.id && rmOpen(r);
+  return `<details class="rm-edit" data-row data-id="${esc(r.id || '')}"${expand ? ' open' : ''}>
+    <summary class="rm-edit-head"><b class="rm-no">${i + 1}か月目</b>
+      <span class="pill ${open ? 'ok' : ''}">${open ? '公開済み' : r.id ? '予定' : '新規'}</span>
+      <span class="rm-tools">
+        <button type="button" class="btn-sm btn-sub" data-action="rm-move" data-dir="-1" aria-label="上の月と入れ替える">↑</button>
+        <button type="button" class="btn-sm btn-sub" data-action="rm-move" data-dir="1" aria-label="下の月と入れ替える">↓</button>
+        <button type="button" class="btn-sm btn-danger" data-action="rm-remove">削除</button>
+      </span>
+      <span class="rm-prev">${rmPreview(r.publish_on, r.theme, r.drill_id)}</span></summary>
+    <div class="grid">
+      <div><label>公開日</label><input type="date" name="publish_on" value="${esc(r.publish_on)}" required></div>
+      <div><label>ドリル</label><select name="drill_id"><option value="">（未定）</option>${rmLibrary.map((d) => `<option value="${d.id}"${d.id === r.drill_id ? ' selected' : ''}>${esc(d.title)}</option>`).join('')}</select></div>
+    </div>
+    <label>テーマ・目標</label><input name="theme" maxlength="100" value="${esc(r.theme || '')}" placeholder="例：アドレスと前傾角度を安定させる">
+    <label>会員へのひとこと（任意）</label><textarea name="note" rows="2" maxlength="1000" placeholder="例：今月は毎日5分、鏡の前で確認しましょう">${esc(r.note || '')}</textarea>
+    <div class="rm-edit-foot">
+      <button type="button" class="link" data-action="rm-shift">この月から後ろを1か月ずらす</button>
+      ${r.id && !open ? '<label class="switch small"><input type="checkbox" name="publish_now"><span>公開日を待たずに今すぐ公開する</span></label>' : ''}
+    </div>
+  </details>`;
+}
+// 折りたたんだ見出しの内容を、入力に合わせて更新する
+function rmRefresh(row) {
+  const v = (n) => row.querySelector(`[name="${n}"]`).value;
+  row.querySelector('.rm-prev').innerHTML = rmPreview(v('publish_on'), v('theme').trim(), v('drill_id'));
+}
+async function viewRoadmapEdit(memberId) {
+  const [m, items, library] = await Promise.all([
+    must(sb.from('profiles').select('id, name').eq('id', memberId).maybeSingle()),
+    must(sb.from('roadmap_items').select('*').eq('member_id', memberId).order('publish_on')),
+    must(sb.from('drills').select('id, title').order('title')),
+  ]);
+  rmLibrary = library;
+  const back = `admin/member/${memberId}`;
+  if (!m) return header('ロードマップ', back) + '<div class="content"><div class="empty">会員が見つかりません</div></div>';
+  return header(`ロードマップ：${m.name || ''}`, back) + `<div class="content">
+    <p class="muted small" style="margin:0 0 8px">公開日になると、その月のドリルが会員ページに自動で公開されます。変更は「保存する」を押すまで反映されません。</p>
+    ${library.length ? '' : '<div class="notice">ドリル集にドリルがありません。先に<a href="#/admin/drills">ドリル集</a>で登録すると、ここで選べます。</div>'}
+    <form class="form" data-form="roadmap" data-member="${esc(memberId)}" data-deleted="">
+      <p class="muted small" style="margin:0 0 8px">各月を押すと開いて編集できます。</p>
+      <div id="rm-rows">${(() => { const next = items.findIndex((r) => !rmOpen(r)); return items.map((r, i) => rmRow(r, i, i === next)).join(''); })()}</div>
+      <button type="button" class="btn-block btn-sub" data-action="rm-add">＋ 1か月追加</button>
+      <div class="rm-save"><span id="rm-dirty" class="small hidden">未保存の変更があります</span>
+        <button class="btn-block btn-gold" type="submit">保存する</button></div>
+    </form>
+  </div>` + adminNav('admin/members');
+}
+function rmRenumber() {
+  document.querySelectorAll('#rm-rows [data-row]').forEach((row, i) => { row.querySelector('.rm-no').textContent = `${i + 1}か月目`; });
+}
+function rmDirty() { document.getElementById('rm-dirty')?.classList.remove('hidden'); }
+
 // ドリル集（何人の会員にも使い回せる）
 async function viewDrills() {
   const [drills, links] = await Promise.all([
@@ -928,18 +1048,30 @@ async function viewMembers() {
 }
 
 async function viewMemberDetail(id) {
-  const [m, tasks, lessons, subs, monthSubs] = await Promise.all([
+  const [m, tasks, lessons, subs, monthSubs, roadmap] = await Promise.all([
     must(sb.from('profiles').select('*').eq('id', id).maybeSingle()),
     must(sb.from('tasks').select('*').eq('member_id', id).order('sort_order').order('created_at')),
     must(sb.from('lessons').select('id, lesson_date, title').eq('member_id', id).order('lesson_date', { ascending: false }).order('created_at', { ascending: false })),
     must(sb.from('submissions').select('id, created_at, club, angle, status').eq('member_id', id).order('created_at', { ascending: false }).limit(20)),
     must(sb.from('submissions').select('id').eq('member_id', id).gte('created_at', monthStart())),
+    must(sb.from('roadmap_items').select('id, publish_on, theme, published_at, drills(title)').eq('member_id', id).order('publish_on')),
   ]);
   if (!m) return header('会員詳細', 'admin/members') + '<div class="content"><div class="empty">会員が見つかりません</div></div>';
   const self = m.id === state.profile.id;
   return header(m.name || '会員詳細', 'admin/members') + `<div class="content">
     <div class="card"><div class="between"><div><b>${esc(m.email)}</b><div class="muted">登録日 ${fmtDate(m.created_at)}</div></div>${memberPill(m)}</div>
       ${m.current_period_end ? `<div class="muted">次回更新日 ${fmtDate(m.current_period_end)}</div>` : ''}</div>
+
+    <div class="section-title"><h2>ドリル定期公開</h2>${roadmap.length ? `<a class="btn btn-sm" href="#/admin/roadmap/${m.id}">編集する</a>` : ''}</div>
+    <div class="card">${roadmap.length ? adminRoadmapSummary(roadmap) : `
+      <p class="muted small" style="margin:0">初回カウンセリングで決めた内容をもとに、毎月1本ずつ公開するドリルの計画を作ります。あとから自由に変更できます。</p>
+      <form class="form" data-form="roadmap-create" data-id="${m.id}">
+        <div class="grid">
+          <div><label for="rm-start">最初の公開日</label><input id="rm-start" name="start" type="date" value="${today()}" required></div>
+          <div><label for="rm-months">月数</label><input id="rm-months" name="months" type="number" min="1" max="36" value="12" required></div>
+        </div>
+        <button class="btn-block" type="submit">ロードマップを作成する</button>
+      </form>`}</div>
 
     <form class="card form" data-form="admin-profile" data-id="${m.id}">
       <b>会員情報</b>
@@ -1067,6 +1199,7 @@ async function render() {
       if (r[0] !== 'admin') return go('admin/inbox');
       if (r[1] === 'members') return paint(await viewMembers());
       if (r[1] === 'drills') return paint(await viewDrills());
+      if (r[1] === 'roadmap' && r[2]) return paint(await viewRoadmapEdit(r[2]));
       if (r[1] === 'member' && r[2]) return paint(await viewMemberDetail(r[2]));
       if (r[1] === 'lesson' && r[2]) return paint(await viewLessonForm(r));
       return paint(await viewInbox());
@@ -1199,6 +1332,40 @@ const actions = {
   'reset-tasks': async (el) => {
     await must(sb.from('tasks').update({ done: false }).eq('member_id', el.dataset.id));
     toast('完了をリセットしました'); render();
+  },
+  'rm-move': (el) => {
+    const row = el.closest('[data-row]');
+    const other = Number(el.dataset.dir) < 0 ? row.previousElementSibling : row.nextElementSibling;
+    if (!other) return;
+    // 公開日はそのままにして、テーマ・ドリル・ひとことを入れ替える
+    ['theme', 'drill_id', 'note'].forEach((n) => {
+      const a = row.querySelector(`[name="${n}"]`); const b = other.querySelector(`[name="${n}"]`);
+      [a.value, b.value] = [b.value, a.value];
+    });
+    rmRefresh(row); rmRefresh(other); rmDirty();
+  },
+  'rm-shift': (el) => {
+    let row = el.closest('[data-row]');
+    while (row) {
+      const input = row.querySelector('[name="publish_on"]');
+      if (input.value) input.value = addMonths(input.value, 1);
+      rmRefresh(row);
+      row = row.nextElementSibling;
+    }
+    rmDirty(); toast('この月から後ろの公開日を1か月ずらしました（保存すると反映されます）');
+  },
+  'rm-remove': (el) => {
+    const row = el.closest('[data-row]');
+    const f = row.closest('form');
+    if (row.dataset.id) f.dataset.deleted = [f.dataset.deleted, row.dataset.id].filter(Boolean).join(',');
+    row.remove(); rmRenumber(); rmDirty();
+  },
+  'rm-add': () => {
+    const rows = document.querySelectorAll('#rm-rows [data-row]');
+    const last = rows[rows.length - 1]?.querySelector('[name="publish_on"]').value;
+    const html = rmRow({ publish_on: last ? addMonths(last, 1) : today(), theme: '', drill_id: null, note: '' }, rows.length, true);
+    document.getElementById('rm-rows').insertAdjacentHTML('beforeend', html);
+    rmDirty();
   },
   'delete-drill': async (el) => {
     const used = Number(el.dataset.used);
@@ -1343,6 +1510,36 @@ const forms = {
     }));
     render();
   },
+  'roadmap-create': async (f) => {
+    const months = Math.min(36, Math.max(1, Number(f.months.value) || 12));
+    const start = f.start.value;
+    if (!start) throw new Error('最初の公開日を入力してください');
+    await must(sb.from('roadmap_items').insert(Array.from({ length: months }, (_, i) => ({
+      member_id: f.dataset.id, publish_on: addMonths(start, i),
+    }))));
+    toast(`${months}か月分のロードマップを作りました`); go(`admin/roadmap/${f.dataset.id}`);
+  },
+  roadmap: async (f) => {
+    const member_id = f.dataset.member;
+    const rows = [...f.querySelectorAll('[data-row]')].map((row) => ({
+      id: row.dataset.id,
+      publish_on: row.querySelector('[name="publish_on"]').value,
+      theme: row.querySelector('[name="theme"]').value.trim(),
+      drill_id: row.querySelector('[name="drill_id"]').value || null,
+      note: row.querySelector('[name="note"]').value.trim(),
+      now: row.querySelector('[name="publish_now"]')?.checked,
+    }));
+    if (rows.some((r) => !r.publish_on)) throw new Error('すべての月に公開日を入れてください');
+    const deleted = (f.dataset.deleted || '').split(',').filter(Boolean);
+    if (deleted.length) await must(sb.from('roadmap_items').delete().in('id', deleted));
+    await Promise.all(rows.filter((r) => r.id).map((r) => must(sb.from('roadmap_items').update({
+      publish_on: r.publish_on, theme: r.theme, drill_id: r.drill_id, note: r.note,
+      ...(r.now ? { published_at: new Date().toISOString() } : {}),
+    }).eq('id', r.id))));
+    const added = rows.filter((r) => !r.id).map((r) => ({ member_id, publish_on: r.publish_on, theme: r.theme, drill_id: r.drill_id, note: r.note }));
+    if (added.length) await must(sb.from('roadmap_items').insert(added));
+    toast('ロードマップを保存しました'); render();
+  },
   'drill-new': async (f) => {
     await createDrill(drillFromForm(f, 'nd_'), drillProgress('nd_'));
     toast('ドリルを登録しました'); render();
@@ -1395,6 +1592,8 @@ document.addEventListener('click', async (ev) => {
 });
 
 document.addEventListener('input', (ev) => {
+  const rmRowEl = ev.target.closest('form[data-form="roadmap"] [data-row]');
+  if (rmRowEl) { rmDirty(); rmRefresh(rmRowEl); }
   if (ev.target.dataset.action === 'filter-drills') {
     const q = ev.target.value.trim().toLowerCase();
     document.querySelectorAll('.drill-opt').forEach((o) => o.classList.toggle('hidden', q && !o.textContent.toLowerCase().includes(q)));

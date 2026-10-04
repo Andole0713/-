@@ -321,3 +321,63 @@ html[data-fs="xl"] .modal{zoom:1.25}
 .add-drill summary{cursor:pointer;font-weight:700;color:var(--ink);padding:6px 0}
 .drill-pick .add-drill{margin-top:10px;border-top:1px dashed var(--line);padding-top:6px}
 .drill-row{padding:14px 16px}
+/* ロードマップ（会員） */
+.roadmap{background:#fff;border:1px solid var(--line);border-radius:18px;padding:18px 16px 8px;margin:0 0 8px}
+.rm-head{display:flex;justify-content:space-between;align-items:flex-end;gap:10px}
+.rm-head h2{margin:2px 0 6px;font-size:19px}
+.rm-step b{font-size:30px;font-weight:700;color:var(--ink);font-variant-numeric:tabular-nums lining-nums;line-height:1}
+.rm-step small{font-size:13px;color:var(--muted);font-weight:700}
+.rm-timeline{list-style:none;margin:14px 0 0;padding:0;position:relative}
+.rm-timeline::before{content:"";position:absolute;left:15px;top:6px;bottom:18px;width:2px;background:var(--line)}
+.rm-item{position:relative;display:flex;gap:12px;padding:0 0 14px}
+.rm-dot{position:relative;z-index:1;flex:none;width:32px;height:32px;border-radius:50%;display:grid;place-items:center;font-weight:800;font-size:13px;background:#fff;border:2px solid var(--line);color:var(--muted);font-variant-numeric:lining-nums}
+.rm-item.done .rm-dot{background:var(--gold);border-color:var(--gold);color:var(--ink)}
+.rm-item.current .rm-dot{background:var(--ink);border-color:var(--ink);color:var(--gold-2);box-shadow:0 0 0 4px rgba(200,169,106,.3)}
+.rm-body{flex:1;min-width:0;padding-top:4px}
+.rm-month{font-size:12px;color:var(--muted);font-weight:700;letter-spacing:.04em}
+.rm-body h3{margin:2px 0 6px;font-size:15.5px;color:var(--ink)}
+.rm-item.locked h3{color:var(--muted)}
+.rm-lock{margin:0;font-size:12.5px;color:var(--muted)}
+.rm-item.current .rm-body{background:#fbf8f1;border:1px solid var(--gold);border-radius:14px;padding:12px}
+.rm-item.current .drill-card{border:0;padding:6px 0 0;background:none;margin:0}
+.rm-badge{display:inline-block;background:var(--ink);color:var(--gold-2);font-size:11px;font-weight:700;letter-spacing:.08em;border-radius:999px;padding:2px 10px;margin-bottom:4px}
+.rm-note{margin:0 0 8px;font-size:14px;border-left:3px solid var(--gold);padding-left:8px}
+.rm-body details summary{cursor:pointer;list-style:none}
+.rm-body details summary::-webkit-details-marker{display:none}
+.rm-body details summary h3::after{content:" ›";color:var(--gold)}
+.rm-body details[open] .drill-card{margin-top:6px}
+/* ホームの「今月のドリル」 */
+.rm-home{display:block;position:relative;text-decoration:none;color:var(--text);background:#fff;border:2px solid var(--gold);border-radius:18px;padding:16px 18px;margin:14px 0 4px}
+.rm-home-step{position:absolute;top:16px;right:18px;font-size:12px;font-weight:700;color:var(--muted)}
+.rm-home h3{margin:4px 0 2px;font-size:17px;color:var(--ink)}
+.rm-home p{margin:0;font-size:13.5px;color:var(--muted)}
+.rm-home .go{display:block;margin-top:8px;text-align:right;font-weight:700;font-size:13px;color:var(--gold)}
+/* ロードマップ（管理者） */
+.rm-mini{list-style:none;margin:12px 0 0;padding:0}
+.rm-mini li{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line)}
+.rm-mini li:last-child{border-bottom:0}
+.rm-mini .n{flex:none;width:26px;height:26px;border-radius:50%;display:grid;place-items:center;font-size:12px;font-weight:800;border:2px solid var(--line);color:var(--muted)}
+.rm-mini li.open .n{background:var(--gold);border-color:var(--gold);color:var(--ink)}
+.rm-mini b{display:block;font-size:14px}
+.rm-mini small{display:block;font-size:12px;color:var(--muted)}
+.rm-mini em{color:#b4542b;font-style:normal}
+.rm-edit{background:#fff;border:1px solid var(--line);border-radius:16px;padding:14px 14px 12px;margin:0 0 12px}
+.rm-edit-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.rm-tools{margin-left:auto;display:flex;gap:6px}
+.rm-tools .btn-sm{padding:6px 11px}
+.rm-edit-foot{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:8px;margin-top:8px}
+.rm-edit-foot .switch{margin:0}
+.rm-save{position:sticky;bottom:68px;background:var(--paper);padding:8px 0 4px;z-index:2}
+.rm-save .btn-gold{margin-top:4px}
+#rm-dirty{display:block;text-align:center;color:#b4542b;font-weight:700}
+#rm-dirty.hidden{display:none}
+.rm-edit-foot .link{margin:0;display:inline-block;padding:4px 0;color:var(--ink)}
+details.rm-edit > summary{list-style:none;cursor:pointer}
+details.rm-edit > summary::-webkit-details-marker{display:none}
+.rm-prev{flex-basis:100%;font-size:12.5px;color:var(--muted);margin-top:2px}
+.rm-prev em{color:#b4542b;font-style:normal}
+details.rm-edit[open] .rm-prev{display:none}
+details.rm-edit:not([open]){padding-bottom:12px}
+details.rm-edit .rm-no::before{content:"▸ ";color:var(--gold)}
+details.rm-edit[open] .rm-no::before{content:"▾ "}
+.rm-mini .pill{white-space:nowrap;flex:none}
