@@ -116,6 +116,14 @@ body.on-auth .app{background:transparent;max-width:none}
 .video{position:relative;padding-top:56.25%;border-radius:14px;overflow:hidden;background:#000;margin:10px 0}
 .video iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
 .pre{white-space:pre-wrap;word-break:break-word}
+/* スイング動画 */
+.swing-video{display:block;width:100%;max-height:70vh;border-radius:14px;background:#000;margin:10px 0}
+.visually-hidden{position:absolute!important;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.file-pick{display:flex!important;flex-direction:column;align-items:center;gap:4px;margin:0!important;padding:22px 16px;border:1.5px dashed var(--gold);border-radius:16px;background:#fffdf7;cursor:pointer;text-align:center}
+.file-pick-main{font-weight:700;font-size:16px;color:var(--text)}
+.file-pick-sub{font-weight:400;font-size:12.5px;color:var(--muted);word-break:break-all}
+#video:focus-visible + .file-pick{outline:2px solid var(--gold);outline-offset:2px}
+#upload-progress{margin-top:14px}
 .plan{position:relative}
 .plan.rec{border:1px solid var(--gold);box-shadow:0 12px 30px rgba(15,23,18,.08)}
 .plan h3{font-size:20px;margin:6px 0 2px}
