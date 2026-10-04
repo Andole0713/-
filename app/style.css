@@ -299,3 +299,17 @@ html[data-fs="xl"] .app,html[data-fs="xl"] .toast{zoom:1.25}
 @media (prefers-reduced-motion:reduce){.modal-backdrop{animation:none}}
 html[data-fs="l"] .modal{zoom:1.12}
 html[data-fs="xl"] .modal{zoom:1.25}
+/* ドリル */
+.drill-card{background:#fff;border:1px solid var(--line);border-radius:16px;padding:16px;margin:0 0 12px}
+.lesson-sec .drill-card{border:0;border-top:1px dashed var(--line);border-radius:0;padding:14px 0 4px;margin:0}
+.lesson-sec .drill-card:first-of-type{border-top:0;padding-top:0}
+.drill-card h3{margin:0 0 4px;font-size:16.5px;color:var(--ink)}
+.drill-card p{margin:0 0 8px;font-size:14px;color:var(--text)}
+.drill-from{display:inline-block;margin-top:8px;font-size:13px;font-weight:700;color:var(--gold);text-decoration:none}
+.drill-pick{border:1px solid var(--line);border-radius:14px;padding:12px 14px 14px;margin:16px 0 4px}
+.drill-pick legend{font-weight:700;font-size:14px;padding:0 6px}
+.drill-search{margin-bottom:8px}
+.drill-options{display:flex;flex-wrap:wrap;gap:6px;max-height:220px;overflow:auto}
+.add-drill summary{cursor:pointer;font-weight:700;color:var(--ink);padding:6px 0}
+.drill-pick .add-drill{margin-top:10px;border-top:1px dashed var(--line);padding-top:6px}
+.drill-row{padding:14px 16px}

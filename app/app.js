@@ -117,7 +117,7 @@ const VIDEO_BUCKET = 'swing-videos';
 const RETENTION_LABEL = '3か月';
 
 // 動画ファイルを再開できる方式（tus）でアップロードする。大きな動画や途切れやすい回線でも送れる。
-async function uploadVideo(file, path, onProgress) {
+async function uploadVideo(file, path, onProgress, bucket = VIDEO_BUCKET) {
   const { data } = await sb.auth.getSession();
   const token = data.session?.access_token;
   if (!token) throw new Error('ログインし直してください');
@@ -128,7 +128,7 @@ async function uploadVideo(file, path, onProgress) {
       headers: { authorization: `Bearer ${token}`, 'x-upsert': 'false' },
       uploadDataDuringCreation: true,
       removeFingerprintOnSuccess: true,
-      metadata: { bucketName: VIDEO_BUCKET, objectName: path, contentType: file.type || 'video/mp4', cacheControl: '3600' },
+      metadata: { bucketName: bucket, objectName: path, contentType: file.type || 'video/mp4', cacheControl: '3600' },
       chunkSize: 6 * 1024 * 1024, // Supabase の決まり（6MB 単位）
       onError: (e) => reject(new Error('動画を送信できませんでした。電波のよい場所でもう一度お試しください。')),
       onProgress: (sent, total) => onProgress(total ? sent / total : 0),
@@ -162,6 +162,71 @@ function swingVideo(sub, urls) {
   return url
     ? `<video class="swing-video" src="${esc(url)}" controls playsinline preload="metadata"></video>`
     : '<p class="muted small">動画を読み込めませんでした。ページを再読み込みしてください。</p>';
+}
+
+// ---------- ドリル動画（コーチが作る「ドリル集」。契約中はずっと見られる） ----------
+const DRILL_BUCKET = 'drill-videos';
+async function signedDrillUrls(drills) {
+  const paths = drills.filter((d) => d?.video_path).map((d) => d.video_path);
+  if (!paths.length) return {};
+  const { data, error } = await sb.storage.from(DRILL_BUCKET).createSignedUrls([...new Set(paths)], 3600);
+  if (error) throw error;
+  return Object.fromEntries((data || []).filter((d) => d.signedUrl).map((d) => [d.path, d.signedUrl]));
+}
+function drillMedia(d, urls) {
+  if (d.video_path) {
+    const url = urls[d.video_path];
+    return url ? `<video class="swing-video" src="${esc(url)}" controls playsinline preload="metadata"></video>`
+      : '<p class="muted small">動画を読み込めませんでした。ページを再読み込みしてください。</p>';
+  }
+  return d.video_url ? videoEmbed(d.video_url) : '';
+}
+function drillCard(d, urls, extra = '') {
+  return `<article class="drill-card">
+    <h3>${esc(d.title)}</h3>
+    ${d.description ? `<p class="pre">${esc(d.description)}</p>` : ''}
+    ${drillMedia(d, urls)}${extra}
+  </article>`;
+}
+// 管理者：ドリル（動画ファイル または YouTube）を1件追加して、その id を返す
+async function createDrill({ title, description, file, url }, onProgress) {
+  if (!title) throw new Error('ドリル名を入力してください');
+  let video_path = null; let video_url = null;
+  if (file) {
+    if (file.type && !file.type.startsWith('video/')) throw new Error('ドリルは動画ファイルを選んでください');
+    video_path = `drills/${videoFileName(file)}`;
+    await uploadVideo(file, video_path, onProgress, DRILL_BUCKET);
+  } else if (url) {
+    video_url = normalizeYoutube(url);
+    if (!video_url) throw new Error('ドリルの動画は YouTube のリンクを入力してください');
+  } else {
+    throw new Error('ドリルの動画ファイルを選ぶか、YouTube のリンクを入力してください');
+  }
+  const row = await must(sb.from('drills').insert({ title, description, video_path, video_url }).select('id').single());
+  return row.id;
+}
+// 新しいドリルの入力欄（ドリル集の画面とレッスン作成画面で共通）
+function drillFields(prefix) {
+  return `<label for="${prefix}title">ドリル名</label><input id="${prefix}title" name="${prefix}title" maxlength="100" placeholder="例：左足踏み込みドリル">
+    <label for="${prefix}desc">説明（任意）</label><textarea id="${prefix}desc" name="${prefix}desc" rows="3" maxlength="1000" placeholder="例：トップで一瞬止めてから、左足を踏み込んで切り返します。10回×2セット"></textarea>
+    <label for="${prefix}file">動画ファイル</label><input id="${prefix}file" name="${prefix}file" type="file" accept="video/*">
+    <label for="${prefix}url">または YouTube のリンク</label><input id="${prefix}url" name="${prefix}url" type="url" placeholder="https://youtu.be/...">
+    <div id="${prefix}progress" class="hidden" aria-live="polite"><div class="between small"><span>アップロード中…</span><span class="pct">0%</span></div><div class="meter"><i style="width:0%"></i></div></div>`;
+}
+function drillFromForm(f, prefix) {
+  return {
+    title: f[`${prefix}title`].value.trim(), description: f[`${prefix}desc`].value.trim(),
+    file: f[`${prefix}file`].files[0] || null, url: f[`${prefix}url`].value.trim(),
+  };
+}
+function drillProgress(prefix) {
+  const box = document.getElementById(`${prefix}progress`);
+  box?.classList.remove('hidden');
+  return (r) => {
+    if (!box) return;
+    const v = Math.round(r * 100);
+    box.querySelector('i').style.width = `${v}%`; box.querySelector('.pct').textContent = `${v}%`;
+  };
 }
 
 // 送った動画の保存期限（送信から3か月）
@@ -249,6 +314,7 @@ function header(title, back) {
   </div>`;
 }
 const ICON = {
+  target: '<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1"/>',
   home: '<path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/><path d="M10 20v-6h4v6"/>',
   video: '<rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10l5-3v10l-5-3z"/>',
   book: '<path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M4 19V5"/><path d="M8 7h7"/>',
@@ -263,9 +329,9 @@ function nav(items, active) {
     .map(([path, ic, label, badge]) => `<a href="#/${path}" class="${active === path ? 'active' : ''}"${active === path ? ' aria-current="page"' : ''}>${icon(ic)}<span>${label}</span>${badge ? `<em class="nav-badge" aria-label="未読${badge}件">${badge}</em>` : ''}</a>`)
     .join('')}</nav>`;
 }
-const memberNav = (active) => nav([['home', 'home', 'ホーム'], ['submit', 'video', '動画提出'], ['history', 'book', '履歴', state.unread], ['account', 'user', 'アカウント']], active);
+const memberNav = (active) => nav([['home', 'home', 'ホーム'], ['submit', 'video', '動画提出'], ['history', 'book', '履歴', state.unread], ['drills', 'target', 'ドリル'], ['account', 'user', 'アカウント']], active);
 const newBadge = (l) => (l.read_at ? '' : '<span class="new-badge">NEW</span>');
-const adminNav = (active) => nav([['admin/inbox', 'inbox', '提出動画'], ['admin/members', 'users', '会員一覧'], ['account', 'user', 'アカウント']], active);
+const adminNav = (active) => nav([['admin/inbox', 'inbox', '提出動画'], ['admin/members', 'users', '会員一覧'], ['admin/drills', 'target', 'ドリル集'], ['account', 'user', 'アカウント']], active);
 
 async function must(promise) {
   const { data, error } = await promise;
@@ -600,7 +666,12 @@ const secTitle = (icon, label) => `<h2 class="sec-h"><i aria-hidden="true">${ico
 async function viewLesson(id, back = 'history') {
   const l = await must(sb.from('lessons').select('*, submissions(video_path, video_deleted_at, question)').eq('id', id).maybeSingle());
   if (!l) return header('レッスン詳細', back) + '<div class="content"><div class="empty">レッスンが見つかりません</div></div>';
-  const urls = await signedVideoUrls([l.submissions]);
+  const [urls, links] = await Promise.all([
+    signedVideoUrls([l.submissions]),
+    must(sb.from('lesson_drills').select('sort_order, drills(*)').eq('lesson_id', l.id).order('sort_order')),
+  ]);
+  const drills = links.map((x) => x.drills).filter(Boolean);
+  const drillUrls = await signedDrillUrls(drills);
   const mine = l.member_id === state.profile.id;
   if (mine && !l.read_at) {
     const { error } = await sb.rpc('mark_lesson_read', { p_lesson: l.id });
@@ -613,11 +684,14 @@ async function viewLesson(id, back = 'history') {
       ${l.point ? `<div class="diag"><span>今回の診断</span><p>${esc(l.point)}</p></div>` : ''}
     </div>
     ${l.video_url ? `<section class="card lesson-sec">${secTitle('▶', 'コーチの解説動画')}${videoEmbed(l.video_url)}</section>` : ''}
+    ${drills.length ? `<section class="card lesson-sec">${secTitle('◎', 'ドリル動画')}
+        ${mine ? '<p class="muted small" style="margin:-4px 0 6px">ドリルは「ドリル」のページにもたまっていきます。契約中はいつでも見返せます。</p>' : ''}
+        ${drills.map((d) => drillCard(d, drillUrls)).join('')}</section>` : ''}
     ${l.feedback ? `<section class="card lesson-sec">${secTitle('✎', 'コーチからのフィードバック')}<div class="fb">${richText(l.feedback)}</div></section>` : ''}
     ${l.practice ? `<section class="card lesson-sec practice">${secTitle('✓', '次回までの練習')}
         ${mine ? '<p class="muted small" style="margin:-4px 0 4px">練習したらタップしてチェックしましょう。</p>' : ''}
         ${drillList(l.practice, l.practice_done || [], mine ? l.id : null)}</section>` : ''}
-    ${l.submissions ? `<section class="card lesson-sec">${secTitle('◎', '送った動画')}${swingVideo(l.submissions, urls)}
+    ${l.submissions ? `<section class="card lesson-sec">${secTitle('◉', '送った動画')}${swingVideo(l.submissions, urls)}
         ${mine ? `<a class="muted small" href="#/submission/${l.submission_id}">送った動画の詳細（保存期限など）›</a>` : ''}
         ${l.submissions.question ? `<div class="my-q"><span>送ったときのお悩み・質問</span><p class="pre">${esc(l.submissions.question)}</p></div>` : ''}</section>` : ''}
   </div>` + (state.profile.role === 'admin' ? '' : memberNav('history'));
@@ -703,6 +777,26 @@ function viewAccount() {
   </div>` + navHtml;
 }
 
+// 会員：これまでに届いたドリル（契約中はずっと見られる）
+async function viewMemberDrills() {
+  const p = state.profile;
+  const rows = await must(sb.from('lesson_drills')
+    .select('sort_order, drills(*), lessons!inner(id, title, lesson_date, member_id)')
+    .eq('lessons.member_id', p.id));
+  // 同じドリルが何度か届いた場合は、いちばん新しいレッスンにまとめる
+  const byDrill = new Map();
+  rows.filter((r) => r.drills).sort((a, b) => (a.lessons.lesson_date < b.lessons.lesson_date ? 1 : -1))
+    .forEach((r) => { if (!byDrill.has(r.drills.id)) byDrill.set(r.drills.id, r); });
+  const list = [...byDrill.values()];
+  const urls = await signedDrillUrls(list.map((r) => r.drills));
+  return header('ドリル') + `<div class="content">
+    <p class="muted small" style="margin:0 0 8px">コーチから届いたドリル動画です。ご契約中は、いつでも見返せます。</p>
+    ${list.length ? list.map((r) => drillCard(r.drills, urls,
+      `<a class="drill-from" href="#/lesson/${r.lessons.id}">${fmtDate(r.lessons.lesson_date)} のレッスン「${esc(r.lessons.title)}」より ›</a>`)).join('')
+      : '<div class="empty">まだドリルはありません。コーチからレッスンでドリルが届くと、ここにたまっていきます。</div>'}
+  </div>` + memberNav('drills');
+}
+
 // 使い方ガイド（初回ログイン時に自動で表示。アカウント画面からいつでも見られる）
 function viewGuide() {
   const first = !state.profile.onboarded_at;
@@ -778,6 +872,28 @@ function viewInstall() {
 }
 
 // ---------- 画面：管理者 ----------
+
+// ドリル集（何人の会員にも使い回せる）
+async function viewDrills() {
+  const [drills, links] = await Promise.all([
+    must(sb.from('drills').select('*').order('created_at', { ascending: false })),
+    must(sb.from('lesson_drills').select('drill_id')),
+  ]);
+  const used = links.reduce((m, x) => m.set(x.drill_id, (m.get(x.drill_id) || 0) + 1), new Map());
+  return header('ドリル集') + `<div class="content">
+    <p class="muted small" style="margin:0 0 8px">ここに登録したドリルは、レッスン作成画面で選んで会員に送れます。同じドリルを何人にでも使い回せるので、保存容量を節約できます。</p>
+    <details class="card add-drill"${drills.length ? '' : ' open'}><summary><b>＋ 新しいドリルを登録</b></summary>
+      <form class="form" data-form="drill-new">${drillFields('nd_')}
+        <button class="btn-block" type="submit">ドリルを登録する</button></form>
+    </details>
+    <div class="section-title"><h2>登録済み（${drills.length}件）</h2></div>
+    ${drills.map((d) => `<div class="card list-item drill-row">
+        <div class="grow"><b>${esc(d.title)}</b><div class="muted small">${d.video_path ? '動画ファイル' : 'YouTube'}・${used.get(d.id) || 0}件のレッスンで使用・${fmtDate(d.created_at)}</div></div>
+        <button class="btn-sm btn-danger" data-action="delete-drill" data-id="${d.id}" data-path="${esc(d.video_path || '')}" data-title="${esc(d.title)}" data-used="${used.get(d.id) || 0}">削除</button>
+      </div>`).join('') || '<div class="empty">まだドリルはありません</div>'}
+  </div>` + adminNav('admin/drills');
+}
+
 
 async function viewInbox() {
   const subs = await must(sb.from('submissions').select('*, profiles(name, plan)').eq('status', 'pending').order('created_at'));
@@ -887,8 +1003,13 @@ async function viewLessonForm(route) {
     memberId = lesson.member_id;
     submission = lesson.submissions;
   }
-  const member = await must(sb.from('profiles').select('id, name').eq('id', memberId).maybeSingle());
-  const urls = await signedVideoUrls([submission]);
+  const [member, urls, library, picked] = await Promise.all([
+    must(sb.from('profiles').select('id, name').eq('id', memberId).maybeSingle()),
+    signedVideoUrls([submission]),
+    must(sb.from('drills').select('id, title, video_path').order('created_at', { ascending: false })),
+    lesson.id ? must(sb.from('lesson_drills').select('drill_id').eq('lesson_id', lesson.id)) : [],
+  ]);
+  const pickedIds = new Set(picked.map((x) => x.drill_id));
   const back = `admin/member/${memberId}`;
   return header(lesson.id ? 'レッスン編集' : 'レッスン作成', back) + `<div class="content">
     <div class="muted">会員：<b>${esc(member?.name || '')}</b></div>
@@ -902,6 +1023,12 @@ async function viewLessonForm(route) {
       <p class="muted small" style="margin:4px 0 0">空行で段落が分かれます。行の先頭に「・」を付けると箇条書きになり、その直前の短い行（例：ポイント）は見出しになります。</p>
       <label for="practice">次回までの練習</label><textarea id="practice" name="practice" rows="4" maxlength="2000" placeholder="① ハーフスイング 20球&#10;② 7I 30球">${esc(lesson.practice)}</textarea>
       <label for="video_url">コーチの解説動画（YouTube・任意）</label><input id="video_url" name="video_url" type="url" value="${esc(lesson.video_url || '')}" placeholder="https://youtu.be/...">
+      <fieldset class="drill-pick"><legend>ドリル動画（任意・複数選べます）</legend>
+        ${library.length ? `<input type="search" class="drill-search" placeholder="ドリル名で絞り込む" data-action="filter-drills" aria-label="ドリル名で絞り込む">
+        <div class="drill-options">${library.map((d) => `<label class="chip drill-opt"><input type="checkbox" name="drill" value="${d.id}"${pickedIds.has(d.id) ? ' checked' : ''}><span>${esc(d.title)}</span></label>`).join('')}</div>`
+          : '<p class="muted small">まだドリル集にドリルがありません。下から新しく登録できます。</p>'}
+        <details class="add-drill"><summary>＋ 新しいドリルを登録して付ける</summary>${drillFields('ld_')}</details>
+      </fieldset>
       ${lesson.id ? '' : '<label class="switch"><input type="checkbox" name="notify" checked><span>会員にメールでお知らせする</span></label>'}
       <button class="btn-block" type="submit">${lesson.id ? '更新する' : '保存して会員に公開する'}</button>
     </form>
@@ -935,6 +1062,7 @@ async function render() {
     if (p.role === 'admin') {
       if (r[0] !== 'admin') return go('admin/inbox');
       if (r[1] === 'members') return paint(await viewMembers());
+      if (r[1] === 'drills') return paint(await viewDrills());
       if (r[1] === 'member' && r[2]) return paint(await viewMemberDetail(r[2]));
       if (r[1] === 'lesson' && r[2]) return paint(await viewLessonForm(r));
       return paint(await viewInbox());
@@ -950,6 +1078,7 @@ async function render() {
     state.unread = (await sb.from('lessons').select('id', { count: 'exact', head: true }).eq('member_id', p.id).is('read_at', null)).count || 0;
     if (r[0] === 'submit') return paint(await viewSubmit());
     if (r[0] === 'history') return paint(await viewHistory());
+    if (r[0] === 'drills') return paint(await viewMemberDrills());
     if (r[0] === 'lesson' && r[1]) return paint(await viewLesson(r[1]));
     if (r[0] === 'submission' && r[1]) return paint(await viewSubmission(r[1]));
     if (r[0] !== 'home') return go('home');
@@ -1058,6 +1187,21 @@ const actions = {
   'reset-tasks': async (el) => {
     await must(sb.from('tasks').update({ done: false }).eq('member_id', el.dataset.id));
     toast('完了をリセットしました'); render();
+  },
+  'delete-drill': async (el) => {
+    const used = Number(el.dataset.used);
+    const ok = await confirmDialog({
+      title: 'このドリルを削除しますか？',
+      body: `<p><b>${esc(el.dataset.title)}</b></p><p>${used ? `${used}件のレッスンで使われています。削除すると、会員のドリル一覧からも見られなくなります。` : 'まだどのレッスンにも使われていません。'}</p>`,
+      ok: '削除する',
+    });
+    if (!ok) return;
+    if (el.dataset.path) {
+      const { error } = await sb.storage.from(DRILL_BUCKET).remove([el.dataset.path]);
+      if (error) throw error;
+    }
+    await must(sb.from('drills').delete().eq('id', el.dataset.id));
+    toast('ドリルを削除しました'); render();
   },
   'delete-lesson': async (el) => {
     if (!confirm('このレッスンを削除します。よろしいですか？')) return;
@@ -1187,6 +1331,10 @@ const forms = {
     }));
     render();
   },
+  'drill-new': async (f) => {
+    await createDrill(drillFromForm(f, 'nd_'), drillProgress('nd_'));
+    toast('ドリルを登録しました'); render();
+  },
   lesson: async (f) => {
     let videoUrl = null;
     if (f.video_url.value.trim()) {
@@ -1197,11 +1345,21 @@ const forms = {
       lesson_date: f.lesson_date.value, title: f.title.value.trim(), point: f.point.value.trim(),
       feedback: f.feedback.value.trim(), practice: f.practice.value.trim(), video_url: videoUrl,
     };
+    // 新しいドリルが入力されていれば、先にドリル集へ登録しておく
+    const drillIds = [...f.querySelectorAll('input[name="drill"]:checked')].map((i) => i.value);
+    const nd = drillFromForm(f, 'ld_');
+    if (nd.title || nd.file || nd.url) drillIds.push(await createDrill(nd, drillProgress('ld_')));
+    const saveDrills = async (lessonId) => {
+      await must(sb.from('lesson_drills').delete().eq('lesson_id', lessonId));
+      if (drillIds.length) await must(sb.from('lesson_drills').insert(drillIds.map((drill_id, i) => ({ lesson_id: lessonId, drill_id, sort_order: i }))));
+    };
     let notice = 'レッスンを保存しました';
     if (f.dataset.id) {
       await must(sb.from('lessons').update(row).eq('id', f.dataset.id));
+      await saveDrills(f.dataset.id);
     } else {
       const created = await must(sb.from('lessons').insert({ ...row, member_id: f.dataset.member, submission_id: f.dataset.submission || null }).select('id').single());
+      await saveDrills(created.id);
       if (f.dataset.submission) await must(sb.from('submissions').update({ status: 'reviewed' }).eq('id', f.dataset.submission));
       if (f.notify?.checked) {
         try {
@@ -1225,6 +1383,11 @@ document.addEventListener('click', async (ev) => {
 });
 
 document.addEventListener('input', (ev) => {
+  if (ev.target.dataset.action === 'filter-drills') {
+    const q = ev.target.value.trim().toLowerCase();
+    document.querySelectorAll('.drill-opt').forEach((o) => o.classList.toggle('hidden', q && !o.textContent.toLowerCase().includes(q)));
+    return;
+  }
   if (ev.target.dataset.action !== 'filter-members') return;
   const q = ev.target.value.trim().toLowerCase();
   document.querySelectorAll('#member-list [data-search]').forEach((a) => a.classList.toggle('hidden', q && !a.dataset.search.includes(q)));
