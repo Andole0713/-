@@ -3,8 +3,8 @@
 // anon key は公開して問題ない鍵です（データはデータベース側の RLS で守られています）。
 // service_role key は絶対にここへ書かないでください。
 
-export const SUPABASE_URL = 'https://YOUR-PROJECT.supabase.co';
-export const SUPABASE_ANON_KEY = 'YOUR-ANON-KEY';
+export const SUPABASE_URL = 'https://xputqvfiowxbwnhagjop.supabase.co';
+export const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhwdXRxdmZpb3d4YnduaGFnam9wIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTEwNzMxOTAsImV4cCI6MjEwNjY0OTE5MH0.BKsCv6AEVNWINJGme8Z7iBfUMzqfUEKsSq42-Zsow-A';
 
 export const SCHOOL_NAME = 'All Time Golf';
 
