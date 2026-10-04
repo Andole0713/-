@@ -347,11 +347,6 @@ html[data-fs="xl"] .modal{zoom:1.25}
 .rm-body details summary h3::after{content:" ›";color:var(--gold)}
 .rm-body details[open] .drill-card{margin-top:6px}
 /* ホームの「今月のドリル」 */
-.rm-home{display:block;position:relative;text-decoration:none;color:var(--text);background:#fff;border:2px solid var(--gold);border-radius:18px;padding:16px 18px;margin:14px 0 4px}
-.rm-home-step{position:absolute;top:16px;right:18px;font-size:12px;font-weight:700;color:var(--muted)}
-.rm-home h3{margin:4px 0 2px;font-size:17px;color:var(--ink)}
-.rm-home p{margin:0;font-size:13.5px;color:var(--muted)}
-.rm-home .go{display:block;margin-top:8px;text-align:right;font-weight:700;font-size:13px;color:var(--gold)}
 /* ロードマップ（管理者） */
 .rm-mini{list-style:none;margin:12px 0 0;padding:0}
 .rm-mini li{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line)}
@@ -398,10 +393,6 @@ details.rm-edit[open] .rm-no::before{content:"▾ "}
 .reflection{margin-top:10px}
 .reflection label{margin-top:0}
 .reflection .btn-sm{margin-top:6px}
-.rm-home .new-badge{margin-left:6px}
-.rm-home-foot{display:flex;justify-content:space-between;align-items:center;margin-top:8px}
-.rm-home-foot .practice-progress{margin:0}
-.rm-home-foot .go{margin:0}
 .rm-ref{display:block;font-size:12px;color:var(--text);background:var(--paper);border-radius:8px;padding:4px 8px;margin-top:4px}
 .practice-log .between{gap:8px}.practice-log .between b{white-space:nowrap}
 .rm-act{flex:none;display:flex;flex-direction:column;align-items:flex-end;gap:4px}
@@ -454,3 +445,23 @@ details.rm-edit[open] .rm-no::before{content:"▾ "}
 .rm-panel.current::after{border-bottom-color:#fbf3df}
 .rm-panel.current .rm-badge{font-size:12.5px;padding:3px 12px;background:linear-gradient(135deg,var(--gold-2),var(--gold));color:var(--ink)}
 .rm-panel.current h3{font-size:18px}
+/* ホームの「今月のドリル」（いちばん目立つカード） */
+.rm-home{display:block;position:relative;overflow:hidden;text-decoration:none;color:#fff;border-radius:20px;padding:18px 18px 16px;margin:0 0 16px;
+  background:radial-gradient(420px 220px at 100% 0%,rgba(226,204,154,.28),transparent 60%),linear-gradient(150deg,#22342a,var(--ink) 70%);
+  border:2px solid var(--gold);box-shadow:0 0 0 4px rgba(200,169,106,.22),0 14px 30px rgba(15,23,18,.22)}
+.rm-home::after{content:"";position:absolute;right:-30px;bottom:-30px;width:130px;height:130px;border-radius:50%;border:16px solid rgba(200,169,106,.12)}
+.rm-home-head{display:flex;align-items:center;gap:6px}
+.rm-home .rm-badge{background:linear-gradient(135deg,var(--gold-2),var(--gold));color:var(--ink);font-size:12.5px;padding:3px 12px;margin:0}
+.rm-home .new-badge{margin-left:2px}
+.rm-home-step{margin-left:auto;font-size:12px;font-weight:700;color:var(--gold-2)}
+.rm-home-step b{font-size:20px;color:#fff;font-variant-numeric:tabular-nums lining-nums}
+.rm-home h3{position:relative;margin:10px 0 4px;font-size:21px;line-height:1.4;color:#fff}
+.rm-home-drill{position:relative;margin:0;font-size:14px;color:var(--gold-2);font-weight:700}
+.rm-home-meter{position:relative;height:6px;border-radius:6px;background:rgba(255,255,255,.12);margin:12px 0 0;overflow:hidden}
+.rm-home-meter i{display:block;height:100%;background:linear-gradient(90deg,var(--gold-2),var(--gold))}
+.rm-home-foot{position:relative;display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:14px}
+.rm-home-days{font-size:12.5px;color:#d9dccf}
+.rm-home-days b{font-size:16px;color:#fff}
+.rm-home-btn{flex:none;background:linear-gradient(135deg,var(--gold-2),var(--gold));color:var(--ink);font-weight:800;font-size:14px;letter-spacing:.06em;border-radius:999px;padding:10px 18px;box-shadow:0 6px 16px rgba(200,169,106,.35)}
+.rm-home:hover .rm-home-btn{filter:brightness(1.05)}
+.rm-home:focus-visible{outline:3px solid var(--gold-2);outline-offset:3px}
