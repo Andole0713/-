@@ -100,6 +100,16 @@ function swingVideo(sub, urls) {
     : '<p class="muted small">動画を読み込めませんでした。ページを再読み込みしてください。</p>';
 }
 
+// 送った動画の保存期限（送信から3か月）
+function videoExpiry(createdAt) {
+  const d = new Date(createdAt);
+  d.setMonth(d.getMonth() + 3);
+  return d;
+}
+function daysLeft(date) {
+  return Math.max(0, Math.ceil((date.getTime() - Date.now()) / 86400000));
+}
+
 function formatBytes(n) {
   if (n >= 1024 ** 3) return `${(n / 1024 ** 3).toFixed(1)}GB`;
   return `${Math.max(1, Math.round(n / 1024 ** 2))}MB`;
@@ -141,6 +151,11 @@ function toLocalInput(iso) {
 function fmtShort(iso) {
   const d = new Date(iso);
   return `${d.getMonth() + 1}/${d.getDate()}（${WEEK[d.getDay()]}）${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+function meetingWhen(iso) {
+  const d = new Date(iso);
+  const hm = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  return `<b class="when">${d.getMonth() + 1}/${d.getDate()}<small>（${WEEK[d.getDay()]}）</small><em>${hm}</em></b>`;
 }
 const monthStart = () => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1).toISOString(); };
 
@@ -307,16 +322,16 @@ async function viewMemberHome() {
       <div class="muted">現在の目標</div><h2 style="margin:4px 0 0;font-size:24px">${esc(p.goal || '未設定')}</h2>
       ${p.theme ? `<div style="margin-top:12px">今月のテーマ：${esc(p.theme)}</div>` : ''}</div>
     <div class="grid">
-      <div class="stat"><div class="muted">Best Score</div><b>${esc(p.best_score ?? '—')}</b></div>
-      <div class="stat"><div class="muted">平均スコア</div><b>${esc(p.avg_score ?? '—')}</b></div>
+      <div class="stat"><div class="label">ベストスコア</div><b>${esc(p.best_score ?? '—')}</b></div>
+      <div class="stat"><div class="label">平均スコア</div><b>${esc(p.avg_score ?? '—')}</b></div>
     </div>
     <div class="section-title"><div><div class="eyebrow">This Month</div><h2>今月のサポート</h2></div></div>
     <div class="card">
       <div class="support">
-        <div><b>${monthSubs.length}${quota ? `<small style="font-size:14px"> / ${quota}</small>` : ''}</b><span>動画提出</span>
+        <div><span class="label">動画提出</span><b>${monthSubs.length}${quota ? `<small>/${quota}本</small>` : '<small>本</small>'}</b>
           ${quota ? `<div class="meter"><i style="width:${Math.min(100, (monthSubs.length / quota) * 100)}%"></i></div>` : ''}</div>
-        <div><b>${monthLessons.length}</b><span>解説動画</span></div>
-        <div>${p.next_meeting_at ? `<b class="when">${esc(fmtShort(p.next_meeting_at))}</b>` : '<b>—</b>'}<span>次回の面談</span></div>
+        <div><span class="label">解説動画</span><b>${monthLessons.length}<small>本</small></b></div>
+        <div><span class="label">次回の面談</span>${p.next_meeting_at ? meetingWhen(p.next_meeting_at) : '<b class="none">未定</b>'}</div>
       </div>
       ${plan?.monthly ? '<p class="muted small" style="margin:10px 0 0">毎月、動画2本の提出と25分のオンライン面談1回が受けられます。</p>' : ''}
     </div>
@@ -325,9 +340,12 @@ async function viewMemberHome() {
         <span class="check">${t.done ? '✓' : ''}</span><span><b>${esc(t.title)}</b><div class="muted">${esc(t.detail)}</div></span></button>`).join('')
       : '<div class="empty">コーチから課題が届くとここに表示されます</div>'}
     <div class="section-title"><div><div class="eyebrow">Lesson</div><h2>最新のレッスン</h2></div>${latest ? '<a href="#/history">すべて見る</a>' : ''}</div>
-    ${latest ? `<a class="card link" href="#/lesson/${latest.id}"><div class="muted">${fmtDate(latest.lesson_date)}</div>
-        <h3>${esc(latest.title)}</h3>${latest.point ? `<b>今回のポイント</b><p style="margin:4px 0 0">${esc(latest.point)}</p>` : ''}</a>`
-      : '<div class="empty">まだレッスンはありません。まずは動画を提出しましょう。</div>'}
+    ${latest ? `<a class="lesson-feature" href="#/lesson/${latest.id}">
+        <span class="date">${fmtDate(latest.lesson_date)}</span>
+        <h3>${esc(latest.title)}</h3>
+        ${latest.point ? `<div class="point"><span>今回のポイント</span><p>${esc(latest.point)}</p></div>` : ''}
+        <span class="go">レッスンを見る <i aria-hidden="true">›</i></span></a>`
+      : '<div class="empty">まだレッスンはありません。まずは動画を送りましょう。</div>'}
     ${subs.length ? `<div class="notice">確認待ちの動画が ${subs.length} 件あります。コーチからのレッスンをお待ちください。</div>` : ''}
     <a class="btn btn-block btn-gold" href="#/submit">スイング動画を送る</a>
   </div>` + memberNav('home');
@@ -371,16 +389,22 @@ async function viewHistory() {
   const p = state.profile;
   const [lessons, subs] = await Promise.all([
     must(sb.from('lessons').select('id, lesson_date, title, point').eq('member_id', p.id).order('lesson_date', { ascending: false }).order('created_at', { ascending: false })),
-    must(sb.from('submissions').select('id, created_at, club, angle, status').eq('member_id', p.id).order('created_at', { ascending: false }).limit(20)),
+    must(sb.from('submissions').select('id, created_at, club, angle, status, video_deleted_at').eq('member_id', p.id).order('created_at', { ascending: false }).limit(20)),
   ]);
   return header('レッスン履歴') + `<div class="content">
     ${lessons.length ? lessons.map((l) => `<a class="card link" href="#/lesson/${l.id}"><div class="muted">${fmtDate(l.lesson_date)}</div>
         <h3>${esc(l.title)}</h3>${l.point ? `<div class="muted">${esc(l.point)}</div>` : ''}</a>`).join('')
       : '<div class="empty">まだレッスンはありません</div>'}
-    <div class="section-title"><h2>提出した動画</h2></div>
-    <div class="card">${subs.length ? subs.map((s) => `<div class="list-item"><div>${fmtDate(s.created_at)}　${esc(s.club)} / ${esc(s.angle)}</div>
-        ${s.status === 'pending' ? '<span class="pill warn">確認待ち</span>' : '<span class="pill ok">レッスン済み</span>'}</div>`).join('')
-      : '<div class="empty">まだ提出はありません</div>'}</div>
+    <div class="section-title"><div><div class="eyebrow">My Swing</div><h2>送った動画</h2></div></div>
+    <p class="muted small" style="margin:4px 0 0">動画は送信から${RETENTION_LABEL}見られます。その後は自動で削除されます。</p>
+    <div class="card">${subs.length ? subs.map((s) => {
+        const left = daysLeft(videoExpiry(s.created_at));
+        const keep = s.video_deleted_at || left === 0 ? '<span class="muted small">保存期間終了</span>' : `<span class="muted small">あと${left}日見られます</span>`;
+        return `<a class="list-item sub-link" href="#/submission/${s.id}">
+          <div><b>${fmtDate(s.created_at)}</b>　${esc(s.club)} / ${esc(s.angle)}<br>${keep}</div>
+          <div class="sub-right">${s.status === 'pending' ? '<span class="pill warn">確認待ち</span>' : '<span class="pill ok">解説済み</span>'}<span class="play">▶ 見る</span></div></a>`;
+      }).join('')
+      : '<div class="empty">まだ送った動画はありません</div>'}</div>
   </div>` + memberNav('history');
 }
 
@@ -397,6 +421,29 @@ async function viewLesson(id, back = 'history') {
     ${l.submissions ? `<div class="card"><b>送った動画</b>${swingVideo(l.submissions, urls)}
         ${l.submissions.question ? `<p class="muted pre">${esc(l.submissions.question)}</p>` : ''}</div>` : ''}
   </div>` + (state.profile.role === 'admin' ? '' : memberNav('history'));
+}
+
+async function viewSubmission(id) {
+  const sub = await must(sb.from('submissions').select('*').eq('id', id).maybeSingle());
+  if (!sub) return header('送った動画', 'history') + '<div class="content"><div class="empty">動画が見つかりません</div></div>' + memberNav('history');
+  const [lessons, urls] = await Promise.all([
+    must(sb.from('lessons').select('id, title, lesson_date').eq('submission_id', sub.id)),
+    signedVideoUrls([sub]),
+  ]);
+  const expiry = videoExpiry(sub.created_at);
+  const deleted = sub.video_deleted_at || daysLeft(expiry) === 0;
+  return header('送った動画', 'history') + `<div class="content">
+    <div class="between"><div><div class="muted">送信日</div><b style="font-size:18px">${fmtDate(sub.created_at)}</b></div>
+      ${sub.status === 'pending' ? '<span class="pill warn">確認待ち</span>' : '<span class="pill ok">解説済み</span>'}</div>
+    <div class="card">
+      ${deleted ? `<p class="muted">保存期間（${RETENTION_LABEL}）を過ぎたため、動画は削除されました。</p>` : swingVideo(sub, urls)}
+      <div class="list-item"><span class="muted">クラブ・撮影方向</span><span>${esc(sub.club)} / ${esc(sub.angle)}</span></div>
+      <div class="list-item"><span class="muted">保存期限</span><span>${deleted ? '終了' : `${fmtDate(expiry.toISOString())}（あと${daysLeft(expiry)}日）`}</span></div>
+    </div>
+    ${sub.question ? `<div class="card"><b>送ったお悩み・質問</b><p class="pre" style="margin:6px 0 0">${esc(sub.question)}</p></div>` : ''}
+    ${lessons.map((l) => `<a class="lesson-feature" href="#/lesson/${l.id}"><span class="date">${fmtDate(l.lesson_date)}</span>
+        <h3>${esc(l.title)}</h3><span class="go">この動画への解説を見る <i aria-hidden="true">›</i></span></a>`).join('')}
+  </div>` + memberNav('history');
 }
 
 function viewAccount() {
@@ -588,6 +635,7 @@ async function render() {
     if (r[0] === 'submit') return paint(await viewSubmit());
     if (r[0] === 'history') return paint(await viewHistory());
     if (r[0] === 'lesson' && r[1]) return paint(await viewLesson(r[1]));
+    if (r[0] === 'submission' && r[1]) return paint(await viewSubmission(r[1]));
     if (r[0] !== 'home') return go('home');
     return paint(await viewMemberHome());
   } catch (e) {

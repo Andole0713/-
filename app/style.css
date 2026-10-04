@@ -49,7 +49,8 @@ button:focus-visible,.btn:focus-visible,a:focus-visible{outline:2px solid var(--
 .card.link:hover{border-color:var(--gold)}
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .stat{background:#fff;border:1px solid var(--line);border-radius:14px;padding:14px 16px}
-.stat b{font-family:var(--latin);font-size:30px;font-weight:600;display:block;margin-top:2px;line-height:1.1}
+.label{display:block;font-size:12.5px;font-weight:700;color:var(--muted);letter-spacing:.06em}
+.stat b{font-family:"Noto Sans JP",sans-serif;font-size:36px;font-weight:700;display:block;margin-top:2px;line-height:1.15;font-variant-numeric:tabular-nums lining-nums;color:var(--ink)}
 .stat b small{font-family:"Noto Sans JP",sans-serif;font-size:13px;color:var(--muted);font-weight:400;margin-left:4px}
 .section-title{display:flex;justify-content:space-between;align-items:flex-end;margin-top:30px;gap:10px}
 .section-title h2{font-family:var(--serif);font-weight:600;font-size:18px;margin:2px 0 0;letter-spacing:.05em}
@@ -63,10 +64,15 @@ button:focus-visible,.btn:focus-visible,a:focus-visible{outline:2px solid var(--
 
 /* 今月のサポート */
 .support{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:6px}
-.support div{background:var(--paper);border-radius:12px;padding:12px 8px;text-align:center}
-.support b{display:block;font-family:var(--latin);font-size:24px;font-weight:600;line-height:1.2}
-.support span{font-size:11.5px;color:var(--muted)}
-.support b.when{font-family:"Noto Sans JP",sans-serif;font-size:13px;font-weight:700;padding:8px 0 5px;line-height:1.4}
+.support > div{background:var(--paper);border-radius:12px;padding:12px 6px;text-align:center;display:flex;flex-direction:column;align-items:center;justify-content:flex-start}
+.support .label{font-size:11.5px;letter-spacing:.04em}
+.support b{display:block;font-family:"Noto Sans JP",sans-serif;font-size:30px;font-weight:700;line-height:1.2;margin-top:4px;font-variant-numeric:tabular-nums lining-nums;color:var(--ink)}
+.support b small{font-size:13px;font-weight:700;color:var(--muted);margin-left:2px}
+.support b.when{font-size:22px}
+.support b.when small{margin-left:0}
+.support b.when em{display:block;font-style:normal;font-size:15px;color:var(--muted)}
+.support b.none{font-size:18px;color:var(--muted);padding-top:6px}
+.support .meter{width:80%}
 .meter{height:6px;border-radius:99px;background:var(--paper-2);overflow:hidden;margin-top:6px}
 .meter i{display:block;height:100%;background:linear-gradient(90deg,var(--gold-2),var(--gold))}
 
@@ -116,6 +122,20 @@ body.on-auth .app{background:transparent;max-width:none}
 .video{position:relative;padding-top:56.25%;border-radius:14px;overflow:hidden;background:#000;margin:10px 0}
 .video iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
 .pre{white-space:pre-wrap;word-break:break-word}
+/* 最新のレッスン */
+.lesson-feature{display:block;text-decoration:none;color:var(--text);background:#fff;border:2px solid var(--gold);border-radius:18px;padding:20px 20px 18px;margin:12px 0;box-shadow:0 8px 24px rgba(15,23,18,.07);transition:transform .15s}
+.lesson-feature:hover{transform:translateY(-1px)}
+.lesson-feature .date{display:inline-block;background:var(--ink);color:var(--gold-2);font-size:12px;font-weight:700;letter-spacing:.08em;border-radius:999px;padding:2px 12px}
+.lesson-feature h3{font-family:var(--serif);font-weight:600;font-size:22px;line-height:1.45;margin:10px 0 10px;letter-spacing:.03em}
+.lesson-feature .point{background:var(--paper);border-left:4px solid var(--gold);border-radius:10px;padding:10px 14px;margin-bottom:12px}
+.lesson-feature .point span{display:block;font-size:12px;font-weight:700;color:var(--gold);letter-spacing:.08em}
+.lesson-feature .point p{margin:2px 0 0;font-size:16px;font-weight:700;line-height:1.6}
+.lesson-feature .go{display:flex;justify-content:center;align-items:center;gap:6px;background:linear-gradient(135deg,var(--gold-2),var(--gold));color:#1a1407;font-weight:700;border-radius:999px;padding:11px 16px;letter-spacing:.06em}
+.lesson-feature .go i{font-style:normal;font-size:18px;line-height:1}
+/* 送った動画の一覧 */
+.sub-link{text-decoration:none;color:var(--text)}
+.sub-link .sub-right{display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex:none}
+.sub-link .play{font-size:12.5px;font-weight:700;color:var(--gold)}
 /* スイング動画 */
 .swing-video{display:block;width:100%;max-height:70vh;border-radius:14px;background:#000;margin:10px 0}
 .visually-hidden{position:absolute!important;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
