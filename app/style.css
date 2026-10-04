@@ -381,3 +381,26 @@ details.rm-edit:not([open]){padding-bottom:12px}
 details.rm-edit .rm-no::before{content:"▸ ";color:var(--gold)}
 details.rm-edit[open] .rm-no::before{content:"▾ "}
 .rm-mini .pill{white-space:nowrap;flex:none}
+/* ロードマップの追加機能 */
+.rm-goal-top{margin:10px 0 0;font-size:14px;background:#fbf8f1;border-radius:10px;padding:8px 12px}
+.rm-goal-top b{color:var(--ink)}
+.rm-month .new-badge{margin-left:6px;vertical-align:1px}
+.rm-days{margin-left:8px;font-size:11px;background:var(--paper-2);color:var(--ink);border-radius:999px;padding:1px 8px}
+.rm-finish .rm-dot{background:var(--ink);border-color:var(--gold);font-size:15px}
+.rm-finish h3{color:var(--ink)}
+.practice-log{margin-top:10px;background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+.practice-log .btn-sm{min-height:0;margin:0}
+.pl-days{display:flex;flex-wrap:wrap;gap:4px;margin-top:8px}
+.pl-days i{width:14px;height:14px;border-radius:4px;background:var(--paper-2);display:block}
+.pl-days i.on{background:var(--gold)}
+.pl-days i.today{outline:2px solid var(--ink);outline-offset:1px}
+.pl-days i.future{background:transparent;border:1px dashed var(--line)}
+.reflection{margin-top:10px}
+.reflection label{margin-top:0}
+.reflection .btn-sm{margin-top:6px}
+.rm-home .new-badge{margin-left:6px}
+.rm-home-foot{display:flex;justify-content:space-between;align-items:center;margin-top:8px}
+.rm-home-foot .practice-progress{margin:0}
+.rm-home-foot .go{margin:0}
+.rm-ref{display:block;font-size:12px;color:var(--text);background:var(--paper);border-radius:8px;padding:4px 8px;margin-top:4px}
+.practice-log .between{gap:8px}.practice-log .between b{white-space:nowrap}
