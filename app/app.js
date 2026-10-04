@@ -301,7 +301,8 @@ function addDays(ymd, n) {
 const fmtMonth = (ymd) => `${Number(ymd.slice(0, 4))}年${Number(ymd.slice(5, 7))}月`;
 const fmtMD = (ymd) => `${Number(ymd.slice(5, 7))}/${Number(ymd.slice(8, 10))}`;
 // ロードマップの月が会員に公開済みか（公開日が来た、または前倒しで公開した）
-const rmOpen = (r) => Boolean(r.published_at) || r.publish_on <= today();
+// 取り消した月（hidden）は、公開日を過ぎていても公開しない
+const rmOpen = (r) => !r.hidden && (Boolean(r.published_at) || r.publish_on <= today());
 const monthKey = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`; };
 // 今月の追加本数（LINE で申し込み → コーチが会員詳細で設定。月が変わると 0 本）
 const extraThisMonth = (p) => (p.extra_submissions_month === monthKey() ? p.extra_submissions || 0 : 0);
@@ -466,7 +467,7 @@ async function viewMemberHome() {
     must(sb.from('submissions').select('id, created_at, club, status').eq('member_id', p.id).eq('status', 'pending').order('created_at', { ascending: false })),
     must(sb.from('submissions').select('id').eq('member_id', p.id).gte('created_at', since)),
     must(sb.from('lessons').select('id').eq('member_id', p.id).gte('created_at', since)),
-    must(sb.from('roadmap_items').select('id, publish_on, theme, published_at, seen_at, drills(title)').eq('member_id', p.id).order('publish_on')),
+    must(sb.from('roadmap_items').select('id, publish_on, theme, published_at, hidden, seen_at, drills(title)').eq('member_id', p.id).order('publish_on')),
   ]);
   const rmOpened = roadmap.filter(rmOpen);
   const rmNow = rmOpened[rmOpened.length - 1];
@@ -853,7 +854,7 @@ function roadmapView(items, urls, extra = {}) {
       const body = isOpen
         ? `${r.note ? `<p class="rm-note pre">${esc(r.note)}</p>` : ''}${r.drills ? drillCard(r.drills, urls) : '<p class="muted small">ドリルは準備中です。もうしばらくお待ちください。</p>'}
            ${isCurrent ? practiceBlock(r, rmPeriod(items, i), logOf(r.id)) : ''}${reflectionForm(r, refOf(r.id))}`
-        : `<p class="rm-lock">🔒 ${fmtMD(r.publish_on)} に公開予定</p>`;
+        : `<p class="rm-lock">🔒 ${r.hidden ? '公開準備中' : `${fmtMD(r.publish_on)} に公開予定`}</p>`;
       const cls = isCurrent ? 'current' : isOpen ? 'done' : 'locked';
       return `<li class="rm-item ${cls}"><span class="rm-dot" aria-hidden="true">${isOpen && !isCurrent ? '✓' : i + 1}</span>
         <div class="rm-body">${isCurrent ? `<span class="rm-badge">今月のドリル</span>${head}${body}`
@@ -873,7 +874,7 @@ async function viewMemberDrills() {
     must(sb.from('lesson_drills')
       .select('sort_order, drills(*), lessons!inner(id, title, lesson_date, member_id)')
       .eq('lessons.member_id', p.id)),
-    must(sb.from('roadmap_items').select('id, publish_on, theme, note, published_at, seen_at, drills(*)').eq('member_id', p.id).order('publish_on')),
+    must(sb.from('roadmap_items').select('id, publish_on, theme, note, published_at, hidden, seen_at, drills(*)').eq('member_id', p.id).order('publish_on')),
   ]);
   const [practice, reflections, goals] = roadmap.length ? await Promise.all([
     must(sb.from('roadmap_practice').select('item_id, practiced_on').eq('member_id', p.id)),
@@ -983,13 +984,15 @@ function adminRoadmapSummary(items, extra = {}) {
   const days = (id) => practice.filter((x) => x.item_id === id).length;
   const ref = (id) => reflections.find((x) => x.item_id === id)?.body;
   return `${goal ? `<p class="rm-goal-top" style="margin-top:0">🏁 ゴール：<b>${esc(goal)}</b></p>` : '<p class="muted small" style="margin-top:0">ゴール未設定（「編集する」から設定できます）</p>'}
-    <div class="between small"><span>${done}/${items.length}か月 公開済み</span><span class="muted">次回：${items.find((r) => !rmOpen(r)) ? fmtDate(items.find((r) => !rmOpen(r)).publish_on) : '—'}</span></div>
+    <div class="between small"><span>${done}/${items.length}か月 公開済み</span><span class="muted">次回：${(() => { const n = items.find((r) => !rmOpen(r) && !r.hidden); return n ? fmtDate(n.publish_on) : '—'; })()}</span></div>
     <div class="meter"><i style="width:${Math.round((done / items.length) * 100)}%"></i></div>
     <ol class="rm-mini">${items.map((r, i) => `<li class="${rmOpen(r) ? 'open' : ''}">
       <span class="n">${i + 1}</span>
       <span class="grow"><b>${esc(r.theme || '（テーマ未定）')}</b><small>${fmtDate(r.publish_on)}・${r.drills ? esc(r.drills.title) : '<em>ドリル未定</em>'}${rmOpen(r) ? `・練習 ${days(r.id)}日${r.seen_at ? '' : '・<em>未読</em>'}` : ''}</small>
         ${ref(r.id) ? `<span class="rm-ref">💬 ${esc(ref(r.id))}</span>` : ''}</span>
-      <span class="pill ${rmOpen(r) ? 'ok' : ''}">${rmOpen(r) ? '公開済み' : '予定'}</span></li>`).join('')}</ol>`;
+      <span class="rm-act"><span class="pill ${rmOpen(r) ? 'ok' : r.hidden ? 'warn' : ''}">${rmOpen(r) ? '公開済み' : r.hidden ? '取り消し中' : '予定'}</span>
+        ${rmOpen(r) ? `<button type="button" class="btn-sm btn-danger" data-action="rm-unpublish" data-id="${r.id}" data-title="${esc(r.theme || `${i + 1}か月目`)}">取り消す</button>`
+          : r.hidden ? `<button type="button" class="btn-sm btn-sub" data-action="rm-republish" data-id="${r.id}" data-date="${r.publish_on}">再公開</button>` : ''}</span></li>`).join('')}</ol>`;
 }
 
 // ロードマップの編集（保存するまで画面の中だけで変更できる）
@@ -1001,7 +1004,7 @@ function rmRow(r, i, expand = false) {
   const open = r.id && rmOpen(r);
   return `<details class="rm-edit" data-row data-id="${esc(r.id || '')}"${expand ? ' open' : ''}>
     <summary class="rm-edit-head"><b class="rm-no">${i + 1}か月目</b>
-      <span class="pill ${open ? 'ok' : ''}">${open ? '公開済み' : r.id ? '予定' : '新規'}</span>
+      <span class="pill ${open ? 'ok' : r.hidden ? 'warn' : ''}">${open ? '公開済み' : r.hidden ? '取り消し中' : r.id ? '予定' : '新規'}</span>
       <span class="rm-tools">
         <button type="button" class="btn-sm btn-sub" data-action="rm-move" data-dir="-1" aria-label="上の月と入れ替える">↑</button>
         <button type="button" class="btn-sm btn-sub" data-action="rm-move" data-dir="1" aria-label="下の月と入れ替える">↓</button>
@@ -1016,7 +1019,9 @@ function rmRow(r, i, expand = false) {
     <label>会員へのひとこと（任意）</label><textarea name="note" rows="2" maxlength="1000" placeholder="例：今月は毎日5分、鏡の前で確認しましょう">${esc(r.note || '')}</textarea>
     <div class="rm-edit-foot">
       <button type="button" class="link" data-action="rm-shift">この月から後ろを1か月ずらす</button>
-      ${r.id && !open ? '<label class="switch small"><input type="checkbox" name="publish_now"><span>公開日を待たずに今すぐ公開する</span></label>' : ''}
+      ${open ? '<label class="switch small"><input type="checkbox" name="unpublish"><span>公開を取り消す（会員に見えなくする）</span></label>'
+        : r.hidden ? '<label class="switch small"><input type="checkbox" name="republish"><span>取り消しをやめて、再び公開する</span></label>'
+        : r.id ? '<label class="switch small"><input type="checkbox" name="publish_now"><span>公開日を待たずに今すぐ公開する</span></label>' : ''}
     </div>
   </details>`;
 }
@@ -1116,7 +1121,7 @@ async function viewMemberDetail(id) {
     must(sb.from('lessons').select('id, lesson_date, title').eq('member_id', id).order('lesson_date', { ascending: false }).order('created_at', { ascending: false })),
     must(sb.from('submissions').select('id, created_at, club, angle, status').eq('member_id', id).order('created_at', { ascending: false }).limit(20)),
     must(sb.from('submissions').select('id').eq('member_id', id).gte('created_at', monthStart())),
-    must(sb.from('roadmap_items').select('id, publish_on, theme, published_at, seen_at, drills(title)').eq('member_id', id).order('publish_on')),
+    must(sb.from('roadmap_items').select('id, publish_on, theme, published_at, hidden, seen_at, drills(title)').eq('member_id', id).order('publish_on')),
   ]);
   const [rmPractice, rmRefs, rmGoals] = roadmap.length ? await Promise.all([
     must(sb.from('roadmap_practice').select('item_id').eq('member_id', id)),
@@ -1281,7 +1286,7 @@ async function render() {
     if (!p.onboarded_at) return go('guide');
     const [unreadLessons, unreadDrills] = await Promise.all([
       sb.from('lessons').select('id', { count: 'exact', head: true }).eq('member_id', p.id).is('read_at', null),
-      sb.from('roadmap_items').select('id', { count: 'exact', head: true }).eq('member_id', p.id).is('seen_at', null)
+      sb.from('roadmap_items').select('id', { count: 'exact', head: true }).eq('member_id', p.id).is('seen_at', null).eq('hidden', false)
         .or(`published_at.not.is.null,publish_on.lte.${today()}`),
     ]);
     state.unread = unreadLessons.count || 0;
@@ -1405,6 +1410,21 @@ const actions = {
   'reset-tasks': async (el) => {
     await must(sb.from('tasks').update({ done: false }).eq('member_id', el.dataset.id));
     toast('完了をリセットしました'); render();
+  },
+  'rm-unpublish': async (el) => {
+    const ok = await confirmDialog({
+      title: 'このドリルの公開を取り消しますか？',
+      body: `<p><b>${esc(el.dataset.title)}</b></p><p>会員のドリルページから見えなくなります（「公開準備中」と表示されます）。あとで「再公開」で戻せます。</p>`,
+      ok: '取り消す',
+    });
+    if (!ok) return;
+    await must(sb.from('roadmap_items').update({ hidden: true, published_at: null, seen_at: null }).eq('id', el.dataset.id));
+    toast('公開を取り消しました'); render();
+  },
+  'rm-republish': async (el) => {
+    const future = el.dataset.date > today();
+    await must(sb.from('roadmap_items').update({ hidden: false, published_at: future ? null : new Date().toISOString() }).eq('id', el.dataset.id));
+    toast(future ? `取り消しをやめました（${fmtMD(el.dataset.date)} に公開されます）` : '再公開しました'); render();
   },
   'practice-today': async (el) => {
     const item = el.dataset.item;
@@ -1625,6 +1645,8 @@ const forms = {
       drill_id: row.querySelector('[name="drill_id"]').value || null,
       note: row.querySelector('[name="note"]').value.trim(),
       now: row.querySelector('[name="publish_now"]')?.checked,
+      unpublish: row.querySelector('[name="unpublish"]')?.checked,
+      republish: row.querySelector('[name="republish"]')?.checked,
     }));
     if (rows.some((r) => !r.publish_on)) throw new Error('すべての月に公開日を入れてください');
     await must(sb.from('roadmap_goals').upsert({ member_id, goal: f.goal.value.trim(), updated_at: new Date().toISOString() }));
@@ -1633,6 +1655,8 @@ const forms = {
     await Promise.all(rows.filter((r) => r.id).map((r) => must(sb.from('roadmap_items').update({
       publish_on: r.publish_on, theme: r.theme, drill_id: r.drill_id, note: r.note,
       ...(r.now ? { published_at: new Date().toISOString() } : {}),
+      ...(r.unpublish ? { hidden: true, published_at: null, seen_at: null } : {}),
+      ...(r.republish ? { hidden: false, published_at: r.publish_on > today() ? null : new Date().toISOString() } : {}),
     }).eq('id', r.id))));
     const added = rows.filter((r) => !r.id).map((r) => ({ member_id, publish_on: r.publish_on, theme: r.theme, drill_id: r.drill_id, note: r.note }));
     if (added.length) await must(sb.from('roadmap_items').insert(added));
