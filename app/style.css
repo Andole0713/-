@@ -183,3 +183,30 @@ summary{cursor:pointer;font-weight:700;font-size:14px}
 .limit b{display:block;font-size:17px;margin-bottom:6px}
 .limit p{margin:0 0 10px}
 .center{text-align:center}
+/* レッスン詳細 */
+.lesson-head{background:radial-gradient(500px 240px at 90% 0%,#23372a 0%,transparent 70%),linear-gradient(160deg,var(--ink-2),var(--ink));color:var(--on-dark);border:1px solid var(--gold-line);border-radius:20px;padding:20px 20px 18px;margin-bottom:14px}
+.lesson-head .date{display:inline-block;background:rgba(200,169,106,.16);color:var(--gold-2);font-size:12px;font-weight:700;letter-spacing:.08em;border-radius:999px;padding:2px 12px}
+.lesson-head h1{margin:10px 0 0;font-size:24px;line-height:1.4;color:#fff}
+.lesson-head .diag{margin-top:14px;background:rgba(255,255,255,.06);border-left:4px solid var(--gold);border-radius:10px;padding:10px 14px}
+.lesson-head .diag span{font-size:12px;color:var(--gold-2);font-weight:700;letter-spacing:.08em}
+.lesson-head .diag p{margin:2px 0 0;font-size:18px;font-weight:700;line-height:1.5;color:#fff}
+.lesson-sec{padding:18px 18px 16px}
+.sec-h{display:flex;align-items:center;gap:10px;font-size:17px;margin:0 0 12px;padding-bottom:10px;border-bottom:1px solid var(--line)}
+.sec-h i{flex:none;width:30px;height:30px;border-radius:50%;background:var(--ink);color:var(--gold-2);display:grid;place-items:center;font-style:normal;font-size:14px}
+.fb{font-size:15.5px;line-height:1.95}
+.fb p{margin:0 0 1em}
+.fb p:last-child,.fb ul:last-child{margin-bottom:0}
+.fb h4{margin:1.2em 0 .4em;font-size:15px;color:var(--ink);display:flex;align-items:center;gap:8px}
+.fb h4::before{content:"";width:4px;height:1.1em;background:var(--gold);border-radius:2px}
+.fb ul{list-style:none;margin:0 0 1em;padding:12px 14px;background:#fbf8f1;border-radius:12px}
+.fb li{position:relative;padding-left:20px;margin:4px 0}
+.fb li::before{content:"";position:absolute;left:4px;top:.75em;width:7px;height:7px;border-radius:50%;background:var(--gold)}
+.drill{list-style:none;margin:0;padding:0}
+.drill li{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px dashed var(--line);font-size:15px;line-height:1.6}
+.drill li:last-child{border-bottom:0}
+.drill .n{flex:none;width:28px;height:28px;border-radius:50%;background:var(--gold);color:var(--ink);font-weight:800;display:grid;place-items:center;font-size:14px;font-variant-numeric:lining-nums}
+.drill .t{flex:1}
+.drill .amt{flex:none;background:var(--ink);color:var(--gold-2);font-weight:700;font-size:13px;border-radius:999px;padding:3px 12px;font-variant-numeric:tabular-nums lining-nums}
+.my-q{margin-top:10px;background:var(--paper);border-radius:12px;padding:10px 14px}
+.my-q span{font-size:12px;color:var(--muted);font-weight:700}
+.my-q p{margin:2px 0 0;font-size:14px}

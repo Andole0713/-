@@ -450,18 +450,52 @@ async function viewHistory() {
   </div>` + memberNav('history');
 }
 
+// コーチの文章を読みやすく整形する（空行で段落、「・」などで始まる行は箇条書き、箇条書き直前の短い行は小見出し）
+const BULLET = /^[・•●◆■\-*]\s*/;
+function richText(text) {
+  return text.replace(/\r\n?/g, '\n').trim().split(/\n\s*\n/).map((block) => {
+    const lines = block.split('\n').map((l) => l.trim()).filter(Boolean);
+    let html = ''; let para = []; let list = [];
+    const flushPara = () => { if (para.length) html += `<p>${para.map(esc).join('<br>')}</p>`; para = []; };
+    const flushList = () => { if (list.length) html += `<ul>${list.map((li) => `<li>${esc(li)}</li>`).join('')}</ul>`; list = []; };
+    lines.forEach((line, i) => {
+      if (BULLET.test(line)) { flushPara(); list.push(line.replace(BULLET, '')); return; }
+      flushList();
+      if (line.length <= 20 && !/[。．.!！?？、]$/.test(line) && BULLET.test(lines[i + 1] || '')) {
+        flushPara(); html += `<h4>${esc(line)}</h4>`; return;
+      }
+      para.push(line);
+    });
+    flushPara(); flushList();
+    return html;
+  }).join('');
+}
+// 練習メニューを1行ずつ番号付きで表示。行末の「20球」「10回」などは量として右に出す
+function drillList(text) {
+  const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  return `<ol class="drill">${lines.map((line, i) => {
+    const body = line.replace(/^(?:[①-⑳]|\d{1,2}[.)．）])\s*/, '');
+    const m = body.match(/^(.+?)[\s　]+(\d+\s*(?:球|回|分|秒|本|セット|set))$/i);
+    return `<li><span class="n">${i + 1}</span><span class="t">${esc(m ? m[1] : body)}</span>${m ? `<span class="amt">${esc(m[2])}</span>` : ''}</li>`;
+  }).join('')}</ol>`;
+}
+const secTitle = (icon, label) => `<h2 class="sec-h"><i aria-hidden="true">${icon}</i>${label}</h2>`;
+
 async function viewLesson(id, back = 'history') {
   const l = await must(sb.from('lessons').select('*, submissions(video_path, video_deleted_at, question)').eq('id', id).maybeSingle());
   if (!l) return header('レッスン詳細', back) + '<div class="content"><div class="empty">レッスンが見つかりません</div></div>';
   const urls = await signedVideoUrls([l.submissions]);
-  return header('レッスン詳細', back) + `<div class="content">
-    <div class="muted">${fmtDate(l.lesson_date)}</div><h1 style="margin:4px 0 12px">${esc(l.title)}</h1>
-    ${l.point ? `<div class="card"><b>今回の診断</b><h2 style="margin:6px 0">${esc(l.point)}</h2></div>` : ''}
-    ${l.feedback ? `<div class="card"><b>コーチからのフィードバック</b><p class="pre">${esc(l.feedback)}</p></div>` : ''}
-    ${l.practice ? `<div class="card"><b>次回までの練習</b><p class="pre">${esc(l.practice)}</p></div>` : ''}
-    ${l.video_url ? `<div class="card"><b>コーチの解説動画</b>${videoEmbed(l.video_url)}</div>` : ''}
-    ${l.submissions ? `<div class="card"><b>送った動画</b>${swingVideo(l.submissions, urls)}
-        ${l.submissions.question ? `<p class="muted pre">${esc(l.submissions.question)}</p>` : ''}</div>` : ''}
+  return header('レッスン詳細', back) + `<div class="content lesson-page">
+    <div class="lesson-head">
+      <span class="date">${fmtDate(l.lesson_date)}</span>
+      <h1>${esc(l.title)}</h1>
+      ${l.point ? `<div class="diag"><span>今回の診断</span><p>${esc(l.point)}</p></div>` : ''}
+    </div>
+    ${l.video_url ? `<section class="card lesson-sec">${secTitle('▶', 'コーチの解説動画')}${videoEmbed(l.video_url)}</section>` : ''}
+    ${l.feedback ? `<section class="card lesson-sec">${secTitle('✎', 'コーチからのフィードバック')}<div class="fb">${richText(l.feedback)}</div></section>` : ''}
+    ${l.practice ? `<section class="card lesson-sec practice">${secTitle('✓', '次回までの練習')}${drillList(l.practice)}</section>` : ''}
+    ${l.submissions ? `<section class="card lesson-sec">${secTitle('◎', '送った動画')}${swingVideo(l.submissions, urls)}
+        ${l.submissions.question ? `<div class="my-q"><span>送ったときのお悩み・質問</span><p class="pre">${esc(l.submissions.question)}</p></div>` : ''}</section>` : ''}
   </div>` + (state.profile.role === 'admin' ? '' : memberNav('history'));
 }
 
@@ -652,6 +686,7 @@ async function viewLessonForm(route) {
       <label for="title">タイトル</label><input id="title" name="title" value="${esc(lesson.title)}" maxlength="100" placeholder="例：ドライバーの右プッシュ" required>
       <label for="point">今回の診断（ポイント）</label><input id="point" name="point" value="${esc(lesson.point)}" maxlength="300" placeholder="例：切り返しで上体が先行している">
       <label for="feedback">フィードバック</label><textarea id="feedback" name="feedback" rows="7" maxlength="5000">${esc(lesson.feedback)}</textarea>
+      <p class="muted small" style="margin:4px 0 0">空行で段落が分かれます。行の先頭に「・」を付けると箇条書きになり、その直前の短い行（例：ポイント）は見出しになります。</p>
       <label for="practice">次回までの練習</label><textarea id="practice" name="practice" rows="4" maxlength="2000" placeholder="① ハーフスイング 20球&#10;② 7I 30球">${esc(lesson.practice)}</textarea>
       <label for="video_url">コーチの解説動画（YouTube・任意）</label><input id="video_url" name="video_url" type="url" value="${esc(lesson.video_url || '')}" placeholder="https://youtu.be/...">
       <button class="btn-block" type="submit">${lesson.id ? '更新する' : '保存して会員に公開する'}</button>
