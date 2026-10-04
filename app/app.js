@@ -7,7 +7,7 @@ const sb = configured ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
 const $app = document.getElementById('app');
 const $toast = document.getElementById('toast');
 
-const state = { session: null, profile: null, recovery: false, authTab: 'login', authMessage: '', unread: 0 };
+const state = { session: null, profile: null, recovery: false, authTab: 'login', authMessage: '', unread: 0, historyClub: '' };
 let renderSeq = 0;
 
 // ---------- ユーティリティ ----------
@@ -450,26 +450,69 @@ async function viewSubmit() {
   </div>` + memberNav('submit');
 }
 
+// レッスンのカード（動画あり・練習の進み具合・NEW が一目で分かる）
+function lessonCard(l) {
+  return `<a class="lesson-card${l.read_at ? '' : ' unread'}" href="#/lesson/${l.id}">
+    <div class="lc-top"><span class="lc-date">${fmtDate(l.lesson_date)}</span>${newBadge(l)}
+      ${l.video_url ? '<span class="lc-tag">▶ 解説動画</span>' : ''}</div>
+    <h3>${esc(l.title)}</h3>
+    ${l.point ? `<p class="lc-point">${esc(l.point)}</p>` : ''}
+    <div class="lc-foot">${practiceProgress(l)}<span class="go">レッスンを見る <i aria-hidden="true">›</i></span></div>
+  </a>`;
+}
+function keepLabel(s) {
+  const left = daysLeft(videoExpiry(s.created_at));
+  return s.video_deleted_at || left === 0 ? '保存期間終了' : `あと${left}日見られます`;
+}
+// 送った動画と、その動画へのレッスンをセットにしたカード
+function swingPair(s, lessons) {
+  return `<div class="pair">
+    <a class="pair-sub" href="#/submission/${s.id}">
+      <span class="pair-icon" aria-hidden="true">▶</span>
+      <span class="grow"><b>送った動画</b>　${fmtDate(s.created_at)}<br>
+        <span class="muted small">${esc(s.club)} / ${esc(s.angle)}・${keepLabel(s)}</span></span>
+      <span class="pair-go" aria-hidden="true">›</span>
+    </a>
+    <div class="pair-arrow" aria-hidden="true"></div>
+    ${lessons.length ? lessons.map(lessonCard).join('')
+      : '<div class="pair-wait"><span class="dot" aria-hidden="true"></span>コーチが確認中です。解説が届くとここに表示されます。</div>'}
+  </div>`;
+}
+const monthLabel = (iso) => `${iso.slice(0, 4)}年${Number(iso.slice(5, 7))}月`;
+
 async function viewHistory() {
   const p = state.profile;
   const [lessons, subs] = await Promise.all([
-    must(sb.from('lessons').select('id, lesson_date, title, point, practice, practice_done, read_at').eq('member_id', p.id).order('lesson_date', { ascending: false }).order('created_at', { ascending: false })),
-    must(sb.from('submissions').select('id, created_at, club, angle, status, video_deleted_at').eq('member_id', p.id).order('created_at', { ascending: false }).limit(20)),
+    must(sb.from('lessons').select('id, submission_id, lesson_date, created_at, title, point, practice, practice_done, read_at, video_url').eq('member_id', p.id).order('lesson_date', { ascending: false }).order('created_at', { ascending: false })),
+    must(sb.from('submissions').select('id, created_at, club, angle, status, video_deleted_at').eq('member_id', p.id).order('created_at', { ascending: false }).limit(200)),
   ]);
+  // 送った動画ごとにレッスンをまとめ、動画のないレッスン（コーチから直接届いたもの）も並べる
+  const bySub = new Map(subs.map((s) => [s.id, []]));
+  const loose = [];
+  lessons.forEach((l) => (bySub.has(l.submission_id) ? bySub.get(l.submission_id).push(l) : loose.push(l)));
+  const items = [
+    ...subs.map((s) => ({ date: s.created_at.slice(0, 10), club: s.club, html: swingPair(s, bySub.get(s.id)) })),
+    ...loose.map((l) => ({ date: String(l.lesson_date), club: '', html: `<div class="pair">${lessonCard(l)}</div>` })),
+  ].sort((x, y) => (x.date < y.date ? 1 : x.date > y.date ? -1 : 0));
+
+  const clubs = [...new Set(subs.map((s) => s.club).filter(Boolean))];
+  const filter = clubs.includes(state.historyClub) ? state.historyClub : '';
+  const shown = filter ? items.filter((it) => it.club === filter) : items;
+  let month = '';
+  const list = shown.map((it) => {
+    const m = monthLabel(it.date);
+    const head = m !== month ? `<h3 class="month">${m}</h3>` : '';
+    month = m;
+    return head + it.html;
+  }).join('');
+
   return header('レッスン履歴') + `<div class="content">
-    ${lessons.length ? lessons.map((l) => `<a class="card link${l.read_at ? '' : ' unread'}" href="#/lesson/${l.id}"><div class="muted">${fmtDate(l.lesson_date)}${newBadge(l)}</div>
-        <h3>${esc(l.title)}</h3>${l.point ? `<div class="muted">${esc(l.point)}</div>` : ''}${practiceProgress(l)}</a>`).join('')
-      : '<div class="empty">まだレッスンはありません</div>'}
-    <div class="section-title"><div><div class="eyebrow">My Swing</div><h2>送った動画</h2></div></div>
-    <p class="muted small" style="margin:4px 0 0">動画は送信から${RETENTION_LABEL}見られます。その後は自動で削除されます。</p>
-    <div class="card">${subs.length ? subs.map((s) => {
-        const left = daysLeft(videoExpiry(s.created_at));
-        const keep = s.video_deleted_at || left === 0 ? '<span class="muted small">保存期間終了</span>' : `<span class="muted small">あと${left}日見られます</span>`;
-        return `<a class="list-item sub-link" href="#/submission/${s.id}">
-          <div><b>${fmtDate(s.created_at)}</b>　${esc(s.club)} / ${esc(s.angle)}<br>${keep}</div>
-          <div class="sub-right">${s.status === 'pending' ? '<span class="pill warn">確認待ち</span>' : '<span class="pill ok">解説済み</span>'}<span class="play">▶ 見る</span></div></a>`;
-      }).join('')
-      : '<div class="empty">まだ送った動画はありません</div>'}</div>
+    <p class="muted small" style="margin:0 0 8px">送った動画と、その動画へのコーチの解説をセットで表示しています。動画は送信から${RETENTION_LABEL}見られます。</p>
+    ${clubs.length > 1 ? `<div class="filter-chips" role="group" aria-label="クラブで絞り込む">
+      ${[['', 'すべて'], ...clubs.map((c) => [c, c])].map(([v, label]) => `<button type="button" data-action="history-filter" data-club="${esc(v)}" class="${filter === v ? 'on' : ''}" aria-pressed="${filter === v}">${esc(label)}</button>`).join('')}
+    </div>` : ''}
+    ${list || `<div class="empty">${filter ? 'このクラブの動画はまだありません' : 'まだ履歴はありません。まずは動画を送りましょう。'}</div>`}
+    ${items.length ? '' : '<a class="btn btn-block btn-gold" href="#/submit">スイング動画を送る</a>'}
   </div>` + memberNav('history');
 }
 
@@ -537,6 +580,7 @@ async function viewLesson(id, back = 'history') {
         ${mine ? '<p class="muted small" style="margin:-4px 0 4px">練習したらタップしてチェックしましょう。</p>' : ''}
         ${drillList(l.practice, l.practice_done || [], mine ? l.id : null)}</section>` : ''}
     ${l.submissions ? `<section class="card lesson-sec">${secTitle('◎', '送った動画')}${swingVideo(l.submissions, urls)}
+        ${mine ? `<a class="muted small" href="#/submission/${l.submission_id}">送った動画の詳細（保存期限など）›</a>` : ''}
         ${l.submissions.question ? `<div class="my-q"><span>送ったときのお悩み・質問</span><p class="pre">${esc(l.submissions.question)}</p></div>` : ''}</section>` : ''}
   </div>` + (state.profile.role === 'admin' ? '' : memberNav('history'));
 }
@@ -545,7 +589,7 @@ async function viewSubmission(id) {
   const sub = await must(sb.from('submissions').select('*').eq('id', id).maybeSingle());
   if (!sub) return header('送った動画', 'history') + '<div class="content"><div class="empty">動画が見つかりません</div></div>' + memberNav('history');
   const [lessons, urls] = await Promise.all([
-    must(sb.from('lessons').select('id, title, lesson_date').eq('submission_id', sub.id)),
+    must(sb.from('lessons').select('id, title, lesson_date, point, practice, practice_done, read_at, video_url').eq('submission_id', sub.id).order('lesson_date', { ascending: false })),
     signedVideoUrls([sub]),
   ]);
   const expiry = videoExpiry(sub.created_at);
@@ -559,8 +603,9 @@ async function viewSubmission(id) {
       <div class="list-item"><span class="muted">保存期限</span><span>${deleted ? '終了' : `${fmtDate(expiry.toISOString())}（あと${daysLeft(expiry)}日）`}</span></div>
     </div>
     ${sub.question ? `<div class="card"><b>送ったお悩み・質問</b><p class="pre" style="margin:6px 0 0">${esc(sub.question)}</p></div>` : ''}
-    ${lessons.map((l) => `<a class="lesson-feature" href="#/lesson/${l.id}"><span class="date">${fmtDate(l.lesson_date)}</span>
-        <h3>${esc(l.title)}</h3><span class="go">この動画への解説を見る <i aria-hidden="true">›</i></span></a>`).join('')}
+    <div class="section-title"><div><div class="eyebrow">Coach</div><h2>この動画への解説</h2></div></div>
+    ${lessons.length ? lessons.map(lessonCard).join('')
+      : '<div class="pair-wait"><span class="dot" aria-hidden="true"></span>コーチが確認中です。解説が届くと、ここと「履歴」に表示され、メールでもお知らせします。</div>'}
   </div>` + memberNav('history');
 }
 
@@ -882,6 +927,7 @@ async function render() {
 
 const actions = {
   'auth-tab': (el) => { state.authTab = el.dataset.tab; state.authMessage = ''; render(); },
+  'history-filter': (el) => { state.historyClub = el.dataset.club; render(); },
   'toggle-practice': async (el) => {
     const on = el.getAttribute('aria-pressed') !== 'true';
     el.disabled = true;

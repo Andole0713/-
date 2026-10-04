@@ -256,3 +256,30 @@ html[data-fs="xl"] .app,html[data-fs="xl"] .toast{zoom:1.25}
 .step-no span{font-size:10.5px;letter-spacing:.18em}
 .tip-box{background:#fbf8f1;border-radius:12px;padding:10px 14px;font-size:14px}
 .tip-box ul{margin:4px 0 0;padding-left:1.2em;line-height:1.8}
+/* レッスン履歴（送った動画 → 解説のセット） */
+.month{font-size:13px;color:var(--muted);letter-spacing:.08em;margin:22px 0 8px;display:flex;align-items:center;gap:10px}
+.month::after{content:"";flex:1;height:1px;background:var(--line)}
+.pair{margin:0 0 14px}
+.pair-sub{display:flex;align-items:center;gap:12px;background:var(--paper-2);border-radius:14px;padding:12px 14px;color:var(--text);text-decoration:none;line-height:1.55}
+.pair-icon{flex:none;width:34px;height:34px;border-radius:50%;background:var(--ink);color:var(--gold-2);display:grid;place-items:center;font-size:12px}
+.pair-go{color:var(--muted);font-size:20px}
+.pair-arrow{width:2px;height:14px;background:var(--gold);margin:0 0 0 30px}
+.pair-wait{display:flex;align-items:center;gap:10px;border:1px dashed var(--gold);border-radius:14px;padding:12px 14px;font-size:13.5px;color:var(--muted);background:#fff}
+.pair-wait .dot{flex:none;width:10px;height:10px;border-radius:50%;background:var(--gold);animation:pulse 1.6s ease-in-out infinite}
+@keyframes pulse{50%{opacity:.3}}
+@media (prefers-reduced-motion:reduce){.pair-wait .dot{animation:none}}
+.lesson-card{display:block;background:#fff;border:1px solid var(--line);border-radius:16px;padding:14px 16px;color:var(--text);text-decoration:none;margin:0 0 8px}
+.lesson-card:hover{border-color:var(--gold)}
+.lesson-card.unread{border:2px solid var(--gold);box-shadow:0 4px 14px rgba(200,169,106,.18)}
+.lc-top{display:flex;align-items:center;flex-wrap:wrap;gap:6px}
+.lc-top .new-badge{margin-left:0}
+.lc-date{font-size:12.5px;color:var(--muted);font-variant-numeric:tabular-nums lining-nums}
+.lc-tag{font-size:11.5px;font-weight:700;color:var(--ink);background:var(--paper-2);border-radius:999px;padding:1px 9px}
+.lesson-card h3{margin:6px 0 2px;font-size:17px;color:var(--ink)}
+.lc-point{margin:0;font-size:13.5px;color:var(--text);border-left:3px solid var(--gold);padding-left:8px}
+.lc-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:8px}
+.lc-foot .practice-progress{margin-top:0}
+.lc-foot .go{margin-left:auto;font-size:13px;font-weight:700;color:var(--gold);white-space:nowrap}
+.filter-chips{display:flex;gap:6px;overflow-x:auto;padding:2px 0 6px;margin:0 0 4px;scrollbar-width:none}
+.filter-chips button{flex:none;background:#fff;border:1px solid var(--line);color:var(--text);padding:6px 14px;font-size:13px;font-weight:700}
+.filter-chips button.on{background:var(--ink);border-color:var(--ink);color:var(--gold-2)}
