@@ -257,10 +257,10 @@ html[data-fs="xl"] .app,html[data-fs="xl"] .toast{zoom:1.25}
 .tip-box{background:#fbf8f1;border-radius:12px;padding:10px 14px;font-size:14px}
 .tip-box ul{margin:4px 0 0;padding-left:1.2em;line-height:1.8}
 /* レッスン履歴（送った動画 → 解説のセット） */
-.month{font-size:13px;color:var(--muted);letter-spacing:.08em;margin:22px 0 8px;display:flex;align-items:center;gap:10px}
-.month::after{content:"";flex:1;height:1px;background:var(--line)}
+.month{font-size:14px;font-weight:700;color:var(--ink);letter-spacing:.08em;margin:22px 0 8px;display:flex;align-items:center;gap:10px}
+.month::after{content:"";flex:1;height:1px;background:var(--gold-line)}
 .pair{margin:0 0 14px}
-.pair-sub{display:flex;align-items:center;gap:12px;background:var(--paper-2);border-radius:14px;padding:12px 14px;color:var(--text);text-decoration:none;line-height:1.55}
+.pair-sub{display:flex;align-items:center;gap:12px;background:#fff;border:1px solid var(--line);border-left:4px solid var(--ink);box-shadow:0 2px 8px rgba(15,23,18,.05);border-radius:14px;padding:12px 14px;color:var(--text);text-decoration:none;line-height:1.55}
 .pair-icon{flex:none;width:34px;height:34px;border-radius:50%;background:var(--ink);color:var(--gold-2);display:grid;place-items:center;font-size:12px}
 .pair-go{color:var(--muted);font-size:20px}
 .pair-arrow{width:2px;height:14px;background:var(--gold);margin:0 0 0 30px}
@@ -283,3 +283,5 @@ html[data-fs="xl"] .app,html[data-fs="xl"] .toast{zoom:1.25}
 .filter-chips{display:flex;gap:6px;overflow-x:auto;padding:2px 0 6px;margin:0 0 4px;scrollbar-width:none}
 .filter-chips button{flex:none;background:#fff;border:1px solid var(--line);color:var(--text);padding:6px 14px;font-size:13px;font-weight:700}
 .filter-chips button.on{background:var(--ink);border-color:var(--ink);color:var(--gold-2)}
+.pair-sub:hover{border-color:var(--gold);border-left-color:var(--ink)}
+.pair-sub .muted{color:#5c635d}
