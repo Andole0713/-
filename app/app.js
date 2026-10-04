@@ -1,4 +1,5 @@
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/+esm';
+import { Upload as TusUpload } from 'https://cdn.jsdelivr.net/npm/tus-js-client@4.3.1/+esm';
 import { SUPABASE_URL, SUPABASE_ANON_KEY, SCHOOL_NAME, PLANS, CONTACT } from './config.js';
 
 const configured = !SUPABASE_URL.includes('YOUR-PROJECT') && !SUPABASE_ANON_KEY.includes('YOUR-');
@@ -47,6 +48,63 @@ function youtubeId(url) {
   const n = normalizeYoutube(url);
   return n ? n.slice(-11) : null;
 }
+// ---------- お客様のスイング動画（Storage に保存） ----------
+const VIDEO_BUCKET = 'swing-videos';
+const RETENTION_LABEL = '3か月';
+
+// 動画ファイルを再開できる方式（tus）でアップロードする。大きな動画や途切れやすい回線でも送れる。
+async function uploadVideo(file, path, onProgress) {
+  const { data } = await sb.auth.getSession();
+  const token = data.session?.access_token;
+  if (!token) throw new Error('ログインし直してください');
+  await new Promise((resolve, reject) => {
+    const upload = new TusUpload(file, {
+      endpoint: `${SUPABASE_URL}/storage/v1/upload/resumable`,
+      retryDelays: [0, 3000, 5000, 10000, 20000],
+      headers: { authorization: `Bearer ${token}`, 'x-upsert': 'false' },
+      uploadDataDuringCreation: true,
+      removeFingerprintOnSuccess: true,
+      metadata: { bucketName: VIDEO_BUCKET, objectName: path, contentType: file.type || 'video/mp4', cacheControl: '3600' },
+      chunkSize: 6 * 1024 * 1024, // Supabase の決まり（6MB 単位）
+      onError: (e) => reject(new Error('動画を送信できませんでした。電波のよい場所でもう一度お試しください。')),
+      onProgress: (sent, total) => onProgress(total ? sent / total : 0),
+      onSuccess: () => resolve(),
+    });
+    upload.findPreviousUploads().then((prev) => {
+      if (prev.length) upload.resumeFromPreviousUpload(prev[0]);
+      upload.start();
+    });
+  });
+}
+
+function videoFileName(file) {
+  const ext = (file.name.split('.').pop() || '').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 5) || 'mp4';
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+}
+
+// 再生用の一時的なリンク（1時間有効）をまとめて作る
+async function signedVideoUrls(subs) {
+  const paths = subs.filter((x) => x && x.video_path && !x.video_deleted_at).map((x) => x.video_path);
+  if (!paths.length) return {};
+  const { data, error } = await sb.storage.from(VIDEO_BUCKET).createSignedUrls(paths, 3600);
+  if (error) throw error;
+  return Object.fromEntries((data || []).filter((d) => d.signedUrl).map((d) => [d.path, d.signedUrl]));
+}
+
+function swingVideo(sub, urls) {
+  if (!sub) return '';
+  if (sub.video_deleted_at) return `<p class="muted small">保存期間（${RETENTION_LABEL}）を過ぎたため、動画は削除されました。</p>`;
+  const url = urls[sub.video_path];
+  return url
+    ? `<video class="swing-video" src="${esc(url)}" controls playsinline preload="metadata"></video>`
+    : '<p class="muted small">動画を読み込めませんでした。ページを再読み込みしてください。</p>';
+}
+
+function formatBytes(n) {
+  if (n >= 1024 ** 3) return `${(n / 1024 ** 3).toFixed(1)}GB`;
+  return `${Math.max(1, Math.round(n / 1024 ** 2))}MB`;
+}
+
 function videoEmbed(url) {
   const id = youtubeId(url);
   if (!id) return '';
@@ -282,17 +340,15 @@ async function viewSubmit() {
   return header('スイング動画を送る') + `<div class="content">
     ${quota ? `<div class="card"><div class="between"><span>今月の提出</span><b>${monthSubs.length} / ${quota} 本</b></div>
       <div class="meter"><i style="width:${Math.min(100, (monthSubs.length / quota) * 100)}%"></i></div></div>` : ''}
-    <div class="notice">正面または後方から、全身とクラブが入るように撮影してください。</div>
-    <details><summary>YouTube に「限定公開」でアップする方法</summary>
-      <ol class="small">
-        <li>YouTube アプリで「＋」→「動画をアップロード」を選ぶ</li>
-        <li>公開設定を <b>「限定公開」</b> にする（「公開」にしないでください）</li>
-        <li>アップロード後、動画の「共有」→「リンクをコピー」</li>
-        <li>下の欄にリンクを貼り付けて送信</li>
-      </ol></details>
+    <div class="notice">正面または後方から、全身とクラブが入るように撮影してください。<br>送った動画は<b>${RETENTION_LABEL}</b>保存され、その後自動で削除されます。</div>
     <form class="card form" data-form="submit">
-      <label for="youtube_url">YouTube のリンク</label>
-      <input id="youtube_url" name="youtube_url" type="url" inputmode="url" placeholder="https://youtu.be/..." required>
+      <label for="video">スイング動画</label>
+      <input id="video" name="video" type="file" accept="video/*" required class="visually-hidden">
+      <label class="file-pick" for="video">
+        <span class="file-pick-main">動画を選ぶ・撮影する</span>
+        <span class="file-pick-sub" id="video-name">スマホのカメラロールから選べます</span>
+      </label>
+      <video id="video-preview" class="swing-video hidden" controls playsinline muted></video>
       <div class="grid">
         <div><label for="club">クラブ</label><select id="club" name="club">
           <option>ドライバー</option><option>フェアウェイウッド</option><option>ユーティリティ</option>
@@ -301,6 +357,11 @@ async function viewSubmit() {
       </div>
       <label for="question">お悩み・質問（文章で）</label>
       <textarea id="question" name="question" rows="5" maxlength="2000" placeholder="例：最近ドライバーが右に出ます。前回の課題はだいぶできるようになりました。"></textarea>
+      <div id="upload-progress" class="hidden" aria-live="polite">
+        <div class="between small"><span>送信中…</span><span id="upload-percent">0%</span></div>
+        <div class="meter"><i id="upload-bar" style="width:0%"></i></div>
+        <p class="muted small" style="margin:6px 0 0">送信が終わるまで、この画面を閉じないでください。</p>
+      </div>
       <button class="btn-block btn-gold" type="submit">動画を送信する</button>
     </form>
   </div>` + memberNav('submit');
@@ -324,15 +385,16 @@ async function viewHistory() {
 }
 
 async function viewLesson(id, back = 'history') {
-  const l = await must(sb.from('lessons').select('*, submissions(youtube_url, question)').eq('id', id).maybeSingle());
+  const l = await must(sb.from('lessons').select('*, submissions(video_path, video_deleted_at, question)').eq('id', id).maybeSingle());
   if (!l) return header('レッスン詳細', back) + '<div class="content"><div class="empty">レッスンが見つかりません</div></div>';
+  const urls = await signedVideoUrls([l.submissions]);
   return header('レッスン詳細', back) + `<div class="content">
     <div class="muted">${fmtDate(l.lesson_date)}</div><h1 style="margin:4px 0 12px">${esc(l.title)}</h1>
     ${l.point ? `<div class="card"><b>今回の診断</b><h2 style="margin:6px 0">${esc(l.point)}</h2></div>` : ''}
     ${l.feedback ? `<div class="card"><b>コーチからのフィードバック</b><p class="pre">${esc(l.feedback)}</p></div>` : ''}
     ${l.practice ? `<div class="card"><b>次回までの練習</b><p class="pre">${esc(l.practice)}</p></div>` : ''}
     ${l.video_url ? `<div class="card"><b>コーチの解説動画</b>${videoEmbed(l.video_url)}</div>` : ''}
-    ${l.submissions ? `<div class="card"><b>提出した動画</b>${videoEmbed(l.submissions.youtube_url)}
+    ${l.submissions ? `<div class="card"><b>送った動画</b>${swingVideo(l.submissions, urls)}
         ${l.submissions.question ? `<p class="muted pre">${esc(l.submissions.question)}</p>` : ''}</div>` : ''}
   </div>` + (state.profile.role === 'admin' ? '' : memberNav('history'));
 }
@@ -370,12 +432,13 @@ function viewAccount() {
 
 async function viewInbox() {
   const subs = await must(sb.from('submissions').select('*, profiles(name, plan)').eq('status', 'pending').order('created_at'));
+  const urls = await signedVideoUrls(subs);
   return header('提出動画（確認待ち）') + `<div class="content">
     ${subs.length ? subs.map((s) => `<div class="card">
         <div class="between"><div><b>${esc(s.profiles?.name || '（名前未設定）')}</b> <span class="pill">${esc(planLabel(s.profiles?.plan))}</span></div>
           <span class="muted">${fmtDate(s.created_at)}</span></div>
         <div class="muted">${esc(s.club)} / ${esc(s.angle)}</div>
-        ${videoEmbed(s.youtube_url)}
+        ${swingVideo(s, urls)}
         ${s.question ? `<p class="pre">${esc(s.question)}</p>` : ''}
         <div class="row" style="margin-top:10px">
           <a class="btn grow" href="#/admin/lesson/new/s/${s.id}">レッスンを書く</a>
@@ -472,10 +535,11 @@ async function viewLessonForm(route) {
     submission = lesson.submissions;
   }
   const member = await must(sb.from('profiles').select('id, name').eq('id', memberId).maybeSingle());
+  const urls = await signedVideoUrls([submission]);
   const back = `admin/member/${memberId}`;
   return header(lesson.id ? 'レッスン編集' : 'レッスン作成', back) + `<div class="content">
     <div class="muted">会員：<b>${esc(member?.name || '')}</b></div>
-    ${submission ? `<div class="card"><b>提出動画</b>（${esc(submission.club)} / ${esc(submission.angle)}）${videoEmbed(submission.youtube_url)}
+    ${submission ? `<div class="card"><b>提出動画</b>（${esc(submission.club)} / ${esc(submission.angle)}）${swingVideo(submission, urls)}
         ${submission.question ? `<p class="pre">${esc(submission.question)}</p>` : ''}</div>` : ''}
     <form class="card form" data-form="lesson" data-id="${esc(lesson.id || '')}" data-member="${esc(memberId)}" data-submission="${esc(submission?.id || '')}">
       <label for="lesson_date">日付</label><input id="lesson_date" name="lesson_date" type="date" value="${esc(lesson.lesson_date)}" required>
@@ -629,13 +693,29 @@ const forms = {
     await loadProfile(); toast('保存しました');
   },
   submit: async (f) => {
-    const url = normalizeYoutube(f.youtube_url.value);
-    if (!url) throw new Error('YouTube の動画リンクを貼り付けてください');
-    await must(sb.from('submissions').insert({
-      member_id: state.profile.id, youtube_url: url,
-      club: f.club.value, angle: f.angle.value, question: f.question.value.trim(),
-    }));
-    toast('動画を提出しました。コーチからのレッスンをお待ちください。');
+    const file = f.video.files[0];
+    if (!file) throw new Error('送る動画を選んでください');
+    if (file.type && !file.type.startsWith('video/')) throw new Error('動画ファイルを選んでください');
+    const path = `${state.profile.id}/${videoFileName(file)}`;
+    const box = document.getElementById('upload-progress');
+    const bar = document.getElementById('upload-bar');
+    const pct = document.getElementById('upload-percent');
+    box.classList.remove('hidden');
+    const leaveGuard = (e) => { e.preventDefault(); e.returnValue = ''; };
+    window.addEventListener('beforeunload', leaveGuard);
+    try {
+      await uploadVideo(file, path, (r) => {
+        const v = Math.round(r * 100);
+        bar.style.width = `${v}%`; pct.textContent = `${v}%`;
+      });
+      await must(sb.from('submissions').insert({
+        member_id: state.profile.id, video_path: path,
+        club: f.club.value, angle: f.angle.value, question: f.question.value.trim(),
+      }));
+    } finally {
+      window.removeEventListener('beforeunload', leaveGuard);
+    }
+    toast('動画を送信しました。コーチからの解説をお待ちください。');
     go('home');
   },
   'admin-profile': async (f) => {
@@ -699,6 +779,21 @@ document.addEventListener('submit', async (ev) => {
   if (btn) btn.disabled = true;
   try { await forms[f.dataset.form](f); } catch (e) { console.error(e); toast(e.message || 'エラーが発生しました', true); }
   if (btn && btn.isConnected) btn.disabled = false;
+});
+
+// 動画を選んだら、ファイル名と容量を表示してプレビューする
+let previewUrl = null;
+document.addEventListener('change', (ev) => {
+  if (ev.target.id !== 'video') return;
+  const file = ev.target.files[0];
+  const name = document.getElementById('video-name');
+  const preview = document.getElementById('video-preview');
+  if (previewUrl) { URL.revokeObjectURL(previewUrl); previewUrl = null; }
+  if (!file) { name.textContent = 'スマホのカメラロールから選べます'; preview.classList.add('hidden'); return; }
+  name.textContent = `${file.name}（${formatBytes(file.size)}）`;
+  previewUrl = URL.createObjectURL(file);
+  preview.src = previewUrl;
+  preview.classList.remove('hidden');
 });
 
 window.addEventListener('hashchange', render);

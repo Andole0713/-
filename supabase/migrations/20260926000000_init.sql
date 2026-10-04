@@ -38,13 +38,14 @@ create table public.tasks (
 );
 create index tasks_member_idx on public.tasks (member_id, sort_order);
 
--- 動画提出（YouTube 限定公開リンク）
+-- 動画提出（会員ページから直接アップロード。ファイルは Storage の swing-videos に保存）
 create table public.submissions (
-  id           uuid primary key default gen_random_uuid(),
-  member_id    uuid not null references public.profiles (id) on delete cascade,
-  youtube_url  text not null check (
-    youtube_url ~ '^https://(www\.|m\.)?(youtube\.com/(watch\?v=|shorts/|live/)|youtu\.be/)[A-Za-z0-9_-]{11}'
-  ),
+  id               uuid primary key default gen_random_uuid(),
+  member_id        uuid not null references public.profiles (id) on delete cascade,
+  -- Storage 上のパス：「会員ID/ファイル名」
+  video_path       text not null check (video_path ~ '^[0-9a-f-]{36}/[A-Za-z0-9._-]{1,120}$'),
+  -- 保存期間（3か月）を過ぎて動画ファイルを削除した日時
+  video_deleted_at timestamptz,
   club         text not null default '' check (char_length(club) <= 30),
   angle        text not null default '' check (char_length(angle) <= 30),
   question     text not null default '' check (char_length(question) <= 2000),
@@ -270,7 +271,9 @@ create policy "submissions: 契約中の本人は提出可" on public.submission
   for insert to authenticated
   with check (
     member_id = auth.uid()
+    and split_part(video_path, '/', 1) = auth.uid()::text
     and status = 'pending'
+    and video_deleted_at is null
     and public.has_active_subscription()
   );
 
@@ -305,3 +308,35 @@ create policy "lessons: 管理者は削除可" on public.lessons
 revoke all on public.profiles, public.tasks, public.submissions, public.lessons from anon;
 revoke execute on function public.is_admin(), public.has_active_subscription() from anon, public;
 grant execute on function public.is_admin(), public.has_active_subscription() to authenticated, service_role;
+
+-- =========================================================
+-- 動画の保存場所（Storage）
+-- =========================================================
+
+-- 非公開のバケット。ファイルは「会員ID/ファイル名」に保存する。
+-- 1本あたりの容量上限は設けない（Supabase の「Upload file size limit」の範囲内）。
+insert into storage.buckets (id, name, public)
+values ('swing-videos', 'swing-videos', false)
+on conflict (id) do nothing;
+
+create policy "swing-videos: 本人がアップロード" on storage.objects
+  for insert to authenticated
+  with check (
+    bucket_id = 'swing-videos'
+    and (storage.foldername(name))[1] = auth.uid()::text
+    and public.has_active_subscription()
+  );
+
+create policy "swing-videos: 本人と管理者が閲覧" on storage.objects
+  for select to authenticated
+  using (
+    bucket_id = 'swing-videos'
+    and ((storage.foldername(name))[1] = auth.uid()::text or public.is_admin())
+  );
+
+create policy "swing-videos: 管理者が削除" on storage.objects
+  for delete to authenticated
+  using (bucket_id = 'swing-videos' and public.is_admin());
+
+-- 3か月を過ぎた動画の一覧（自動削除の処理 purge-old-videos が使う）
+create index submissions_video_expiry_idx on public.submissions (created_at) where video_deleted_at is null;
