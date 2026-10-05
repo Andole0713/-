@@ -504,3 +504,10 @@ details.rm-edit[open] .rm-no::before{content:"▾ "}
 .admin-scores b{font-size:22px;font-variant-numeric:tabular-nums lining-nums}
 .admin-scores small{font-size:12px;margin-left:2px}
 .admin-rounds summary{cursor:pointer;font-size:13px;font-weight:700;padding:6px 0}
+/* ハーフごとのスコア入力 */
+.halves{display:grid;grid-template-columns:1fr auto 1fr auto 76px;align-items:end;gap:6px}
+.halves .plus{padding-bottom:12px;font-weight:800;color:var(--muted)}
+.halves input{text-align:center;font-size:20px;font-weight:700}
+.halves .total{background:var(--ink);color:#fff;border-radius:12px;text-align:center;padding:6px 4px 8px}
+.halves .total .lbl{display:block;font-size:11px;color:var(--gold-2);font-weight:700}
+.halves .total b{font-size:24px;font-variant-numeric:tabular-nums lining-nums}
