@@ -1,6 +1,9 @@
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/+esm';
 import { Upload as TusUpload } from 'https://cdn.jsdelivr.net/npm/tus-js-client@4.3.1/+esm';
-import { SUPABASE_URL, SUPABASE_ANON_KEY, SCHOOL_NAME, PLANS, CONTACT, GUIDE } from './config.js';
+import { SUPABASE_URL, SUPABASE_ANON_KEY, SCHOOL_NAME, PLANS, CONTACT } from './config.js';
+
+// 撮影アプリ SwingFrame（会員ページの中の swing/ に入っている。ログインなしでだれでも使える）
+const SWINGFRAME_URL = './swing/';
 
 const configured = !SUPABASE_URL.includes('YOUR-PROJECT') && !SUPABASE_ANON_KEY.includes('YOUR-');
 const sb = configured ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
@@ -344,7 +347,7 @@ function nav(items, active) {
     .map(([path, ic, label, badge]) => `<a href="#/${path}" class="${active === path ? 'active' : ''}"${active === path ? ' aria-current="page"' : ''}>${icon(ic)}<span>${label}</span>${badge ? `<em class="nav-badge" aria-label="未読${badge}件">${badge}</em>` : ''}</a>`)
     .join('')}</nav>`;
 }
-const memberNav = (active) => nav([['home', 'home', 'ホーム'], ['submit', 'video', '動画提出'], ['history', 'book', '履歴', state.unread], ['drills', 'target', 'ドリル', state.drillUnread], ['account', 'user', 'アカウント']], active);
+const memberNav = (active) => nav([['home', 'home', 'ホーム'], ['submit', 'video', '撮影・提出'], ['history', 'book', '履歴', state.unread], ['drills', 'target', 'ドリル', state.drillUnread], ['account', 'user', 'アカウント']], active);
 const newBadge = (l) => (l.read_at ? '' : '<span class="new-badge">NEW</span>');
 const adminNav = (active) => nav([['admin/inbox', 'inbox', '提出動画'], ['admin/members', 'users', '会員一覧'], ['admin/drills', 'target', 'ドリル集'], ['account', 'user', 'アカウント']], active);
 
@@ -411,7 +414,9 @@ function viewAuth() {
   };
   const heading = { login: '会員ログイン', signup: '新規会員登録', reset: 'パスワードの再設定' }[t];
   return authShell(`
-    ${t === 'reset' ? '' : `<div class="seg" role="tablist">
+    ${t === 'reset' ? '' : `<a class="auth-shoot" href="${SWINGFRAME_URL}"><span class="ico" aria-hidden="true">●</span>
+      <span><b>スイングを撮影する</b><small>無料・登録不要。SwingFrame でスイングを撮って見返せます</small></span><i aria-hidden="true">›</i></a>
+    <div class="seg" role="tablist">
       <button type="button" role="tab" aria-selected="${t === 'login'}" data-action="auth-tab" data-tab="login" class="${t === 'login' ? 'active' : ''}">ログイン</button>
       <button type="button" role="tab" aria-selected="${t === 'signup'}" data-action="auth-tab" data-tab="signup" class="${t === 'signup' ? 'active' : ''}">新規登録</button>
     </div>`}
@@ -552,6 +557,8 @@ async function viewSubmit() {
   }
   return header('スイング動画を送る') + `<div class="content">
     ${usage}
+    <a class="shoot-cta" href="${SWINGFRAME_URL}"><span class="ico" aria-hidden="true">●</span>
+      <span><b>SwingFrame で撮影する</b><small>ガイドに合わせて自動で録画。撮った動画をカメラロールに保存してから、下で選んで送ってください</small></span><i aria-hidden="true">›</i></a>
     <div class="notice">正面または後方から、全身とクラブが入るように撮影してください。<a href="#/guide">撮り方ガイドを見る</a><br>送った動画は<b>${RETENTION_LABEL}</b>保存され、その後自動で削除されます。</div>
     <form class="card form" data-form="submit">
       <label for="video">スイング動画</label>
@@ -793,7 +800,7 @@ function viewAccount() {
     </form>`}
     <div class="card">
       <b>文字の大きさ</b> <span class="muted small">（この端末だけに反映）</span>
-      <div class="seg" role="group" aria-label="文字の大きさ">${FONT_SIZES.map(([k, label]) => `<button type="button" data-action="font-size" data-size="${k}" aria-pressed="${document.documentElement.dataset.fs === k}" class="${document.documentElement.dataset.fs === k ? 'on' : ''}">${label}</button>`).join('')}</div>
+      <div class="fs-seg" role="group" aria-label="文字の大きさ">${FONT_SIZES.map(([k, label]) => `<button type="button" data-action="font-size" data-size="${k}" aria-pressed="${document.documentElement.dataset.fs === k}" class="${document.documentElement.dataset.fs === k ? 'on' : ''}">${label}</button>`).join('')}</div>
     </div>
     ${admin ? '' : `<div class="card links">
       <a class="list-item" href="#/guide"><span>使い方ガイド（動画の撮り方・送り方）</span><span aria-hidden="true">›</span></a>
@@ -951,20 +958,17 @@ async function viewMemberDrills() {
 // 使い方ガイド（初回ログイン時に自動で表示。アカウント画面からいつでも見られる）
 function viewGuide() {
   const first = !state.profile.onboarded_at;
-  const sf = GUIDE.swingFrame;
-  const apps = [sf.ios && `<a class="btn btn-sm btn-sub" href="${esc(sf.ios)}" target="_blank" rel="noopener">App Store</a>`,
-    sf.android && `<a class="btn btn-sm btn-sub" href="${esc(sf.android)}" target="_blank" rel="noopener">Google Play</a>`].filter(Boolean).join(' ');
   return header('使い方ガイド', first ? '' : 'account') + `<div class="content guide">
     ${first ? `<div class="hero"><div class="eyebrow">Welcome</div><h1>${esc(state.profile.name || '')}さん、ようこそ。</h1>
       <p style="margin:0">レッスンの受け方を3つのステップでご紹介します。</p></div>` : ''}
     <section class="card guide-step">
       <div class="step-no"><span>STEP</span>1</div>
-      <h2>動画を撮る <small>SwingFrame を使います</small></h2>
+      <h2>動画を撮る <small>このアプリの撮影機能「SwingFrame」を使います</small></h2>
       <ol>
-        <li>スマホで <b>SwingFrame</b> アプリを開いて撮影します${apps ? '' : '（お持ちでない場合は、アプリストアで「SwingFrame」と検索してください）'}</li>
-        <li>撮影した動画を、スマホに保存します</li>
+        <li>下のメニューの「<b>撮影・提出</b>」→「<b>SwingFrame で撮影する</b>」を押します</li>
+        <li>ガイドに合わせて立つと、自動で録画されます。撮った動画は「カメラロールに保存」でスマホに保存します</li>
       </ol>
-      ${apps ? `<div class="row" style="gap:8px;margin:4px 0 10px">${apps}</div>` : ''}
+      <a class="btn btn-sm btn-sub" href="${SWINGFRAME_URL}" style="margin:0 0 10px">SwingFrame を開く ›</a>
       <div class="tip-box"><b>きれいに撮るコツ</b>
         <ul>
           <li><b>正面</b>（体の正面）または<b>後方</b>（打つ方向の後ろ）から撮る</li>
@@ -976,7 +980,7 @@ function viewGuide() {
       <div class="step-no"><span>STEP</span>2</div>
       <h2>動画を送る</h2>
       <ol>
-        <li>下のメニューの「<b>動画提出</b>」を開く</li>
+        <li>下のメニューの「<b>撮影・提出</b>」を開く</li>
         <li>「<b>動画を選ぶ・撮影する</b>」から、SwingFrame で保存した動画を選ぶ</li>
         <li>クラブ・撮影方向・お悩みを入力して「<b>動画を送信する</b>」</li>
       </ol>
