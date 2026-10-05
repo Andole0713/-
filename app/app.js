@@ -876,17 +876,19 @@ async function viewScores() {
 
     <form class="card form" data-form="round">
       <b>ラウンドのスコアを記録</b>
-      <div class="grid">
-        <div><label for="played_on">日付</label><input id="played_on" name="played_on" type="date" value="${today()}" max="${today()}" required></div>
-        <div><label for="holes">ホール数</label><select id="holes" name="holes"><option value="18">18ホール</option><option value="9">9ホール</option></select></div>
-      </div>
+      <label for="played_on">日付</label><input id="played_on" name="played_on" type="date" value="${today()}" max="${today()}" required>
       <label for="course_name">ゴルフ場</label>
       <input id="course_name" name="course_name" list="course-list" maxlength="100" required autocomplete="off" data-action="course-search" placeholder="ゴルフ場名を入力（候補が出ます）" value="${esc(last?.course_name || '')}">
       <datalist id="course-list"></datalist>
-      <div class="grid">
-        <div><label for="score">スコア</label><input id="score" name="score" type="number" inputmode="numeric" min="20" max="250" required placeholder="例：95"></div>
-        <div><label for="putts">パット数（任意）</label><input id="putts" name="putts" type="number" inputmode="numeric" min="0" max="150" placeholder="例：36"></div>
+      <div class="halves">
+        <div><label for="out_score">前半</label><input id="out_score" name="out_score" type="number" inputmode="numeric" min="10" max="125" required placeholder="例：47" data-action="round-total"></div>
+        <span class="plus" aria-hidden="true">＋</span>
+        <div><label for="in_score">後半</label><input id="in_score" name="in_score" type="number" inputmode="numeric" min="10" max="125" placeholder="例：48" data-action="round-total"></div>
+        <span class="plus" aria-hidden="true">＝</span>
+        <div class="total"><span class="lbl">18H</span><b id="round-total">—</b></div>
       </div>
+      <p class="muted small" style="margin:4px 0 0">ハーフだけ回ったときは、後半を空欄にすると9ホールとして記録します（ベスト・平均の計算には入りません）。</p>
+      <label for="putts">パット数（任意）</label><input id="putts" name="putts" type="number" inputmode="numeric" min="0" max="150" placeholder="例：36">
       <label for="note">ひとこと（任意）</label><input id="note" name="note" maxlength="300" placeholder="例：ドライバーが安定してきた">
       <button class="btn-block btn-gold" type="submit">記録する</button>
     </form>
@@ -894,7 +896,7 @@ async function viewScores() {
     <div class="section-title"><div><div class="eyebrow">Rounds</div><h2>これまでのラウンド</h2></div></div>
     ${rounds.length ? `<div class="card">${rounds.map((r) => `<div class="list-item round-row">
         <div class="grow"><b>${fmtDate(r.played_on)}</b>　${esc(r.course_name)}${r.holes === 9 ? '<span class="pill">9H</span>' : ''}
-          <div class="muted small">${r.putts != null ? `パット ${r.putts}　` : ''}${esc(r.note)}</div></div>
+          <div class="muted small">${r.out_score != null ? `${r.out_score}${r.in_score != null ? ` / ${r.in_score}` : ''}　` : ''}${r.putts != null ? `パット ${r.putts}　` : ''}${esc(r.note)}</div></div>
         <b class="round-score${st.count && r.holes === 18 && r.score === st.best ? ' best' : ''}">${r.score}</b>
         <button type="button" class="btn-sm btn-sub" data-action="delete-round" data-id="${r.id}" data-label="${esc(`${fmtDate(r.played_on)} ${r.course_name}（${r.score}）`)}" aria-label="削除">×</button>
       </div>`).join('')}</div>` : '<div class="empty">まだ記録はありません。ラウンドしたらスコアを記録しましょう。</div>'}
@@ -1751,11 +1753,15 @@ const forms = {
     render();
   },
   round: async (f) => {
-    const score = Number(f.score.value);
-    const holes = Number(f.holes.value);
-    if (holes === 18 && (score < 54 || score > 200) && !(await confirmDialog({ title: 'このスコアで記録しますか？', body: `<p>18ホールで <b>${score}</b> です。入力に間違いがないか確認してください。</p>`, ok: '記録する' }))) return;
+    const out = Number(f.out_score.value);
+    const inn = f.in_score.value === '' ? null : Number(f.in_score.value);
+    const holes = inn == null ? 9 : 18;
+    const score = out + (inn ?? 0);
+    const odd = (n) => n < 27 || n > 100;
+    if ((odd(out) || (inn != null && odd(inn))) && !(await confirmDialog({ title: 'このスコアで記録しますか？', body: `<p>前半 <b>${out}</b>${inn != null ? `・後半 <b>${inn}</b>` : ''} です。入力に間違いがないか確認してください。</p>`, ok: '記録する' }))) return;
+    if (holes === 9 && !(await confirmDialog({ title: '9ホールとして記録しますか？', body: '<p>後半が空欄なので、9ホールの記録になります（ベスト・平均の計算には入りません）。</p>', ok: '9ホールで記録' }))) return;
     await must(sb.from('rounds').insert({
-      member_id: state.profile.id, played_on: f.played_on.value, course_name: f.course_name.value.trim(), holes, score,
+      member_id: state.profile.id, played_on: f.played_on.value, course_name: f.course_name.value.trim(), holes, score, out_score: out, in_score: inn,
       putts: f.putts.value === '' ? null : Number(f.putts.value), note: f.note.value.trim(),
     }));
     toast('スコアを記録しました⛳'); render();
@@ -1854,6 +1860,15 @@ document.addEventListener('click', async (ev) => {
 
 let courseTimer;
 document.addEventListener('input', (ev) => {
+  if (ev.target.dataset.action === 'round-total') {
+    const f = ev.target.form;
+    const o = f.out_score.value; const i = f.in_score.value;
+    const el = document.getElementById('round-total');
+    el.textContent = o && i ? Number(o) + Number(i) : '—';
+    el.previousElementSibling.textContent = o && !i ? '9H' : '18H';
+    if (o && !i) el.textContent = o;
+    return;
+  }
   if (ev.target.dataset.action === 'course-search') {
     clearTimeout(courseTimer);
     const q = ev.target.value.trim();
