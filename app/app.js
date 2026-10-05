@@ -474,6 +474,8 @@ async function viewMemberHome() {
     must(sb.from('lessons').select('id').eq('member_id', p.id).gte('created_at', since)),
     must(sb.from('roadmap_items').select('id, publish_on, theme, published_at, hidden, seen_at, drills(title)').eq('member_id', p.id).order('publish_on')),
   ]);
+  const rounds = await must(sb.from('rounds').select('played_on, score, holes').eq('member_id', p.id));
+  const st = scoreStats(rounds, p);
   const rmOpened = roadmap.filter(rmOpen);
   const rmNow = rmOpened[rmOpened.length - 1];
   const rmDays = rmNow ? (await must(sb.from('roadmap_practice').select('practiced_on').eq('item_id', rmNow.id))).length : 0;
@@ -496,9 +498,10 @@ async function viewMemberHome() {
         <div class="rm-home-foot"><span class="rm-home-days">${rmDays ? `✓ 今月の練習 <b>${rmDays}</b>日` : 'まだ練習の記録がありません'}</span>
           <span class="rm-home-btn">ドリルを見る <i aria-hidden="true">›</i></span></div></a>` : ''}
     <div class="grid">
-      <div class="stat"><div class="label">ベストスコア</div><b>${esc(p.best_score ?? '—')}</b></div>
-      <div class="stat"><div class="label">平均スコア</div><b>${esc(p.avg_score ?? '—')}</b></div>
+      <a class="stat stat-link" href="#/scores"><div class="label">ベストスコア</div><b>${esc(st.best ?? '—')}</b></a>
+      <a class="stat stat-link" href="#/scores"><div class="label">平均スコア${st.count ? `<small>直近${st.recent}R</small>` : ''}</div><b>${esc(st.avg ?? '—')}</b></a>
     </div>
+    <a class="score-add" href="#/scores">⛳ ラウンドのスコアを記録する${st.count ? `<span>${st.count}ラウンド記録済み</span>` : ''} <i aria-hidden="true">›</i></a>
     ${!isStandalone() && !local.get('atg-install-dismissed') ? `<div class="install-banner">
         <div><b>ホーム画面に追加しませんか？</b><span>アプリのようにワンタップで開けます</span></div>
         <a class="btn btn-sm btn-gold" href="#/install">やり方</a>
@@ -847,6 +850,57 @@ window.addEventListener('resize', () => {
   if (grid && Number(grid.style.getPropertyValue('--cols')) !== RM_COLS()) rmLayout(grid.dataset.open === '' ? null : Number(grid.dataset.open));
 });
 
+// ---------- スコア記録 ----------
+// ベストは18ホールの全ラウンドから、平均は18ホールの直近10ラウンドから計算する
+const AVG_ROUNDS = 10;
+function scoreStats(rounds, p = {}) {
+  const full = rounds.filter((r) => r.holes === 18)
+    .sort((a, b) => (a.played_on < b.played_on ? 1 : a.played_on > b.played_on ? -1 : 0));
+  if (!full.length) return { best: p.best_score ?? null, avg: p.avg_score ?? null, count: 0, recent: 0 };
+  const recent = full.slice(0, AVG_ROUNDS);
+  const avg = recent.reduce((t, r) => t + r.score, 0) / recent.length;
+  return { best: Math.min(...full.map((r) => r.score)), avg: Math.round(avg * 10) / 10, count: full.length, recent: recent.length };
+}
+
+async function viewScores() {
+  const p = state.profile;
+  const rounds = await must(sb.from('rounds').select('*').eq('member_id', p.id).order('played_on', { ascending: false }).order('created_at', { ascending: false }));
+  const st = scoreStats(rounds, p);
+  const last = rounds.find((r) => r.holes === 18);
+  return header('スコア記録', 'home') + `<div class="content">
+    <div class="grid score-sum">
+      <div class="stat"><div class="label">ベストスコア</div><b>${esc(st.best ?? '—')}</b></div>
+      <div class="stat"><div class="label">平均スコア${st.count ? `<small>直近${st.recent}R</small>` : ''}</div><b>${esc(st.avg ?? '—')}</b></div>
+    </div>
+    <p class="muted small" style="margin:6px 0 0">18ホールのラウンドから自動で計算します（ベストは全ラウンド、平均は直近${AVG_ROUNDS}ラウンド）。${st.count ? `記録：${st.count}ラウンド` : ''}</p>
+
+    <form class="card form" data-form="round">
+      <b>ラウンドのスコアを記録</b>
+      <div class="grid">
+        <div><label for="played_on">日付</label><input id="played_on" name="played_on" type="date" value="${today()}" max="${today()}" required></div>
+        <div><label for="holes">ホール数</label><select id="holes" name="holes"><option value="18">18ホール</option><option value="9">9ホール</option></select></div>
+      </div>
+      <label for="course_name">ゴルフ場</label>
+      <input id="course_name" name="course_name" list="course-list" maxlength="100" required autocomplete="off" data-action="course-search" placeholder="ゴルフ場名を入力（候補が出ます）" value="${esc(last?.course_name || '')}">
+      <datalist id="course-list"></datalist>
+      <div class="grid">
+        <div><label for="score">スコア</label><input id="score" name="score" type="number" inputmode="numeric" min="20" max="250" required placeholder="例：95"></div>
+        <div><label for="putts">パット数（任意）</label><input id="putts" name="putts" type="number" inputmode="numeric" min="0" max="150" placeholder="例：36"></div>
+      </div>
+      <label for="note">ひとこと（任意）</label><input id="note" name="note" maxlength="300" placeholder="例：ドライバーが安定してきた">
+      <button class="btn-block btn-gold" type="submit">記録する</button>
+    </form>
+
+    <div class="section-title"><div><div class="eyebrow">Rounds</div><h2>これまでのラウンド</h2></div></div>
+    ${rounds.length ? `<div class="card">${rounds.map((r) => `<div class="list-item round-row">
+        <div class="grow"><b>${fmtDate(r.played_on)}</b>　${esc(r.course_name)}${r.holes === 9 ? '<span class="pill">9H</span>' : ''}
+          <div class="muted small">${r.putts != null ? `パット ${r.putts}　` : ''}${esc(r.note)}</div></div>
+        <b class="round-score${st.count && r.holes === 18 && r.score === st.best ? ' best' : ''}">${r.score}</b>
+        <button type="button" class="btn-sm btn-sub" data-action="delete-round" data-id="${r.id}" data-label="${esc(`${fmtDate(r.played_on)} ${r.course_name}（${r.score}）`)}" aria-label="削除">×</button>
+      </div>`).join('')}</div>` : '<div class="empty">まだ記録はありません。ラウンドしたらスコアを記録しましょう。</div>'}
+  </div>` + memberNav('home');
+}
+
 // 会員：ロードマップ（毎月1本のドリルの定期公開）
 // その月の期間（公開日〜次の月の公開日の前日。最大31日）
 function rmPeriod(items, i) {
@@ -1179,22 +1233,13 @@ async function viewMemberDetail(id) {
     must(sb.from('roadmap_reflections').select('item_id, body, updated_at').eq('member_id', id)),
     must(sb.from('roadmap_goals').select('goal').eq('member_id', id)),
   ]) : [[], [], []];
+  const mRounds = await must(sb.from('rounds').select('played_on, course_name, score, holes').eq('member_id', id).order('played_on', { ascending: false }));
+  const mst = scoreStats(mRounds, m || {});
   if (!m) return header('会員詳細', 'admin/members') + '<div class="content"><div class="empty">会員が見つかりません</div></div>';
   const self = m.id === state.profile.id;
   return header(m.name || '会員詳細', 'admin/members') + `<div class="content">
     <div class="card"><div class="between"><div><b>${esc(m.email)}</b><div class="muted">登録日 ${fmtDate(m.created_at)}</div></div>${memberPill(m)}</div>
       ${m.current_period_end ? `<div class="muted">次回更新日 ${fmtDate(m.current_period_end)}</div>` : ''}</div>
-
-    <div class="section-title"><h2>ドリル定期公開</h2>${roadmap.length ? `<a class="btn btn-sm" href="#/admin/roadmap/${m.id}">編集する</a>` : ''}</div>
-    <div class="card">${roadmap.length ? adminRoadmapSummary(roadmap, { practice: rmPractice, reflections: rmRefs, goal: rmGoals[0]?.goal }) : `
-      <p class="muted small" style="margin:0">初回カウンセリングで決めた内容をもとに、毎月1本ずつ公開するドリルの計画を作ります。あとから自由に変更できます。</p>
-      <form class="form" data-form="roadmap-create" data-id="${m.id}">
-        <div class="grid">
-          <div><label for="rm-start">最初の公開日</label><input id="rm-start" name="start" type="date" value="${today()}" required></div>
-          <div><label for="rm-months">月数</label><input id="rm-months" name="months" type="number" min="1" max="36" value="12" required></div>
-        </div>
-        <button class="btn-block" type="submit">ロードマップを作成する</button>
-      </form>`}</div>
 
     <form class="card form" data-form="admin-profile" data-id="${m.id}">
       <b>会員情報</b>
@@ -1202,10 +1247,13 @@ async function viewMemberDetail(id) {
       <label for="plan">プラン <span class="muted">（通常は Stripe から自動で反映）</span></label>
       <select id="plan" name="plan"><option value="">—</option>${PLANS.map((pl) => `<option value="${esc(pl.id)}" ${m.plan === pl.id ? 'selected' : ''}>${esc(pl.name)}</option>`).join('')}</select>
       <label for="goal">目標</label><input id="goal" name="goal" value="${esc(m.goal)}" maxlength="50">
-      <div class="grid">
-        <div><label for="best_score">Best Score</label><input id="best_score" name="best_score" type="number" min="40" max="200" value="${esc(m.best_score ?? '')}"></div>
-        <div><label for="avg_score">平均スコア</label><input id="avg_score" name="avg_score" type="number" min="40" max="200" value="${esc(m.avg_score ?? '')}"></div>
+      <div class="admin-scores">
+        <div><span>ベストスコア</span><b>${esc(mst.best ?? '—')}</b></div>
+        <div><span>平均スコア${mst.count ? `（直近${mst.recent}R）` : ''}</span><b>${esc(mst.avg ?? '—')}</b></div>
+        <div><span>記録</span><b>${mst.count}<small>R</small></b></div>
       </div>
+      ${mRounds.length ? `<details class="admin-rounds"><summary>最近のラウンドを見る</summary>${mRounds.slice(0, 10).map((r) => `<div class="list-item small"><span>${fmtDate(r.played_on)}　${esc(r.course_name)}${r.holes === 9 ? '（9H）' : ''}</span><b>${r.score}</b></div>`).join('')}</details>`
+        : '<p class="muted small" style="margin:4px 0 0">スコアは会員がラウンドごとに入力すると、自動で計算されます。</p>'}
       <label for="theme">今月のテーマ</label><input id="theme" name="theme" value="${esc(m.theme)}" maxlength="100">
       <label for="access_until">利用期限 <span class="muted">（LINE・電話で申し込んだ会員用。カード決済の会員は空欄）</span></label>
       <input id="access_until" name="access_until" type="date" value="${esc(m.access_until || '')}">
@@ -1218,6 +1266,17 @@ async function viewMemberDetail(id) {
         <option value="admin" ${m.role === 'admin' ? 'selected' : ''}>管理者（コーチ）</option></select>`}
       <button class="btn-block" type="submit">保存する</button>
     </form>
+
+    <div class="section-title"><h2>ドリル定期公開</h2>${roadmap.length ? `<a class="btn btn-sm" href="#/admin/roadmap/${m.id}">編集する</a>` : ''}</div>
+    <div class="card">${roadmap.length ? adminRoadmapSummary(roadmap, { practice: rmPractice, reflections: rmRefs, goal: rmGoals[0]?.goal }) : `
+      <p class="muted small" style="margin:0">初回カウンセリングで決めた内容をもとに、毎月1本ずつ公開するドリルの計画を作ります。あとから自由に変更できます。</p>
+      <form class="form" data-form="roadmap-create" data-id="${m.id}">
+        <div class="grid">
+          <div><label for="rm-start">最初の公開日</label><input id="rm-start" name="start" type="date" value="${today()}" required></div>
+          <div><label for="rm-months">月数</label><input id="rm-months" name="months" type="number" min="1" max="36" value="12" required></div>
+        </div>
+        <button class="btn-block" type="submit">ロードマップを作成する</button>
+      </form>`}</div>
 
     <div class="section-title"><h2>今月の課題</h2>${tasks.length ? '<button class="btn-sm btn-sub" data-action="reset-tasks" data-id="' + m.id + '">完了をリセット</button>' : ''}</div>
     <div class="card">
@@ -1333,6 +1392,7 @@ async function render() {
       return paint(viewPlans());
     }
     if (r[0] === 'guide') return paint(viewGuide());
+    if (r[0] === 'scores' && isActive(p)) return paint(await viewScores());
     if (r[0] === 'install') return paint(viewInstall());
     if (!p.onboarded_at) return go('guide');
     const [unreadLessons, unreadDrills] = await Promise.all([
@@ -1467,6 +1527,12 @@ const actions = {
   'reset-tasks': async (el) => {
     await must(sb.from('tasks').update({ done: false }).eq('member_id', el.dataset.id));
     toast('完了をリセットしました'); render();
+  },
+  'delete-round': async (el) => {
+    const ok = await confirmDialog({ title: 'この記録を削除しますか？', body: `<p>${esc(el.dataset.label)}</p>`, ok: '削除する' });
+    if (!ok) return;
+    await must(sb.from('rounds').delete().eq('id', el.dataset.id));
+    toast('削除しました'); render();
   },
   'rm-unpublish': async (el) => {
     const ok = await confirmDialog({
@@ -1666,10 +1732,9 @@ const forms = {
     go('home');
   },
   'admin-profile': async (f) => {
-    const num = (v) => (v === '' ? null : Number(v));
     const update = {
       name: f.name.value.trim(), plan: f.plan.value || null, goal: f.goal.value.trim(),
-      best_score: num(f.best_score.value), avg_score: num(f.avg_score.value), theme: f.theme.value.trim(),
+      theme: f.theme.value.trim(),
       next_meeting_at: f.next_meeting_at.value ? new Date(f.next_meeting_at.value).toISOString() : null,
       access_until: f.access_until.value || null,
       extra_submissions: Number(f.extra_submissions.value) || 0,
@@ -1684,6 +1749,16 @@ const forms = {
       member_id: f.dataset.id, title: f.title.value.trim(), detail: f.detail.value.trim(), sort_order: Number(f.dataset.count),
     }));
     render();
+  },
+  round: async (f) => {
+    const score = Number(f.score.value);
+    const holes = Number(f.holes.value);
+    if (holes === 18 && (score < 54 || score > 200) && !(await confirmDialog({ title: 'このスコアで記録しますか？', body: `<p>18ホールで <b>${score}</b> です。入力に間違いがないか確認してください。</p>`, ok: '記録する' }))) return;
+    await must(sb.from('rounds').insert({
+      member_id: state.profile.id, played_on: f.played_on.value, course_name: f.course_name.value.trim(), holes, score,
+      putts: f.putts.value === '' ? null : Number(f.putts.value), note: f.note.value.trim(),
+    }));
+    toast('スコアを記録しました⛳'); render();
   },
   reflection: async (f) => {
     await must(sb.from('roadmap_reflections').upsert({
@@ -1777,7 +1852,19 @@ document.addEventListener('click', async (ev) => {
   try { await actions[el.dataset.action](el); } catch (e) { console.error(e); toast(e.message || 'エラーが発生しました', true); }
 });
 
+let courseTimer;
 document.addEventListener('input', (ev) => {
+  if (ev.target.dataset.action === 'course-search') {
+    clearTimeout(courseTimer);
+    const q = ev.target.value.trim();
+    courseTimer = setTimeout(async () => {
+      if (!q) return;
+      const { data } = await sb.rpc('search_courses', { p_query: q });
+      const list = document.getElementById('course-list');
+      if (list && data) list.innerHTML = data.map((c) => `<option value="${esc(c.course_name)}"></option>`).join('');
+    }, 250);
+    return;
+  }
   const rmRowEl = ev.target.closest('form[data-form="roadmap"] [data-row]');
   if (rmRowEl) { rmDirty(); rmRefresh(rmRowEl); } else if (ev.target.closest('form[data-form="roadmap"]')) rmDirty();
   if (ev.target.dataset.action === 'filter-drills') {

@@ -484,3 +484,23 @@ details.rm-edit[open] .rm-no::before{content:"▾ "}
 .shoot-cta{margin:0 0 12px;background:var(--ink);border:2px solid #3ddc84;color:#fff}
 .shoot-cta b{color:#3ddc84}
 .shoot-cta small{color:#c9cbbf}
+/* スコア記録 */
+.stat-link{display:block;text-decoration:none;color:inherit;position:relative}
+.stat-link::after{content:"›";position:absolute;right:12px;top:50%;transform:translateY(-50%);color:var(--gold);font-size:20px;font-weight:700}
+.stat .label small{margin-left:6px;font-size:11px;color:var(--muted);font-weight:400}
+.score-add{display:flex;align-items:center;gap:8px;margin:10px 0 0;padding:12px 16px;border-radius:14px;background:#fff;border:1.5px dashed var(--gold);color:var(--ink);font-weight:700;text-decoration:none;font-size:14.5px}
+.score-add span{font-size:12px;color:var(--muted);font-weight:400}
+.score-add i{margin-left:auto;font-style:normal;color:var(--gold);font-size:20px}
+.score-sum{margin-top:0}
+.round-row{gap:10px}
+.round-row .pill{margin-left:6px;font-size:10.5px}
+.round-score{font-size:22px;font-variant-numeric:tabular-nums lining-nums;color:var(--ink);min-width:40px;text-align:right}
+.round-score.best{color:var(--gold-deep,#8a6a2c)}
+.round-score.best::before{content:"BEST ";font-size:10px;letter-spacing:.06em}
+.round-row .btn-sm{padding:4px 10px;min-height:0}
+.admin-scores{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:14px 0 4px}
+.admin-scores div{background:var(--paper);border-radius:12px;padding:8px 10px}
+.admin-scores span{display:block;font-size:11px;color:var(--muted);font-weight:700}
+.admin-scores b{font-size:22px;font-variant-numeric:tabular-nums lining-nums}
+.admin-scores small{font-size:12px;margin-left:2px}
+.admin-rounds summary{cursor:pointer;font-size:13px;font-weight:700;padding:6px 0}
