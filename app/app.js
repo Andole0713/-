@@ -516,13 +516,19 @@ async function viewMemberHome() {
   const plan = planOf(p.plan);
   const quota = quotaOf(p);
   const extra = extraThisMonth(p);
-  return header('マイページ') + `<div class="content">
+  return header('マイページ') + `<div class="content wide"><div class="cols">
+  <div class="col-main">
+    <div class="blk" style="--o:1">
+    ${state.handoff ? `<a class="handoff-banner" href="#/submit/swingframe"><span class="ico" aria-hidden="true">📹</span>
+        <span><b>SwingFrame で撮った動画があります</b><small>このままコーチに送れます</small></span><i aria-hidden="true">›</i></a>` : ''}
+    </div>
+    <div class="blk" style="--o:2">
     <div class="hero">${plan ? `<span class="pill">${esc(plan.name)}</span>` : ''}
       <h1>${esc(p.name)}さん、おかえりなさい。</h1>
       <div class="muted">現在の目標</div><h2 style="margin:4px 0 0;font-size:24px">${esc(p.goal || '未設定')}</h2>
       ${p.theme ? `<div style="margin-top:12px">今月のテーマ：${esc(p.theme)}</div>` : ''}</div>
-    ${state.handoff ? `<a class="handoff-banner" href="#/submit/swingframe"><span class="ico" aria-hidden="true">📹</span>
-        <span><b>SwingFrame で撮った動画があります</b><small>このままコーチに送れます</small></span><i aria-hidden="true">›</i></a>` : ''}
+    </div>
+    <div class="blk" style="--o:3">
     ${rmNow ? `<a class="rm-home" href="#/drills">
         <div class="rm-home-head"><span class="rm-badge">今月のドリル</span>${rmNow.seen_at ? '' : '<span class="new-badge">NEW</span>'}
           <span class="rm-home-step"><b>${rmOpened.length}</b>/${roadmap.length}か月目</span></div>
@@ -531,15 +537,41 @@ async function viewMemberHome() {
         <div class="rm-home-meter" aria-hidden="true"><i style="width:${Math.round((rmOpened.length / roadmap.length) * 100)}%"></i></div>
         <div class="rm-home-foot"><span class="rm-home-days">${rmDays ? `✓ 今月の練習 <b>${rmDays}</b>日` : 'まだ練習の記録がありません'}</span>
           <span class="rm-home-btn">ドリルを見る <i aria-hidden="true">›</i></span></div></a>` : ''}
+    </div>
+    <div class="blk" style="--o:7">
+    <div class="section-title"><div><div class="eyebrow">Practice</div><h2>今月の課題</h2></div><span class="muted">${done}/${tasks.length}</span></div>
+    ${tasks.length ? tasks.map((t) => `<button type="button" class="task${t.done ? ' done' : ''}" data-action="toggle-task" data-id="${t.id}" data-done="${t.done}" aria-pressed="${t.done}">
+        <span class="check">${t.done ? '✓' : ''}</span><span><b>${esc(t.title)}</b><div class="muted">${esc(t.detail)}</div></span></button>`).join('')
+      : '<div class="empty">コーチから課題が届くとここに表示されます</div>'}
+    </div>
+    <div class="blk" style="--o:8">
+    <div class="section-title"><div><div class="eyebrow">Lesson</div><h2>最新のレッスン</h2></div>${latest ? '<a href="#/history">すべて見る</a>' : ''}</div>
+    ${latest ? `<a class="lesson-feature" href="#/lesson/${latest.id}">
+        <span class="date">${fmtDate(latest.lesson_date)}</span>${newBadge(latest)}
+        <h3>${esc(latest.title)}</h3>
+        ${latest.point ? `<div class="point"><span>今回のポイント</span><p>${esc(latest.point)}</p></div>` : ''}
+        ${practiceProgress(latest)}
+        <span class="go">レッスンを見る <i aria-hidden="true">›</i></span></a>`
+      : '<div class="empty">まだレッスンはありません。まずは動画を送りましょう。</div>'}
+    ${subs.length ? `<div class="notice">確認待ちの動画が ${subs.length} 件あります。コーチからのレッスンをお待ちください。</div>` : ''}
+    <a class="btn btn-block btn-gold" href="#/submit">スイング動画を送る</a>
+    </div>
+  </div>
+  <div class="col-side">
+    <div class="blk" style="--o:4">
     <div class="grid">
       <a class="stat stat-link" href="#/scores"><div class="label">ベストスコア</div><b>${esc(st.best ?? '—')}</b></a>
       <a class="stat stat-link" href="#/scores"><div class="label">平均スコア${st.count ? `<small>直近${st.recent}R</small>` : ''}</div><b>${esc(st.avg ?? '—')}</b></a>
     </div>
-    <a class="score-add" href="#/scores">⛳ ラウンドのスコアを記録する${st.count ? `<span>${st.count}ラウンド記録済み</span>` : ''} <i aria-hidden="true">›</i></a>
+    <a class="score-add" href="#/scores"><span class="sa-txt">⛳ ラウンドのスコアを記録する${st.count ? `<small>${st.count}ラウンド記録済み</small>` : ''}</span><i aria-hidden="true">›</i></a>
+    </div>
+    <div class="blk" style="--o:5">
     ${!isStandalone() && !local.get('atg-install-dismissed') ? `<div class="install-banner">
         <div><b>ホーム画面に追加しませんか？</b><span>アプリのようにワンタップで開けます</span></div>
         <a class="btn btn-sm btn-gold" href="#/install">やり方</a>
         <button type="button" class="install-close" data-action="dismiss-install" aria-label="閉じる">×</button></div>` : ''}
+    </div>
+    <div class="blk" style="--o:6">
     <div class="section-title"><div><div class="eyebrow">This Month</div><h2>今月のサポート</h2></div></div>
     <div class="card">
       <div class="support">
@@ -555,21 +587,9 @@ async function viewMemberHome() {
         ${lineBtn('LINEで面談を予約する')}
       </div>
     </div>
-    <div class="section-title"><div><div class="eyebrow">Practice</div><h2>今月の課題</h2></div><span class="muted">${done}/${tasks.length}</span></div>
-    ${tasks.length ? tasks.map((t) => `<button type="button" class="task${t.done ? ' done' : ''}" data-action="toggle-task" data-id="${t.id}" data-done="${t.done}" aria-pressed="${t.done}">
-        <span class="check">${t.done ? '✓' : ''}</span><span><b>${esc(t.title)}</b><div class="muted">${esc(t.detail)}</div></span></button>`).join('')
-      : '<div class="empty">コーチから課題が届くとここに表示されます</div>'}
-    <div class="section-title"><div><div class="eyebrow">Lesson</div><h2>最新のレッスン</h2></div>${latest ? '<a href="#/history">すべて見る</a>' : ''}</div>
-    ${latest ? `<a class="lesson-feature" href="#/lesson/${latest.id}">
-        <span class="date">${fmtDate(latest.lesson_date)}</span>${newBadge(latest)}
-        <h3>${esc(latest.title)}</h3>
-        ${latest.point ? `<div class="point"><span>今回のポイント</span><p>${esc(latest.point)}</p></div>` : ''}
-        ${practiceProgress(latest)}
-        <span class="go">レッスンを見る <i aria-hidden="true">›</i></span></a>`
-      : '<div class="empty">まだレッスンはありません。まずは動画を送りましょう。</div>'}
-    ${subs.length ? `<div class="notice">確認待ちの動画が ${subs.length} 件あります。コーチからのレッスンをお待ちください。</div>` : ''}
-    <a class="btn btn-block btn-gold" href="#/submit">スイング動画を送る</a>
-  </div>` + memberNav('home');
+    </div>
+  </div>
+  </div>  </div>` + memberNav('home');
 }
 
 async function viewSubmit() {
@@ -689,12 +709,12 @@ async function viewHistory() {
     return head + it.html;
   }).join('');
 
-  return header('レッスン履歴') + `<div class="content">
+  return header('レッスン履歴') + `<div class="content wide">
     <p class="muted small" style="margin:0 0 8px">送った動画と、その動画へのコーチの解説をセットで表示しています。動画は送信から${RETENTION_LABEL}見られます。</p>
     ${clubs.length > 1 ? `<div class="filter-chips" role="group" aria-label="クラブで絞り込む">
       ${[['', 'すべて'], ...clubs.map((c) => [c, c])].map(([v, label]) => `<button type="button" data-action="history-filter" data-club="${esc(v)}" class="${filter === v ? 'on' : ''}" aria-pressed="${filter === v}">${esc(label)}</button>`).join('')}
     </div>` : ''}
-    ${list || `<div class="empty">${filter ? 'このクラブの動画はまだありません' : 'まだ履歴はありません。まずは動画を送りましょう。'}</div>`}
+    ${list ? `<div class="history-list">${list}</div>` : `<div class="empty">${filter ? 'このクラブの動画はまだありません' : 'まだ履歴はありません。まずは動画を送りましょう。'}</div>`}
     ${items.length ? '' : '<a class="btn btn-block btn-gold" href="#/submit">スイング動画を送る</a>'}
   </div>` + memberNav('history');
 }
@@ -756,23 +776,41 @@ async function viewLesson(id, back = 'history') {
     const { error } = await sb.rpc('mark_lesson_read', { p_lesson: l.id });
     if (!error) state.unread = Math.max(0, state.unread - 1);
   }
-  return header('レッスン詳細', back) + `<div class="content lesson-page">
+  return header('レッスン詳細', back) + `<div class="content wide lesson-page">
+    <div class="blk" style="--o:0">
     <div class="lesson-head">
       <span class="date">${fmtDate(l.lesson_date)}</span>
       <h1>${esc(l.title)}</h1>
       ${l.point ? `<div class="diag"><span>今回の診断</span><p>${esc(l.point)}</p></div>` : ''}
     </div>
+    </div>
+  <div class="cols">
+  <div class="col-main">
+    <div class="blk" style="--o:1">
     ${l.video_url ? `<section class="card lesson-sec">${secTitle('▶', 'コーチの解説動画')}${videoEmbed(l.video_url)}</section>` : ''}
+    </div>
+    <div class="blk" style="--o:2">
     ${drills.length ? `<section class="card lesson-sec">${secTitle('◎', 'ドリル動画')}
         ${mine ? '<p class="muted small" style="margin:-4px 0 6px">ドリルは「ドリル」のページにもたまっていきます。契約中はいつでも見返せます。</p>' : ''}
         ${drills.map((d) => drillCard(d, drillUrls)).join('')}</section>` : ''}
-    ${l.feedback ? `<section class="card lesson-sec">${secTitle('✎', 'コーチからのフィードバック')}<div class="fb">${richText(l.feedback)}</div></section>` : ''}
-    ${l.practice ? `<section class="card lesson-sec practice">${secTitle('✓', '次回までの練習')}
-        ${mine ? '<p class="muted small" style="margin:-4px 0 4px">練習したらタップしてチェックしましょう。</p>' : ''}
-        ${drillList(l.practice, l.practice_done || [], mine ? l.id : null)}</section>` : ''}
+    </div>
+    <div class="blk" style="--o:5">
     ${l.submissions ? `<section class="card lesson-sec">${secTitle('◉', '送った動画')}${swingVideo(l.submissions, urls)}
         ${mine ? `<a class="muted small" href="#/submission/${l.submission_id}">送った動画の詳細（保存期限など）›</a>` : ''}
         ${l.submissions.question ? `<div class="my-q"><span>送ったときのお悩み・質問</span><p class="pre">${esc(l.submissions.question)}</p></div>` : ''}</section>` : ''}
+    </div>
+  </div>
+  <div class="col-side">
+    <div class="blk" style="--o:3">
+    ${l.feedback ? `<section class="card lesson-sec">${secTitle('✎', 'コーチからのフィードバック')}<div class="fb">${richText(l.feedback)}</div></section>` : ''}
+    </div>
+    <div class="blk" style="--o:4">
+    ${l.practice ? `<section class="card lesson-sec practice">${secTitle('✓', '次回までの練習')}
+        ${mine ? '<p class="muted small" style="margin:-4px 0 4px">練習したらタップしてチェックしましょう。</p>' : ''}
+        ${drillList(l.practice, l.practice_done || [], mine ? l.id : null)}</section>` : ''}
+    </div>
+  </div>
+  </div>
   </div>` + (state.profile.role === 'admin' ? '' : memberNav('history'));
 }
 
@@ -1039,11 +1077,11 @@ async function viewMemberDrills() {
     .forEach((r) => { if (!byDrill.has(r.drills.id)) byDrill.set(r.drills.id, r); });
   const list = [...byDrill.values()];
   const urls = await signedDrillUrls([...list.map((r) => r.drills), ...roadmap.filter(rmOpen).map((r) => r.drills)]);
-  return header('ドリル') + `<div class="content">
+  return header('ドリル') + `<div class="content wide">
     ${roadmapView(roadmap, urls, { practice, reflections, goal: goals[0]?.goal || p.goal })}
     <div class="section-title"><div><div class="eyebrow">From Lessons</div><h2>レッスンで届いたドリル</h2></div></div>
-    ${list.length ? list.map((r) => drillCard(r.drills, urls,
-      `<a class="drill-from" href="#/lesson/${r.lessons.id}">${fmtDate(r.lessons.lesson_date)} のレッスン「${esc(r.lessons.title)}」より ›</a>`)).join('')
+    ${list.length ? `<div class="drill-list">${list.map((r) => drillCard(r.drills, urls,
+      `<a class="drill-from" href="#/lesson/${r.lessons.id}">${fmtDate(r.lessons.lesson_date)} のレッスン「${esc(r.lessons.title)}」より ›</a>`)).join('')}</div>`
       : '<div class="empty">コーチからレッスンでドリルが届くと、ここにたまっていきます。</div>'}
   </div>` + memberNav('drills');
 }
@@ -1230,8 +1268,8 @@ async function viewDrills() {
 async function viewInbox() {
   const subs = await must(sb.from('submissions').select('*, profiles(name, plan)').eq('status', 'pending').order('created_at'));
   const urls = await signedVideoUrls(subs);
-  return header('提出動画（確認待ち）') + `<div class="content">
-    ${subs.length ? subs.map((s) => `<div class="card">
+  return header('提出動画（確認待ち）') + `<div class="content wide">
+    ${subs.length ? `<div class="inbox-list">` + subs.map((s) => `<div class="card">
         <div class="between"><div><b>${esc(s.profiles?.name || '（名前未設定）')}</b> <span class="pill">${esc(planLabel(s.profiles?.plan))}</span></div>
           <span class="muted">${fmtDate(s.created_at)}</span></div>
         <div class="muted">${esc(s.club)} / ${esc(s.angle)}</div>
@@ -1242,13 +1280,13 @@ async function viewInbox() {
           <button class="btn-sub" data-action="mark-reviewed" data-id="${s.id}">対応済みにする</button>
         </div>
         <a class="muted small" href="#/admin/member/${s.member_id}">会員ページを見る</a>
-      </div>`).join('') : '<div class="empty">確認待ちの動画はありません 🎉</div>'}
+      </div>`).join('') + '</div>' : '<div class="empty">確認待ちの動画はありません 🎉</div>'}
   </div>` + adminNav('admin/inbox');
 }
 
 async function viewMembers() {
   const members = await must(sb.from('profiles').select('id, name, email, plan, role, subscription_status, access_until').order('created_at', { ascending: false }));
-  return header('会員一覧') + `<div class="content">
+  return header('会員一覧') + `<div class="content wide">
     <div class="form"><input type="search" id="member-search" placeholder="名前・メールで検索" data-action="filter-members"></div>
     <p class="muted">${members.filter((m) => isActive(m)).length} 名が契約中 / 全 ${members.length} 名</p>
     <div id="member-list">${members.map((m) => `<a class="card link" href="#/admin/member/${m.id}" data-search="${esc(`${m.name} ${m.email}`.toLowerCase())}">
@@ -1277,7 +1315,7 @@ async function viewMemberDetail(id) {
   const mst = scoreStats(mRounds, m || {});
   if (!m) return header('会員詳細', 'admin/members') + '<div class="content"><div class="empty">会員が見つかりません</div></div>';
   const self = m.id === state.profile.id;
-  return header(m.name || '会員詳細', 'admin/members') + `<div class="content">
+  return header(m.name || '会員詳細', 'admin/members') + `<div class="content wide"><div class="cols"><div class="col-main">
     <div class="card"><div class="between"><div><b>${esc(m.email)}</b><div class="muted">登録日 ${fmtDate(m.created_at)}</div></div>${memberPill(m)}</div>
       ${m.current_period_end ? `<div class="muted">次回更新日 ${fmtDate(m.current_period_end)}</div>` : ''}</div>
 
@@ -1307,6 +1345,7 @@ async function viewMemberDetail(id) {
       <button class="btn-block" type="submit">保存する</button>
     </form>
 
+    </div><div class="col-side">
     <div class="section-title"><h2>ドリル定期公開</h2>${roadmap.length ? `<a class="btn btn-sm" href="#/admin/roadmap/${m.id}">編集する</a>` : ''}</div>
     <div class="card">${roadmap.length ? adminRoadmapSummary(roadmap, { practice: rmPractice, reflections: rmRefs, goal: rmGoals[0]?.goal }) : `
       <p class="muted small" style="margin:0">初回カウンセリングで決めた内容をもとに、毎月1本ずつ公開するドリルの計画を作ります。あとから自由に変更できます。</p>
@@ -1338,6 +1377,7 @@ async function viewMemberDetail(id) {
     <div class="section-title"><h2>提出動画</h2></div>
     <div class="card">${subs.map((s) => `<div class="list-item"><div>${fmtDate(s.created_at)}　${esc(s.club)} / ${esc(s.angle)}</div>
         ${s.status === 'pending' ? `<a class="btn btn-sm" href="#/admin/lesson/new/s/${s.id}">レッスンを書く</a>` : '<span class="pill ok">対応済み</span>'}</div>`).join('') || '<div class="muted">提出はまだありません</div>'}</div>
+  </div></div>
   </div>` + adminNav('admin/members');
 }
 
@@ -1401,6 +1441,8 @@ async function render() {
   const paint = (html) => {
     if (seq !== renderSeq) return;
     document.body.classList.toggle('on-auth', html.startsWith('<div class="auth-page">'));
+    // パソコンでは下部メニューを左側のサイドメニューにするため、メニューがある画面かどうかを付けておく
+    document.body.classList.toggle('with-nav', html.includes('<nav class="nav"'));
     $app.innerHTML = html; window.scrollTo(0, 0);
   };
   try {
