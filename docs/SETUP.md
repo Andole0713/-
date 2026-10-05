@@ -256,8 +256,9 @@ update public.profiles set role = 'admin' where email = 'coach@example.com';
 ```
 app/                         会員サイト（画面）
   index.html  style.css  app.js
-  config.js                  ← Supabase の URL・キー、プラン表示、SwingFrame のリンクを設定
+  config.js                  ← Supabase の URL・キー、プラン表示を設定
   manifest.webmanifest       ホーム画面に追加したときの名前・アイコン
+  swing/                     撮影アプリ SwingFrame（ログイン不要。会員ページと同じアプリとしてホーム画面に追加される）
 supabase/
   migrations/…_init.sql      データベースの表とアクセス権限（RLS）
   functions/

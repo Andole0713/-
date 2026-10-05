@@ -238,11 +238,11 @@ html[data-fs="xl"] .app,html[data-fs="xl"] .toast{zoom:1.25}
 /* アカウント画面の設定 */
 .switch{display:flex;align-items:flex-start;gap:10px;margin:10px 0 4px;font-weight:400;cursor:pointer}
 .switch input{width:22px;height:22px;flex:none;margin:2px 0 0;accent-color:var(--ink)}
-.seg{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:10px}
-.seg button{background:var(--paper-2);color:var(--text);padding:10px 4px;border-radius:12px;font-weight:700}
-.seg button:nth-child(2){font-size:16px}
-.seg button:nth-child(3){font-size:18px}
-.seg button.on{background:var(--ink);color:var(--gold-2)}
+.fs-seg{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:10px}
+.fs-seg button{background:var(--paper-2);color:var(--text);padding:10px 4px;border-radius:12px;font-weight:700}
+.fs-seg button:nth-child(2){font-size:16px}
+.fs-seg button:nth-child(3){font-size:18px}
+.fs-seg button.on{background:var(--ink);color:var(--gold-2)}
 .card.links{padding-top:6px;padding-bottom:6px}
 .card.links .list-item{color:var(--text);text-decoration:none}
 /* 使い方ガイド */
@@ -472,3 +472,15 @@ details.rm-edit[open] .rm-no::before{content:"▾ "}
 .lc-play::after{content:"";position:absolute;left:26px;top:20px;border-style:solid;border-width:12px 0 12px 19px;border-color:transparent transparent transparent var(--ink)}
 .lc-video-label{position:absolute;left:0;right:0;bottom:0;padding:8px 12px;background:linear-gradient(transparent,rgba(15,23,18,.92));color:#fff;font-weight:800;font-size:14.5px;letter-spacing:.04em;text-align:center}
 .lesson-card:hover .lc-play{filter:brightness(1.08)}
+/* 撮影（SwingFrame）への入り口 */
+.auth-shoot,.shoot-cta{display:flex;align-items:center;gap:12px;text-decoration:none;border-radius:16px;padding:14px 16px}
+.auth-shoot .ico,.shoot-cta .ico{flex:none;width:40px;height:40px;border-radius:12px;display:grid;place-items:center;font-size:18px;background:#3ddc84;color:#04140b}
+.auth-shoot b,.shoot-cta b{display:block;font-size:16px}
+.auth-shoot small,.shoot-cta small{display:block;font-size:12px;line-height:1.5;margin-top:2px}
+.auth-shoot i,.shoot-cta i{margin-left:auto;font-style:normal;font-size:22px}
+.auth-shoot{margin:0 0 18px;background:var(--ink);border:2px solid #3ddc84;color:#fff}
+.auth-shoot b{color:#3ddc84}
+.auth-shoot small{color:#c9cbbf}
+.shoot-cta{margin:0 0 12px;background:var(--ink);border:2px solid #3ddc84;color:#fff}
+.shoot-cta b{color:#3ddc84}
+.shoot-cta small{color:#c9cbbf}
