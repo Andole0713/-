@@ -172,6 +172,8 @@ input[type=range]::-moz-range-thumb{width:20px;height:20px;border:0;border-radiu
   display:flex;flex-direction:column;gap:6px}
 #rTools{left:4px}
 #rPlayRail{right:4px}
+.rbtn.coach{border-color:rgba(200,169,106,.7);background:rgba(200,169,106,.22);color:#e2cc9a}
+.rbtn.coach i{color:#e2cc9a}
 .rbtn{width:64px;height:54px;border-radius:13px;
   background:rgba(14,17,21,.5);border:1px solid rgba(255,255,255,.14);
   -webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);
@@ -355,7 +357,7 @@ a.hbtn{text-decoration:none;color:inherit;box-sizing:border-box}
       <h1>SwingFrame</h1>
       <p>スイング撮影・スイング分析</p>
       <!-- 表示用の版数。sw.js の CACHE と必ずそろえること（片方だけ上げると更新に気づけません） -->
-      <div id="hVer">v35</div>
+      <div id="hVer">v36</div>
     </div>
     <button class="hbtn pri" id="hShoot"><i>●</i><span>スイングを撮影<em>ガイドに合わせて自動で録画</em></span></button>
     <button class="hbtn" id="hLib"><i>▤</i><span>ライブラリ<em id="hLibSub">保存した動画と画像</em></span></button>
@@ -532,6 +534,7 @@ a.hbtn{text-decoration:none;color:inherit;box-sizing:border-box}
     <button class="rbtn" id="rCut"><i>✂</i>長さ</button>
     <button class="rbtn" id="rFav"><i id="favIcon">♡</i>お気に入り</button>
     <button class="rbtn" id="rNote"><i>✎</i>コメント</button>
+    <button class="rbtn coach" id="rCoachBtn"><i>⛳</i>コーチへ</button>
     <button class="rbtn" id="rSaveBtn"><i>⬇</i>保存</button>
   </div>
 
@@ -541,6 +544,7 @@ a.hbtn{text-decoration:none;color:inherit;box-sizing:border-box}
       <button data-d="app">アプリ</button>
       <button data-d="roll" class="on">カメラロール</button>
       <button data-d="share">他のアプリ</button>
+      <button data-d="coach">コーチに送る</button>
     </div>
     <div class="muted" id="destHint" style="font-size:12px;margin:-4px 0 8px;line-height:1.5"></div>
     <button id="rImg">画像で保存</button>
@@ -1808,7 +1812,8 @@ function dl(blob,name){
 /* One destination at a time: the app's own library, the camera roll, or
    handing the file to another app. */
 function destHintFor(d){
-  return d==='roll' ? '共有メニューが開きます。「ビデオを保存」を選ぶとカメラロールに入ります。'
+  return d==='coach' ? 'オンラインレッスンの提出画面に、この動画をそのまま渡します（線・骨格・長さの調整も入ります）。'
+       : d==='roll' ? '共有メニューが開きます。「ビデオを保存」を選ぶとカメラロールに入ります。'
        : d==='app'  ? '撮った動画は自動でライブラリに入ります。ここは線を入れた動画と画像の保存用です。'
        : '';
 }
@@ -1825,7 +1830,39 @@ function canShare(file){
   try{return !!(navigator.canShare&&navigator.share&&navigator.canShare({files:[file]}))}
   catch(e){return false}
 }
+/* Hand a finished video to the online-lesson submit screen of the All Time Golf
+   app. Both pages live on the same site, so the file is parked in a small
+   IndexedDB store that the submit screen reads. */
+function handoffToCoach(blob,name,note){
+  return new Promise(function(res,rej){
+    var rq=indexedDB.open('atg-handoff',1);
+    rq.onupgradeneeded=function(){rq.result.createObjectStore('files')};
+    rq.onerror=function(){rej(rq.error)};
+    rq.onsuccess=function(){
+      var db=rq.result,tx=db.transaction('files','readwrite');
+      tx.objectStore('files').put({blob:blob,name:name,type:blob.type,note:note||'',ts:Date.now()},'swing');
+      tx.oncomplete=function(){db.close();res()};
+      tx.onerror=function(){db.close();rej(tx.error)};
+    };
+  }).then(function(){
+    toast('提出画面を開きます');
+    location.href='../#/submit/swingframe';
+  }).catch(function(){
+    toast('動画を渡せませんでした。カメラロールに保存してから送ってください');
+  });
+}
+function setDest(d){
+  dest=d;
+  Array.prototype.forEach.call($('#dests').children,function(x){
+    x.classList.toggle('on',x.dataset.d===dest);
+  });
+  $('#destHint').textContent = destHintFor(dest);
+}
 function saveTo(blob,name,kind,meta){
+  if(dest==='coach'){
+    if(kind!=='video'){ toast('コーチに送れるのは動画だけです'); return Promise.resolve(); }
+    return handoffToCoach(blob,name,meta&&meta.note);
+  }
   if(dest==='app'){
     /* Every recording already lands in the library the moment it stops, so
        putting the untouched original back would simply make a second copy of
@@ -1982,7 +2019,7 @@ $('#rSave').onclick=function(){
     var nm='swing_'+cur.id+'_cut.'+(t.indexOf('mp4')>=0?'mp4':'webm');
     /* the app's own library can take it straight away; anything that needs the
        share sheet has to wait for a fresh tap */
-    if(dest==='app') saveTo(b,nm,'video',{guide:cur.guide,note:cur.note});
+    if(dest==='app'||dest==='coach') saveTo(b,nm,'video',{guide:cur.guide,note:cur.note});
     else offerSave(b,nm);
   };
   function frame(){
@@ -2435,6 +2472,8 @@ $('#rDrawBtn').onclick=function(){closePops('#rDraw');$('#rDraw').classList.togg
 $('#rColBtn').onclick=function(){closePops('#rColors');$('#rColors').classList.toggle('on')};
 $('#rWidth').onclick=function(){closePops('#rWidthPop');$('#rWidthPop').classList.toggle('on')};
 $('#rSaveBtn').onclick=function(){closePops('#rSavePop');$('#rSavePop').classList.toggle('on')};
+/* one tap: send this swing to the coach (same export as 動画を保存) */
+$('#rCoachBtn').onclick=function(){closePops();setDest('coach');$('#rSave').click()};
 $('#rCmpBtn').onclick=function(){
   closePops();
   if(!cmpId){$('#rSheet').classList.add('on');toast('比較する動画をライブラリから選んでください');return}

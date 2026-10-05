@@ -5,6 +5,37 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, SCHOOL_NAME, PLANS, CONTACT } from './
 // 撮影アプリ SwingFrame（会員ページの中の swing/ に入っている。ログインなしでだれでも使える）
 const SWINGFRAME_URL = './swing/';
 
+// SwingFrame の「コーチに送る」で渡された動画（同じサイトの IndexedDB に一時保存されている）
+function handoffDb() {
+  return new Promise((resolve, reject) => {
+    const rq = indexedDB.open('atg-handoff', 1);
+    rq.onupgradeneeded = () => rq.result.createObjectStore('files');
+    rq.onsuccess = () => resolve(rq.result);
+    rq.onerror = () => reject(rq.error);
+  });
+}
+async function getHandoff() {
+  try {
+    const db = await handoffDb();
+    return await new Promise((resolve) => {
+      const q = db.transaction('files').objectStore('files').get('swing');
+      q.onsuccess = () => { db.close(); resolve(q.result?.blob ? q.result : null); };
+      q.onerror = () => { db.close(); resolve(null); };
+    });
+  } catch { return null; }
+}
+async function clearHandoff() {
+  state.handoff = null;
+  try {
+    const db = await handoffDb();
+    await new Promise((resolve) => {
+      const tx = db.transaction('files', 'readwrite');
+      tx.objectStore('files').delete('swing');
+      tx.oncomplete = tx.onerror = () => { db.close(); resolve(); };
+    });
+  } catch { /* noop */ }
+}
+
 const configured = !SUPABASE_URL.includes('YOUR-PROJECT') && !SUPABASE_ANON_KEY.includes('YOUR-');
 const sb = configured ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
 const $app = document.getElementById('app');
@@ -387,7 +418,8 @@ function viewAuth() {
   const t = state.authTab;
   const notice = !configured
     ? '<div class="notice">会員ログインは現在準備中です。開設まで今しばらくお待ちください。</div>'
-    : state.authMessage ? `<div class="notice">${esc(state.authMessage)}</div>` : '';
+    : state.authMessage ? `<div class="notice">${esc(state.authMessage)}</div>`
+    : state.handoff && t !== 'reset' ? '<div class="notice">📹 SwingFrame で撮った動画をコーチに送るには、ログインしてください（初めての方は「新規登録」から）。ログインすると、そのまま送れます。</div>' : '';
   const forms = {
     login: `<form class="form" data-form="login">
         <label for="email">メールアドレス</label><input id="email" name="email" type="email" autocomplete="email" inputmode="email" required>
@@ -489,6 +521,8 @@ async function viewMemberHome() {
       <h1>${esc(p.name)}さん、おかえりなさい。</h1>
       <div class="muted">現在の目標</div><h2 style="margin:4px 0 0;font-size:24px">${esc(p.goal || '未設定')}</h2>
       ${p.theme ? `<div style="margin-top:12px">今月のテーマ：${esc(p.theme)}</div>` : ''}</div>
+    ${state.handoff ? `<a class="handoff-banner" href="#/submit/swingframe"><span class="ico" aria-hidden="true">📹</span>
+        <span><b>SwingFrame で撮った動画があります</b><small>このままコーチに送れます</small></span><i aria-hidden="true">›</i></a>` : ''}
     ${rmNow ? `<a class="rm-home" href="#/drills">
         <div class="rm-home-head"><span class="rm-badge">今月のドリル</span>${rmNow.seen_at ? '' : '<span class="new-badge">NEW</span>'}
           <span class="rm-home-step"><b>${rmOpened.length}</b>/${roadmap.length}か月目</span></div>
@@ -561,16 +595,19 @@ async function viewSubmit() {
   return header('スイング動画を送る') + `<div class="content">
     ${usage}
     <a class="shoot-cta" href="${SWINGFRAME_URL}"><span class="ico" aria-hidden="true">●</span>
-      <span><b>SwingFrame で撮影する</b><small>ガイドに合わせて自動で録画。撮った動画をカメラロールに保存してから、下で選んで送ってください</small></span><i aria-hidden="true">›</i></a>
+      <span><b>SwingFrame で撮影する</b><small>ガイドに合わせて自動で録画。撮ったあと再生画面の「⛳ コーチへ」を押すと、そのままここに届きます</small></span><i aria-hidden="true">›</i></a>
     <div class="notice">正面または後方から、全身とクラブが入るように撮影してください。<a href="#/guide">撮り方ガイドを見る</a><br>送った動画は<b>${RETENTION_LABEL}</b>保存され、その後自動で削除されます。</div>
     <form class="card form" data-form="submit">
       <label for="video">スイング動画</label>
-      <input id="video" name="video" type="file" accept="video/*" required class="visually-hidden">
+      <input id="video" name="video" type="file" accept="video/*"${state.handoff ? '' : ' required'} class="visually-hidden">
+      ${state.handoff ? `<div class="handoff-pick"><b>📹 SwingFrame で撮った動画</b>
+          <span>${new Date(state.handoff.ts).toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}・${formatBytes(state.handoff.blob.size)}</span>
+          <button type="button" class="link" data-action="handoff-clear">この動画を使わない</button></div>` : ''}
       <label class="file-pick" for="video">
-        <span class="file-pick-main">動画を選ぶ・撮影する</span>
+        <span class="file-pick-main">${state.handoff ? 'ほかの動画を選ぶ' : '動画を選ぶ・撮影する'}</span>
         <span class="file-pick-sub" id="video-name">スマホのカメラロールから選べます</span>
       </label>
-      <video id="video-preview" class="swing-video hidden" controls playsinline muted></video>
+      <video id="video-preview" class="swing-video${state.handoff ? '' : ' hidden'}" controls playsinline muted${state.handoff ? ` src="${URL.createObjectURL(state.handoff.blob)}"` : ''}></video>
       <div class="grid">
         <div><label for="club">クラブ</label><select id="club" name="club">
           ${(myClubs.length ? [...myClubs, 'その他'] : DEFAULT_CLUB_OPTIONS).map((c) => `<option>${esc(c)}</option>`).join('')}</select></div>
@@ -580,7 +617,7 @@ async function viewSubmit() {
         ? '<p class="muted small" style="margin:8px 0 0">クラブはMyクラブセッティングから表示しています。<a href="#/account/clubs">変更する</a></p>'
         : '<p class="tip">アカウントの<a href="#/account/clubs">「Myクラブセッティング」</a>を登録すると、お使いのクラブから選べるようになります。</p>'}
       <label for="question">お悩み・質問（文章で）</label>
-      <textarea id="question" name="question" rows="5" maxlength="2000" placeholder="例：最近ドライバーが右に出ます。前回の課題はだいぶできるようになりました。"></textarea>
+      <textarea id="question" name="question" rows="5" maxlength="2000" placeholder="例：最近ドライバーが右に出ます。前回の課題はだいぶできるようになりました。">${esc(state.handoff?.note || '')}</textarea>
       <div id="upload-progress" class="hidden" aria-live="polite">
         <div class="between small"><span>送信中…</span><span id="upload-percent">0%</span></div>
         <div class="meter"><i id="upload-bar" style="width:0%"></i></div>
@@ -1022,7 +1059,8 @@ function viewGuide() {
       <h2>動画を撮る <small>このアプリの撮影機能「SwingFrame」を使います</small></h2>
       <ol>
         <li>下のメニューの「<b>撮影・提出</b>」→「<b>SwingFrame で撮影する</b>」を押します</li>
-        <li>ガイドに合わせて立つと、自動で録画されます。撮った動画は「カメラロールに保存」でスマホに保存します</li>
+        <li>ガイドに合わせて立つと、自動で録画されます</li>
+        <li>撮った動画の再生画面で「<b>⛳ コーチへ</b>」を押すと、提出画面にそのまま届きます</li>
       </ol>
       <a class="btn btn-sm btn-sub" href="${SWINGFRAME_URL}" style="margin:0 0 10px">SwingFrame を開く ›</a>
       <div class="tip-box"><b>きれいに撮るコツ</b>
@@ -1037,7 +1075,7 @@ function viewGuide() {
       <h2>動画を送る</h2>
       <ol>
         <li>下のメニューの「<b>撮影・提出</b>」を開く</li>
-        <li>「<b>動画を選ぶ・撮影する</b>」から、SwingFrame で保存した動画を選ぶ</li>
+        <li>SwingFrame から届いた動画を確認する（カメラロールの動画を送るときは「<b>動画を選ぶ</b>」から選ぶ）</li>
         <li>クラブ・撮影方向・お悩みを入力して「<b>動画を送信する</b>」</li>
       </ol>
       <p class="muted small" style="margin:0">サブスクリプション制は毎月2本まで送れます。送った動画は3か月間、履歴から見返せます。</p>
@@ -1368,7 +1406,7 @@ async function render() {
   try {
     if (!configured) return paint(viewAuth());
     if (state.recovery) return paint(viewRecovery());
-    if (!state.session) return paint(viewAuth());
+    if (!state.session) { state.handoff = await getHandoff(); return paint(viewAuth()); }
     if (!state.profile) await loadProfile();
 
     const p = state.profile;
@@ -1393,6 +1431,7 @@ async function render() {
       if (r[0] !== 'plans') return go('plans');
       return paint(viewPlans());
     }
+    state.handoff = await getHandoff();
     if (r[0] === 'guide') return paint(viewGuide());
     if (r[0] === 'scores' && isActive(p)) return paint(await viewScores());
     if (r[0] === 'install') return paint(viewInstall());
@@ -1529,6 +1568,10 @@ const actions = {
   'reset-tasks': async (el) => {
     await must(sb.from('tasks').update({ done: false }).eq('member_id', el.dataset.id));
     toast('完了をリセットしました'); render();
+  },
+  'handoff-clear': async () => {
+    await clearHandoff();
+    toast('SwingFrame の動画を取り消しました'); render();
   },
   'delete-round': async (el) => {
     const ok = await confirmDialog({ title: 'この記録を削除しますか？', body: `<p>${esc(el.dataset.label)}</p>`, ok: '削除する' });
@@ -1704,7 +1747,8 @@ const forms = {
     await loadProfile(); toast('お名前を変更しました');
   },
   submit: async (f) => {
-    const file = f.video.files[0];
+    const h = state.handoff;
+    const file = f.video.files[0] || (h ? new File([h.blob], h.name || 'swingframe.mp4', { type: h.type || h.blob.type || 'video/mp4' }) : null);
     if (!file) throw new Error('送る動画を選んでください');
     if (file.type && !file.type.startsWith('video/')) throw new Error('動画ファイルを選んでください');
     if (!(await must(sb.rpc('can_submit_video')))) {
@@ -1730,6 +1774,7 @@ const forms = {
     } finally {
       window.removeEventListener('beforeunload', leaveGuard);
     }
+    if (h && !f.video.files[0]) await clearHandoff();
     toast('動画を送信しました。コーチからの解説をお待ちください。');
     go('home');
   },
