@@ -41,7 +41,7 @@ const sb = configured ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
 const $app = document.getElementById('app');
 const $toast = document.getElementById('toast');
 
-const state = { session: null, profile: null, recovery: false, authTab: 'login', authMessage: '', unread: 0, drillUnread: 0, historyClub: '' };
+const state = { session: null, profile: null, recovery: false, authTab: 'login', authMessage: '', unread: 0, drillUnread: 0, historyClub: '', adminPending: 0, adminMeetingTodo: 0, adminTodo: 0, meetingTab: 'upcoming' };
 let renderSeq = 0;
 
 // ---------- ユーティリティ ----------
@@ -83,7 +83,7 @@ function confirmDialog({ title, body, ok = '変更する' }) {
     const onKey = (e) => {
       if (e.key === 'Escape') { e.preventDefault(); close(false); }
       if (e.key === 'Tab') { // フォーカスを確認画面の中に留める
-        const btns = [...wrap.querySelectorAll('button')];
+        const btns = [...wrap.querySelectorAll('button, input, select, textarea')];
         const i = btns.indexOf(document.activeElement);
         e.preventDefault();
         btns[(i + (e.shiftKey ? btns.length - 1 : 1)) % btns.length].focus();
@@ -91,11 +91,18 @@ function confirmDialog({ title, body, ok = '変更する' }) {
     };
     wrap.addEventListener('click', (e) => {
       if (e.target === wrap || e.target.dataset.modal === 'cancel') close(false);
-      else if (e.target.dataset.modal === 'ok') close(true);
+      else if (e.target.dataset.modal === 'ok') {
+        // 入力欄があるときは、その値をまとめて返す（必須の欄が空なら閉じない）
+        const fields = [...wrap.querySelectorAll('[name]')];
+        if (!fields.length) return close(true);
+        const empty = fields.find((f) => f.required && !String(f.value).trim());
+        if (empty) { empty.focus(); empty.classList.add('invalid'); return; }
+        close(Object.fromEntries(fields.map((f) => [f.name, f.type === 'checkbox' ? f.checked : f.value])));
+      }
     });
     document.addEventListener('keydown', onKey, true);
     document.body.appendChild(wrap);
-    wrap.querySelector('[data-modal="ok"]').focus();
+    (wrap.querySelector('.modal-body [name]') || wrap.querySelector('[data-modal="ok"]')).focus();
   });
 }
 
@@ -363,6 +370,8 @@ function header(title, back) {
   </div>`;
 }
 const ICON = {
+  calendar: '<rect x="3.5" y="5" width="17" height="15.5" rx="2"/><path d="M3.5 9.5h17"/><path d="M8 3v4M16 3v4"/><path d="M8 13.5h3v3H8z"/>',
+  gauge: '<path d="M4 16a8 8 0 1 1 16 0"/><path d="M12 16l4-5"/><circle cx="12" cy="16" r="1.3"/>',
   target: '<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1"/>',
   home: '<path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/><path d="M10 20v-6h4v6"/>',
   video: '<rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10l5-3v10l-5-3z"/>',
@@ -380,7 +389,7 @@ function nav(items, active) {
 }
 const memberNav = (active) => nav([['home', 'home', 'ホーム'], ['submit', 'video', '撮影・提出'], ['history', 'book', '履歴', state.unread], ['drills', 'target', 'ドリル', state.drillUnread], ['account', 'user', 'アカウント']], active);
 const newBadge = (l) => (l.read_at ? '' : '<span class="new-badge">NEW</span>');
-const adminNav = (active) => nav([['admin/inbox', 'inbox', '提出動画'], ['admin/members', 'users', '会員一覧'], ['admin/drills', 'target', 'ドリル集'], ['account', 'user', 'アカウント']], active);
+const adminNav = (active) => nav([['admin/dashboard', 'gauge', 'やること', state.adminTodo], ['admin/inbox', 'inbox', '提出動画', state.adminPending], ['admin/meetings', 'calendar', '面談', state.adminMeetingTodo], ['admin/members', 'users', '会員一覧'], ['admin/drills', 'target', 'ドリル集'], ['account', 'user', 'アカウント']], active);
 
 async function must(promise) {
   const { data, error } = await promise;
@@ -506,7 +515,12 @@ async function viewMemberHome() {
     must(sb.from('lessons').select('id').eq('member_id', p.id).gte('created_at', since)),
     must(sb.from('roadmap_items').select('id, publish_on, theme, published_at, hidden, seen_at, drills(title)').eq('member_id', p.id).order('publish_on')),
   ]);
-  const rounds = await must(sb.from('rounds').select('played_on, score, holes').eq('member_id', p.id));
+  const [rounds, myMeetings] = await Promise.all([
+    must(sb.from('rounds').select('played_on, score, holes').eq('member_id', p.id)),
+    sb.from('meetings').select('scheduled_at, summary').eq('member_id', p.id).eq('status', 'done').neq('summary', '').order('scheduled_at', { ascending: false }).limit(1)
+      .then((r) => r.data || []),
+  ]);
+  const lastMeeting = myMeetings[0];
   const st = scoreStats(rounds, p);
   const rmOpened = roadmap.filter(rmOpen);
   const rmNow = rmOpened[rmOpened.length - 1];
@@ -578,10 +592,11 @@ async function viewMemberHome() {
         <div><span class="label">動画提出</span><b>${monthSubs.length}${quota ? `<small>/${quota}本</small>` : '<small>本</small>'}</b>
           ${quota ? `<div class="meter"><i style="width:${Math.min(100, (monthSubs.length / quota) * 100)}%"></i></div>` : ''}</div>
         <div><span class="label">解説動画</span><b>${monthLessons.length}<small>本</small></b></div>
-        <div><span class="label">次回の面談</span>${p.next_meeting_at ? meetingWhen(p.next_meeting_at) : '<b class="none">未定</b>'}</div>
+        <div><span class="label">次回の面談</span>${p.next_meeting_at && new Date(p.next_meeting_at).getTime() > Date.now() - 2 * 3600000 ? meetingWhen(p.next_meeting_at) : '<b class="none">未定</b>'}</div>
       </div>
       ${extra ? `<p class="muted small" style="margin:10px 0 0">今月は追加の ${extra} 本を含みます。</p>` : ''}
       ${plan?.monthly ? '<p class="muted small" style="margin:10px 0 0">毎月、動画2本の提出と25分のオンライン面談1回が受けられます。</p>' : ''}
+      ${lastMeeting ? `<details class="last-meeting"><summary>前回の面談（${fmtShort(lastMeeting.scheduled_at)}）のまとめ</summary><p class="pre">${esc(lastMeeting.summary)}</p></details>` : ''}
       <div class="meeting-book">
         <p class="muted small">面談のご予約はLINEで承ります。日時が決まると「次回の面談」に表示されます。</p>
         ${lineBtn('LINEで面談を予約する')}
@@ -1160,6 +1175,167 @@ function viewInstall() {
 
 // ---------- 画面：管理者 ----------
 
+// 日付の計算（日本時間）
+const DAY = 86400000;
+const daysAgo = (iso) => Math.floor((Date.now() - new Date(iso).getTime()) / DAY);
+const isoDaysFrom = (n) => new Date(Date.now() + n * DAY).toISOString();
+const monthStartIso = () => monthStart();
+const MEETING_STATUS = { scheduled: ['予定', ''], done: ['完了', 'ok'], no_show: ['欠席', 'warn'], canceled: ['キャンセル', 'mute'] };
+const meetingPill = (m) => {
+  const late = m.status === 'scheduled' && new Date(m.scheduled_at).getTime() + (m.duration_min || 25) * 60000 < Date.now();
+  const [label, cls] = late ? ['結果未入力', 'warn'] : MEETING_STATUS[m.status] || ['—', ''];
+  return `<span class="pill ${cls}">${label}</span>`;
+};
+const memberLink = (id, name) => `<a href="#/admin/member/${id}">${esc(name || '（名前未設定）')}</a>`;
+
+// メニューの件数（確認待ちの動画・結果未入力の面談）
+async function loadAdminBadges() {
+  const [pend, late] = await Promise.all([
+    sb.from('submissions').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
+    sb.from('meetings').select('id', { count: 'exact', head: true }).eq('status', 'scheduled').lt('scheduled_at', new Date(Date.now() - 30 * 60000).toISOString()),
+  ]);
+  state.adminPending = pend.count || 0;
+  state.adminMeetingTodo = late.count || 0;
+}
+
+// ダッシュボード：対応が必要なことを1画面にまとめる
+async function viewDashboard() {
+  const today0 = new Date(); today0.setHours(0, 0, 0, 0);
+  const [members, pending, meetings, rmSoon, rmAll, subs30, practice30, rounds30, refs7] = await Promise.all([
+    must(sb.from('profiles').select('id, name, email, role, plan, subscription_status, access_until, current_period_end, created_at').order('created_at', { ascending: false })),
+    must(sb.from('submissions').select('id, created_at, club, angle, member_id, profiles(name)').eq('status', 'pending').order('created_at')),
+    must(sb.from('meetings').select('id, member_id, scheduled_at, duration_min, status, profiles(name)').gte('scheduled_at', isoDaysFrom(-45)).order('scheduled_at')),
+    must(sb.from('roadmap_items').select('id, member_id, publish_on, theme, profiles(name)').is('drill_id', null).eq('hidden', false).gte('publish_on', today()).lte('publish_on', isoDaysFrom(14).slice(0, 10)).order('publish_on')),
+    must(sb.from('roadmap_items').select('member_id')),
+    must(sb.from('submissions').select('member_id, created_at').gte('created_at', isoDaysFrom(-30))),
+    must(sb.from('roadmap_practice').select('member_id, practiced_on').gte('practiced_on', isoDaysFrom(-30).slice(0, 10))),
+    must(sb.from('rounds').select('member_id, played_on, created_at, score, course_name, profiles(name)').gte('created_at', isoDaysFrom(-30)).order('created_at', { ascending: false })),
+    must(sb.from('roadmap_reflections').select('member_id, body, updated_at, profiles(name)').gte('updated_at', isoDaysFrom(-7)).order('updated_at', { ascending: false })),
+  ]);
+  const people = members.filter((m) => m.role !== 'admin');
+  const active = people.filter(isActive);
+  const nameOf = (id) => people.find((m) => m.id === id)?.name || '（名前未設定）';
+  const now = Date.now();
+  const lateMeetings = meetings.filter((m) => m.status === 'scheduled' && new Date(m.scheduled_at).getTime() + (m.duration_min || 25) * 60000 < now);
+  const upcoming = meetings.filter((m) => m.status === 'scheduled' && new Date(m.scheduled_at).getTime() >= now - 30 * 60000 && new Date(m.scheduled_at).getTime() < now + 7 * DAY);
+  const todayMeetings = upcoming.filter((m) => new Date(m.scheduled_at).toDateString() === new Date().toDateString());
+  const monthFrom = new Date(monthStartIso()).getTime();
+  const metThisMonth = new Set(meetings.filter((m) => ['scheduled', 'done'].includes(m.status) && new Date(m.scheduled_at).getTime() >= monthFrom).map((m) => m.member_id));
+  const needMeeting = active.filter((m) => m.plan === 'SUBSCRIPTION' && !metThisMonth.has(m.id));
+  const withRoadmap = new Set(rmAll.map((r) => r.member_id));
+  const noRoadmap = active.filter((m) => !withRoadmap.has(m.id));
+  const soonExpire = people.filter((m) => m.access_until && m.access_until >= today() && m.access_until <= isoDaysFrom(14).slice(0, 10));
+  const pastDue = people.filter((m) => m.subscription_status === 'past_due');
+  const newcomers = people.filter((m) => !isActive(m) && daysAgo(m.created_at) <= 30);
+  const moved = new Set([...subs30.map((x) => x.member_id), ...practice30.map((x) => x.member_id), ...rounds30.map((x) => x.member_id)]);
+  const quiet = active.filter((m) => !moved.has(m.id) && daysAgo(m.created_at) > 14);
+  const oldestWait = pending.length ? daysAgo(pending[0].created_at) : 0;
+  const todo = pending.length + lateMeetings.length + needMeeting.length + rmSoon.length + pastDue.length + soonExpire.length;
+  state.adminTodo = todo;
+
+  const section = (title, icon, list, empty, more = '') => `<section class="card dash-sec${list.length ? ' has' : ''}">
+      <div class="dash-h"><span class="dash-i" aria-hidden="true">${icon}</span><b>${title}</b><span class="dash-n">${list.length}</span>${more}</div>
+      ${list.length ? `<div class="dash-list">${list.join('')}</div>` : `<p class="dash-ok">✓ ${empty}</p>`}
+    </section>`;
+  const row = (main, sub = '', right = '') => `<div class="dash-row"><div class="grow">${main}${sub ? `<small>${sub}</small>` : ''}</div>${right}</div>`;
+  const left = [
+    section('確認待ちの提出動画', '▶', pending.map((x) => row(`${memberLink(x.member_id, x.profiles?.name)}　${esc(x.club)} / ${esc(x.angle)}`,
+      `${fmtDate(x.created_at)} 提出・<b class="${daysAgo(x.created_at) >= 3 ? 'late' : ''}">${daysAgo(x.created_at)}日待ち</b>`,
+      `<a class="btn btn-sm" href="#/admin/lesson/new/s/${x.id}">レッスンを書く</a>`)), '確認待ちの動画はありません', '<a class="dash-more" href="#/admin/inbox">一覧 ›</a>'),
+    section('面談：結果の入力待ち', '!', lateMeetings.map((m) => row(`${memberLink(m.member_id, m.profiles?.name)}`, `${fmtShort(m.scheduled_at)} の面談`,
+      `<button type="button" class="btn btn-sm" data-action="meeting-done" data-id="${m.id}">結果を入力</button>`)), '入力待ちの面談はありません'),
+    section('今後7日の面談', '◷', upcoming.map((m) => row(`<b>${fmtShort(m.scheduled_at)}</b>　${memberLink(m.member_id, m.profiles?.name)}`, `${m.duration_min}分`,
+      todayMeetings.includes(m) ? '<span class="pill ok">今日</span>' : '')), '予定はありません', '<a class="dash-more" href="#/admin/meetings">面談管理 ›</a>'),
+    section('今月まだ面談の予定がない会員', '◎', needMeeting.map((m) => row(memberLink(m.id, m.name), 'サブスクリプション制（月1回）',
+      `<button type="button" class="btn btn-sm btn-sub" data-action="meeting-add" data-member="${m.id}">予約を入れる</button>`)), '全員、今月の面談が入っています'),
+  ];
+  const right = [
+    section('ロードマップ：ドリル未定（2週間以内に公開）', '◎', rmSoon.map((r) => row(memberLink(r.member_id, r.profiles?.name), `${fmtDate(r.publish_on)} 公開・${esc(r.theme || 'テーマ未定')}`,
+      `<a class="btn btn-sm btn-sub" href="#/admin/roadmap/${r.member_id}">編集</a>`)), 'ドリル未定の月はありません'),
+    section('ロードマップ未作成の契約中会員', '+', noRoadmap.map((m) => row(memberLink(m.id, m.name), `${esc(planLabel(m.plan))}・登録 ${fmtDate(m.created_at)}`)), '全員作成済みです'),
+    section('契約・支払い', '¥', [
+      ...pastDue.map((m) => row(memberLink(m.id, m.name), '<b class="late">支払い遅延</b>')),
+      ...soonExpire.map((m) => row(memberLink(m.id, m.name), `利用期限 ${fmtDate(m.access_until)}（あと${Math.max(0, Math.ceil((new Date(m.access_until) - today0) / DAY))}日）`)),
+    ], '支払い遅延・期限切れ間近の会員はいません'),
+    section('新規登録（未契約・30日以内）', '☆', newcomers.map((m) => row(memberLink(m.id, m.name), `${esc(m.email)}・${fmtDate(m.created_at)} 登録`)), '新しい登録はありません'),
+    section('30日間動きがない契約中会員', '…', quiet.map((m) => row(memberLink(m.id, m.name), '動画提出・練習記録・スコア記録がありません')), '全員、何かしら動きがあります'),
+  ];
+  const feed = [
+    ...refs7.map((x) => ({ t: x.updated_at, html: `💬 ${memberLink(x.member_id, x.profiles?.name)} がふり返りを書きました<small>${esc(x.body.slice(0, 60))}</small>` })),
+    ...rounds30.filter((x) => daysAgo(x.created_at) <= 7).map((x) => ({ t: x.created_at, html: `⛳ ${memberLink(x.member_id, x.profiles?.name)} がスコアを記録：<b>${x.score}</b><small>${fmtDate(x.played_on)} ${esc(x.course_name)}</small>` })),
+    ...people.filter((m) => daysAgo(m.created_at) <= 7).map((m) => ({ t: m.created_at, html: `☆ ${memberLink(m.id, m.name)} が新規登録しました` })),
+  ].sort((a, b) => (a.t < b.t ? 1 : -1)).slice(0, 12);
+
+  return header('やること') + `<div class="content wide">
+    <div class="kpis">
+      <a class="kpi${pending.length ? ' alert' : ''}" href="#/admin/inbox"><span>確認待ちの動画</span><b>${pending.length}</b><small>${pending.length ? `いちばん古いもの ${oldestWait}日前` : 'なし'}</small></a>
+      <a class="kpi" href="#/admin/meetings"><span>今日の面談</span><b>${todayMeetings.length}</b><small>今後7日で ${upcoming.length}件</small></a>
+      <div class="kpi${todo ? ' alert' : ''}"><span>対応が必要</span><b>${todo}</b><small>下の一覧で確認</small></div>
+      <a class="kpi" href="#/admin/members"><span>契約中の会員</span><b>${active.length}</b><small>登録 ${people.length}名</small></a>
+    </div>
+    <div class="cols">
+      <div class="col-main">${left.map((h, i) => `<div class="blk" style="--o:${i}">${h}</div>`).join('')}</div>
+      <div class="col-side">${right.map((h, i) => `<div class="blk" style="--o:${10 + i}">${h}</div>`).join('')}
+        <div class="blk" style="--o:20"><section class="card dash-sec"><div class="dash-h"><span class="dash-i" aria-hidden="true">↻</span><b>最近の動き（7日）</b></div>
+          ${feed.length ? `<div class="dash-list">${feed.map((f) => `<div class="dash-row feed"><div class="grow">${f.html}</div><span class="muted small">${fmtShort(f.t)}</span></div>`).join('')}</div>` : '<p class="dash-ok">まだ動きはありません</p>'}</section></div>
+      </div>
+    </div>
+  </div>` + adminNav('admin/dashboard');
+}
+
+// 面談の管理
+async function viewMeetings() {
+  const tab = state.meetingTab;
+  const [list, members] = await Promise.all([
+    must(sb.from('meetings').select('id, member_id, scheduled_at, duration_min, status, summary, profiles(name)').gte('scheduled_at', isoDaysFrom(-120)).order('scheduled_at')),
+    must(sb.from('profiles').select('id, name, role, plan, subscription_status, access_until').neq('role', 'admin').order('name')),
+  ]);
+  meetingMembers = members;
+  const now = Date.now();
+  const late = list.filter((m) => m.status === 'scheduled' && new Date(m.scheduled_at).getTime() + (m.duration_min || 25) * 60000 < now);
+  const upcoming = list.filter((m) => m.status === 'scheduled' && !late.includes(m));
+  const past = list.filter((m) => m.status !== 'scheduled').reverse();
+  const shown = { upcoming, late, past }[tab] || upcoming;
+  // 日付ごとにまとめる
+  let day = '';
+  const rows = shown.map((m) => {
+    const d = new Date(m.scheduled_at).toLocaleDateString('ja-JP', { month: 'numeric', day: 'numeric', weekday: 'short' });
+    const head = d !== day ? `<h3 class="month">${d}</h3>` : '';
+    day = d;
+    const t = new Date(m.scheduled_at).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
+    const actions = m.status === 'scheduled'
+      ? `<button type="button" class="btn btn-sm" data-action="meeting-done" data-id="${m.id}">結果を入力</button>
+         <button type="button" class="btn btn-sm btn-sub" data-action="meeting-move" data-id="${m.id}" data-at="${m.scheduled_at}" data-min="${m.duration_min}">日時変更</button>
+         <button type="button" class="btn btn-sm btn-sub" data-action="meeting-status" data-id="${m.id}" data-status="canceled">キャンセル</button>`
+      : `<button type="button" class="btn btn-sm btn-sub" data-action="meeting-done" data-id="${m.id}">まとめを編集</button>`;
+    return `${head}<div class="card meeting-row">
+      <div class="mt-time"><b>${t}</b><small>${m.duration_min}分</small></div>
+      <div class="grow"><div>${memberLink(m.member_id, m.profiles?.name)} ${meetingPill(m)}</div>
+        ${m.summary ? `<p class="mt-sum">${esc(m.summary)}</p>` : ''}
+        <div class="mt-actions">${actions}</div></div>
+    </div>`;
+  }).join('');
+  const tabBtn = (k, label, n) => `<button type="button" data-action="meeting-tab" data-tab="${k}" class="${tab === k ? 'on' : ''}" aria-pressed="${tab === k}">${label}${n ? `<em>${n}</em>` : ''}</button>`;
+  return header('面談') + `<div class="content wide">
+    <div class="between" style="flex-wrap:wrap;gap:10px">
+      <div class="filter-chips" role="group" aria-label="表示する面談">${tabBtn('upcoming', 'これから', upcoming.length)}${tabBtn('late', '結果入力待ち', late.length)}${tabBtn('past', '過去', 0)}</div>
+      <button type="button" class="btn btn-gold btn-sm" data-action="meeting-add">＋ 面談を予約</button>
+    </div>
+    <p class="muted small">面談の予約はLINEで日程を決めてから、ここに登録します。登録すると会員の「次回の面談」に表示され、前日にお知らせメールが届きます（メール設定後）。</p>
+    ${rows ? `<div class="meeting-list">${rows}</div>` : `<div class="empty">${tab === 'late' ? '結果の入力待ちはありません 🎉' : tab === 'past' ? '過去の面談はまだありません' : 'これからの面談はありません'}</div>`}
+  </div>` + adminNav('admin/meetings');
+}
+let meetingMembers = [];
+async function meetingMemberOptions(selected) {
+  if (!meetingMembers.length) meetingMembers = await must(sb.from('profiles').select('id, name, role, plan, subscription_status, access_until').neq('role', 'admin').order('name'));
+  const act = meetingMembers.filter(isActive);
+  const rest = meetingMembers.filter((m) => !isActive(m));
+  const opt = (m) => `<option value="${m.id}"${m.id === selected ? ' selected' : ''}>${esc(m.name || '（名前未設定）')}</option>`;
+  return `<option value="">会員を選ぶ</option><optgroup label="契約中">${act.map(opt).join('')}</optgroup>${rest.length ? `<optgroup label="未契約">${rest.map(opt).join('')}</optgroup>` : ''}`;
+}
+const splitLocal = (iso) => { const v = toLocalInput(iso); return [v.slice(0, 10), v.slice(11, 16)]; };
+
+
 // 会員詳細に出すロードマップの流れ（確認用）
 function adminRoadmapSummary(items, extra = {}) {
   const done = items.filter(rmOpen).length;
@@ -1285,7 +1461,23 @@ async function viewInbox() {
 }
 
 async function viewMembers() {
-  const members = await must(sb.from('profiles').select('id, name, email, plan, role, subscription_status, access_until').order('created_at', { ascending: false }));
+  const [members, pend, mtgs] = await Promise.all([
+    must(sb.from('profiles').select('id, name, email, plan, role, subscription_status, access_until, next_meeting_at').order('created_at', { ascending: false })),
+    must(sb.from('submissions').select('member_id').eq('status', 'pending')),
+    must(sb.from('meetings').select('member_id, status').gte('scheduled_at', monthStart()).in('status', ['scheduled', 'done'])),
+  ]);
+  const pendBy = pend.reduce((a, x) => a.set(x.member_id, (a.get(x.member_id) || 0) + 1), new Map());
+  const metBy = new Set(mtgs.map((x) => x.member_id));
+  const flags = (m) => {
+    if (m.role === 'admin') return '';
+    const f = [];
+    if (pendBy.get(m.id)) f.push(`<span class="flag red">動画 ${pendBy.get(m.id)}件 確認待ち</span>`);
+    if (isActive(m) && m.plan === 'SUBSCRIPTION' && !metBy.has(m.id)) f.push('<span class="flag yellow">今月の面談 未予約</span>');
+    if (m.next_meeting_at && new Date(m.next_meeting_at).getTime() > Date.now()) f.push(`<span class="flag">面談 ${fmtShort(m.next_meeting_at)}</span>`);
+    if (m.access_until && m.access_until >= today() && m.access_until <= isoDaysFrom(14).slice(0, 10)) f.push(`<span class="flag yellow">期限 ${fmtDate(m.access_until)}</span>`);
+    if (m.subscription_status === 'past_due') f.push('<span class="flag red">支払い遅延</span>');
+    return f.length ? `<div class="flags">${f.join('')}</div>` : '';
+  };
   return header('会員一覧') + `<div class="content wide">
     <div class="form"><input type="search" id="member-search" placeholder="名前・メールで検索" data-action="filter-members"></div>
     <p class="muted">${members.filter((m) => isActive(m)).length} 名が契約中 / 全 ${members.length} 名</p>
@@ -1293,6 +1485,7 @@ async function viewMembers() {
         <div class="between"><div><b>${esc(m.name || '（名前未設定）')}</b>${m.role === 'admin' ? ' <span class="pill">ADMIN</span>' : ''}
           <div class="muted">${esc(m.email)}</div></div>
           <div style="text-align:right">${m.role === 'admin' ? '' : memberPill(m)}<div class="muted">${esc(planLabel(m.plan))}</div></div></div>
+        ${flags(m)}
       </a>`).join('')}</div>
   </div>` + adminNav('admin/members');
 }
@@ -1311,7 +1504,12 @@ async function viewMemberDetail(id) {
     must(sb.from('roadmap_reflections').select('item_id, body, updated_at').eq('member_id', id)),
     must(sb.from('roadmap_goals').select('goal').eq('member_id', id)),
   ]) : [[], [], []];
-  const mRounds = await must(sb.from('rounds').select('played_on, course_name, score, holes').eq('member_id', id).order('played_on', { ascending: false }));
+  const [mRounds, mMeetings, mNotes, mPractice] = await Promise.all([
+    must(sb.from('rounds').select('played_on, course_name, score, holes, created_at').eq('member_id', id).order('played_on', { ascending: false })),
+    must(sb.from('meetings').select('id, scheduled_at, duration_min, status, summary').eq('member_id', id).order('scheduled_at', { ascending: false })),
+    must(sb.from('staff_notes').select('id, body, pinned, created_at').eq('member_id', id).order('pinned', { ascending: false }).order('created_at', { ascending: false })),
+    must(sb.from('roadmap_practice').select('practiced_on').eq('member_id', id).gte('practiced_on', isoDaysFrom(-30).slice(0, 10))),
+  ]);
   const mst = scoreStats(mRounds, m || {});
   if (!m) return header('会員詳細', 'admin/members') + '<div class="content"><div class="empty">会員が見つかりません</div></div>';
   const self = m.id === state.profile.id;
@@ -1335,7 +1533,6 @@ async function viewMemberDetail(id) {
       <label for="theme">今月のテーマ</label><input id="theme" name="theme" value="${esc(m.theme)}" maxlength="100">
       <label for="access_until">利用期限 <span class="muted">（LINE・電話で申し込んだ会員用。カード決済の会員は空欄）</span></label>
       <input id="access_until" name="access_until" type="date" value="${esc(m.access_until || '')}">
-      <label for="next_meeting_at">次回の面談日時</label><input id="next_meeting_at" name="next_meeting_at" type="datetime-local" value="${esc(toLocalInput(m.next_meeting_at))}">
       <label for="extra_submissions">今月の追加本数 <span class="muted">（LINEで追加の申し込み・お支払いがあった分。来月は自動で0本に戻ります）</span></label>
       <input id="extra_submissions" name="extra_submissions" type="number" min="0" max="20" value="${extraThisMonth(m)}">
       <p class="muted small" style="margin:4px 0 0">今月の提出：${monthSubs.length}本${quotaOf(m) ? ` ／ 送れる本数：${quotaOf(m)}本` : ''}</p>
@@ -1346,6 +1543,43 @@ async function viewMemberDetail(id) {
     </form>
 
     </div><div class="col-side">
+    ${(() => {
+      const next = mMeetings.filter((x) => x.status === 'scheduled' && new Date(x.scheduled_at).getTime() > Date.now() - 30 * 60000).at(-1);
+      const recent = mMeetings.filter((x) => x !== next).slice(0, 5);
+      // 最近の動き（30日）：動画・レッスン・スコア・ふり返り・面談・練習
+      const feed = [
+        ...subs.filter((x) => daysAgo(x.created_at) <= 30).map((x) => ({ t: x.created_at, h: `▶ 動画を提出（${esc(x.club)} / ${esc(x.angle)}）${x.status === 'pending' ? ' <span class="pill warn">確認待ち</span>' : ''}` })),
+        ...lessons.filter((x) => daysAgo(x.lesson_date) <= 30).map((x) => ({ t: x.lesson_date, h: `✎ レッスン「${esc(x.title)}」を送付` })),
+        ...mRounds.filter((x) => daysAgo(x.played_on) <= 30).map((x) => ({ t: x.played_on, h: `⛳ スコア <b>${x.score}</b>（${esc(x.course_name)}）` })),
+        ...rmRefs.filter((x) => daysAgo(x.updated_at) <= 30).map((x) => ({ t: x.updated_at, h: `💬 ふり返り：${esc(x.body.slice(0, 50))}` })),
+        ...mMeetings.filter((x) => x.status !== 'scheduled' && daysAgo(x.scheduled_at) <= 30).map((x) => ({ t: x.scheduled_at, h: `◷ 面談 ${meetingPill(x)}` })),
+      ].sort((a, b) => (a.t < b.t ? 1 : -1)).slice(0, 10);
+      return `<div class="section-title" style="margin-top:0"><h2>面談</h2><button type="button" class="btn btn-sm" data-action="meeting-add" data-member="${m.id}">＋ 予約</button></div>
+    <div class="card">
+      ${next ? `<div class="next-meeting"><span>次回</span><b>${fmtShort(next.scheduled_at)}</b><small>${next.duration_min}分</small>
+          <button type="button" class="btn btn-sm btn-sub" data-action="meeting-move" data-id="${next.id}" data-at="${next.scheduled_at}" data-min="${next.duration_min}">日時変更</button></div>`
+        : '<p class="muted small" style="margin:0">次回の面談は入っていません。LINEで日程が決まったら「＋ 予約」から登録します。</p>'}
+      ${recent.length ? `<div class="mt-history">${recent.map((x) => `<div class="list-item small"><div class="grow">${fmtShort(x.scheduled_at)} ${meetingPill(x)}${x.summary ? `<div class="muted">${esc(x.summary.slice(0, 60))}</div>` : ''}</div>
+          <button type="button" class="btn btn-sm btn-sub" data-action="meeting-done" data-id="${x.id}">${x.status === 'scheduled' ? '結果' : '編集'}</button></div>`).join('')}</div>` : ''}
+    </div>
+
+    <div class="section-title"><h2>担当者メモ</h2><span class="muted small">会員には見えません</span></div>
+    <div class="card">
+      <form class="form note-form" data-form="staff-note" data-member="${m.id}">
+        <textarea name="body" rows="2" maxlength="2000" placeholder="例：10/5 LINEで追加動画1本の申し込み。振込確認済み" aria-label="担当者メモ"></textarea>
+        <div class="between"><label class="switch small"><input type="checkbox" name="pinned"><span>上に固定する</span></label>
+          <button class="btn-sm" type="submit">メモを残す</button></div>
+      </form>
+      ${mNotes.map((n) => `<div class="note${n.pinned ? ' pinned' : ''}"><p class="pre">${esc(n.body)}</p>
+          <div class="note-foot"><span class="muted small">${n.pinned ? '📌 ' : ''}${fmtShort(n.created_at)}</span>
+            <button type="button" class="link" data-action="note-pin" data-id="${n.id}" data-pinned="${n.pinned}">${n.pinned ? '固定を外す' : '固定'}</button>
+            <button type="button" class="link" data-action="note-delete" data-id="${n.id}">削除</button></div></div>`).join('') || '<p class="muted small" style="margin:8px 0 0">まだメモはありません</p>'}
+    </div>
+
+    <div class="section-title"><h2>最近の動き（30日）</h2><span class="muted small">練習記録 ${new Set(mPractice.map((x) => x.practiced_on)).size}日</span></div>
+    <div class="card">${feed.length ? feed.map((f) => `<div class="list-item small feed"><div class="grow">${f.h}</div><span class="muted">${fmtDate(f.t)}</span></div>`).join('') : '<p class="muted small" style="margin:0">30日間、動きがありません</p>'}</div>
+    `;
+    })()}
     <div class="section-title"><h2>ドリル定期公開</h2>${roadmap.length ? `<a class="btn btn-sm" href="#/admin/roadmap/${m.id}">編集する</a>` : ''}</div>
     <div class="card">${roadmap.length ? adminRoadmapSummary(roadmap, { practice: rmPractice, reflections: rmRefs, goal: rmGoals[0]?.goal }) : `
       <p class="muted small" style="margin:0">初回カウンセリングで決めた内容をもとに、毎月1本ずつ公開するドリルの計画を作ります。あとから自由に変更できます。</p>
@@ -1460,13 +1694,17 @@ async function render() {
     }
 
     if (p.role === 'admin') {
-      if (r[0] !== 'admin') return go('admin/inbox');
+      if (r[0] !== 'admin') return go('admin/dashboard');
+      await loadAdminBadges();
+      if (r[1] === 'dashboard') return paint(await viewDashboard());
+      if (r[1] === 'meetings') return paint(await viewMeetings());
       if (r[1] === 'members') return paint(await viewMembers());
       if (r[1] === 'drills') return paint(await viewDrills());
       if (r[1] === 'roadmap' && r[2]) return paint(await viewRoadmapEdit(r[2]));
       if (r[1] === 'member' && r[2]) return paint(await viewMemberDetail(r[2]));
       if (r[1] === 'lesson' && r[2]) return paint(await viewLessonForm(r));
-      return paint(await viewInbox());
+      if (r[1] === 'inbox') return paint(await viewInbox());
+      return go('admin/dashboard');
     }
 
     if (!isActive(p)) {
@@ -1614,6 +1852,74 @@ const actions = {
   'handoff-clear': async () => {
     await clearHandoff();
     toast('SwingFrame の動画を取り消しました'); render();
+  },
+  'meeting-tab': (el) => { state.meetingTab = el.dataset.tab; render(); },
+  'meeting-add': async (el) => {
+    const [d] = splitLocal(new Date(Date.now() + DAY).toISOString());
+    const v = await confirmDialog({
+      title: '面談を予約',
+      body: `<div class="form modal-form">
+        <label>会員</label><select name="member_id" required>${await meetingMemberOptions(el.dataset.member)}</select>
+        <div class="grid"><div><label>日付</label><input name="date" type="date" value="${d}" required></div>
+          <div><label>時刻</label><input name="time" type="time" value="19:00" step="300" required></div></div>
+        <label>時間（分）</label><input name="duration_min" type="number" min="5" max="180" value="25" required>
+      </div>`,
+      ok: '予約する',
+    });
+    if (!v) return;
+    const at = new Date(`${v.date}T${v.time}`);
+    await must(sb.from('meetings').insert({ member_id: v.member_id, scheduled_at: at.toISOString(), duration_min: Number(v.duration_min) || 25 }));
+    toast(`${fmtShort(at.toISOString())} に面談を予約しました`); render();
+  },
+  'meeting-move': async (el) => {
+    const [d, t] = splitLocal(el.dataset.at);
+    const v = await confirmDialog({
+      title: '面談の日時を変更',
+      body: `<div class="form modal-form"><div class="grid"><div><label>日付</label><input name="date" type="date" value="${d}" required></div>
+        <div><label>時刻</label><input name="time" type="time" value="${t}" step="300" required></div></div>
+        <label>時間（分）</label><input name="duration_min" type="number" min="5" max="180" value="${esc(el.dataset.min || 25)}" required></div>`,
+      ok: '変更する',
+    });
+    if (!v) return;
+    const at = new Date(`${v.date}T${v.time}`);
+    await must(sb.from('meetings').update({ scheduled_at: at.toISOString(), duration_min: Number(v.duration_min) || 25, status: 'scheduled' }).eq('id', el.dataset.id));
+    toast(`${fmtShort(at.toISOString())} に変更しました`); render();
+  },
+  'meeting-status': async (el) => {
+    const label = { canceled: 'キャンセル', no_show: '欠席' }[el.dataset.status];
+    if (!(await confirmDialog({ title: `この面談を「${label}」にしますか？`, body: '<p>あとから「まとめを編集」で変更できます。</p>', ok: `${label}にする` }))) return;
+    await must(sb.from('meetings').update({ status: el.dataset.status }).eq('id', el.dataset.id));
+    toast(`${label}にしました`); render();
+  },
+  'meeting-done': async (el) => {
+    const m = await must(sb.from('meetings').select('id, member_id, scheduled_at, status, summary, profiles(name)').eq('id', el.dataset.id).single());
+    const v = await confirmDialog({
+      title: '面談の結果',
+      body: `<p class="muted small" style="margin:0 0 6px">${esc(m.profiles?.name || '')}さん・${fmtShort(m.scheduled_at)}</p>
+        <div class="form modal-form">
+        <label>結果</label><div class="seg-radio">
+          ${[['done', '完了'], ['no_show', '欠席'], ['canceled', 'キャンセル']].map(([k, l]) => `<label><input type="radio" name="status_${m.id}" value="${k}"${(m.status === 'scheduled' ? 'done' : m.status) === k ? ' checked' : ''} data-status-radio><span>${l}</span></label>`).join('')}</div>
+        <input type="hidden" name="status" value="${m.status === 'scheduled' ? 'done' : m.status}">
+        <label>面談のまとめ <span class="muted">（会員のホームに表示されます）</span></label>
+        <textarea name="summary" rows="4" maxlength="2000" placeholder="例：切り返しのタイミングを確認。来月はインパクトの形に取り組む">${esc(m.summary || '')}</textarea>
+        <label>担当者メモ <span class="muted">（会員には見えません・任意）</span></label>
+        <textarea name="note" rows="2" maxlength="2000" placeholder="例：腰に違和感あり。次回まで様子を見る"></textarea>
+      </div>`,
+      ok: '保存する',
+    });
+    if (!v) return;
+    await must(sb.from('meetings').update({ status: v.status, summary: v.summary.trim() }).eq('id', m.id));
+    if (v.note.trim()) await must(sb.from('staff_notes').insert({ member_id: m.member_id, body: `【面談 ${fmtShort(m.scheduled_at)}】${v.note.trim()}` }));
+    toast('面談の結果を保存しました'); render();
+  },
+  'note-pin': async (el) => {
+    await must(sb.from('staff_notes').update({ pinned: el.dataset.pinned !== 'true' }).eq('id', el.dataset.id));
+    render();
+  },
+  'note-delete': async (el) => {
+    if (!(await confirmDialog({ title: 'このメモを削除しますか？', body: '<p>削除すると元に戻せません。</p>', ok: '削除する' }))) return;
+    await must(sb.from('staff_notes').delete().eq('id', el.dataset.id));
+    toast('メモを削除しました'); render();
   },
   'delete-round': async (el) => {
     const ok = await confirmDialog({ title: 'この記録を削除しますか？', body: `<p>${esc(el.dataset.label)}</p>`, ok: '削除する' });
@@ -1824,7 +2130,6 @@ const forms = {
     const update = {
       name: f.name.value.trim(), plan: f.plan.value || null, goal: f.goal.value.trim(),
       theme: f.theme.value.trim(),
-      next_meeting_at: f.next_meeting_at.value ? new Date(f.next_meeting_at.value).toISOString() : null,
       access_until: f.access_until.value || null,
       extra_submissions: Number(f.extra_submissions.value) || 0,
       extra_submissions_month: monthKey(),
@@ -1838,6 +2143,12 @@ const forms = {
       member_id: f.dataset.id, title: f.title.value.trim(), detail: f.detail.value.trim(), sort_order: Number(f.dataset.count),
     }));
     render();
+  },
+  'staff-note': async (f) => {
+    const body = f.body.value.trim();
+    if (!body) throw new Error('メモを入力してください');
+    await must(sb.from('staff_notes').insert({ member_id: f.dataset.member, body, pinned: f.pinned.checked }));
+    toast('メモを残しました'); render();
   },
   round: async (f) => {
     const out = Number(f.out_score.value);
@@ -1993,6 +2304,10 @@ document.addEventListener('submit', async (ev) => {
 // 動画を選んだら、ファイル名と容量を表示してプレビューする
 let previewUrl = null;
 document.addEventListener('change', (ev) => {
+  if (ev.target.matches('[data-status-radio]')) {
+    ev.target.closest('.modal-form').querySelector('input[name="status"]').value = ev.target.value;
+    return;
+  }
   if (ev.target.name === 'drill') {
     const n = document.querySelectorAll('input[name="drill"]:checked').length;
     const c = document.getElementById('drill-count');
