@@ -573,3 +573,74 @@ details.rm-edit[open] .rm-no::before{content:"▾ "}
 }
 .score-add .sa-txt{display:block;font-size:14.5px;color:var(--ink);font-weight:700}
 .score-add .sa-txt small{display:block;font-size:12px;color:var(--muted);font-weight:400;margin-top:2px}
+
+/* ===== 管理者：ダッシュボード・面談・メモ ===== */
+.kpis{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:0 0 14px}
+@media (min-width:960px){.kpis{grid-template-columns:repeat(4,minmax(0,1fr))}}
+.kpi{display:block;background:#fff;border:1px solid var(--line);border-radius:16px;padding:12px 16px;text-decoration:none;color:var(--text)}
+.kpi span{display:block;font-size:12px;color:var(--muted);font-weight:700}
+.kpi b{display:block;font-size:32px;line-height:1.2;font-variant-numeric:tabular-nums lining-nums;color:var(--ink)}
+.kpi small{font-size:11.5px;color:var(--muted)}
+.kpi.alert{border:2px solid #d64b3c;background:#fff6f4}
+.kpi.alert b{color:#c0392b}
+.dash-sec{padding:14px 16px;margin:0 0 12px}
+.dash-sec.has{border-left:4px solid var(--gold)}
+.dash-h{display:flex;align-items:center;gap:8px}
+.dash-h b{font-size:15px}
+.dash-i{flex:none;width:26px;height:26px;border-radius:8px;background:var(--ink);color:var(--gold-2);display:grid;place-items:center;font-size:12px;font-style:normal}
+.dash-n{min-width:24px;text-align:center;font-size:12px;font-weight:800;border-radius:999px;padding:1px 8px;background:var(--paper-2)}
+.dash-sec.has .dash-n{background:#d64b3c;color:#fff}
+.dash-more{margin-left:auto;font-size:12.5px;font-weight:700;color:var(--gold);text-decoration:none}
+.dash-list{margin-top:8px}
+.dash-row{display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid var(--line);font-size:14px}
+.dash-row small{display:block;font-size:12px;color:var(--muted)}
+.dash-row a:not(.btn){color:var(--ink);font-weight:700}
+.dash-row .grow{flex:1;min-width:0}
+.dash-row .btn{flex:none;margin:0}
+.dash-row.feed{font-size:13.5px}
+.dash-ok{margin:8px 0 0;font-size:13px;color:#2f7a4c}
+b.late,.late{color:#c0392b}
+.pill.mute{background:#eee;color:#666}
+.filter-chips button em{font-style:normal;margin-left:6px;background:#d64b3c;color:#fff;border-radius:999px;padding:0 7px;font-size:11px}
+.filter-chips button.on em{background:var(--gold);color:var(--ink)}
+.meeting-list .month{margin-top:16px}
+.meeting-row{display:flex;gap:14px;align-items:flex-start;padding:12px 16px;margin:0 0 8px}
+.mt-time{flex:none;width:58px;text-align:center;background:var(--ink);color:#fff;border-radius:10px;padding:6px 0}
+.mt-time b{display:block;font-size:16px;font-variant-numeric:tabular-nums lining-nums}
+.mt-time small{font-size:11px;color:var(--gold-2)}
+.meeting-row a{font-weight:700;color:var(--ink)}
+.mt-sum{margin:6px 0 0;font-size:13.5px;background:var(--paper);border-radius:8px;padding:6px 10px}
+.mt-actions{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.mt-actions .btn{margin:0}
+.next-meeting{display:flex;align-items:center;gap:10px;background:var(--ink);color:#fff;border-radius:12px;padding:10px 14px}
+.next-meeting span{font-size:11px;color:var(--gold-2);font-weight:700}
+.next-meeting b{font-size:17px}
+.next-meeting small{color:#c9cbbf}
+.next-meeting .btn{margin-left:auto}
+.mt-history{margin-top:8px}
+.note-form textarea{min-height:64px}
+.note-form .between{margin-top:6px}
+.note-form .switch{margin:0}
+.note{border-top:1px solid var(--line);padding:10px 0 6px}
+.note p{margin:0;font-size:14px}
+.note.pinned{background:#fbf8f1;margin:0 -16px;padding:10px 16px;border-left:3px solid var(--gold)}
+.note-foot{display:flex;gap:12px;align-items:center;margin-top:4px}
+.note-foot .link{margin:0;padding:0;font-size:12px}
+.flags{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.flag{font-size:11.5px;font-weight:700;border-radius:999px;padding:2px 9px;background:var(--paper-2);color:var(--ink)}
+.flag.red{background:#fde3df;color:#b03a2e}
+.flag.yellow{background:#fbf0d3;color:#7a5a00}
+.last-meeting{margin-top:12px;background:var(--paper);border-radius:12px;padding:8px 12px}
+.last-meeting summary{cursor:pointer;font-weight:700;font-size:13.5px}
+.last-meeting p{margin:6px 0 0;font-size:14px}
+.modal-form label{margin-top:10px}
+.modal-form .grid{gap:8px}
+.modal .form input,.modal .form select,.modal .form textarea{font-size:16px}
+.seg-radio{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.seg-radio label{margin:0;cursor:pointer}
+.seg-radio input{position:absolute;opacity:0}
+.seg-radio span{display:block;text-align:center;padding:9px 4px;border-radius:10px;background:var(--paper-2);font-weight:700;font-size:14px}
+.seg-radio input:checked+span{background:var(--ink);color:var(--gold-2)}
+.seg-radio input:focus-visible+span{outline:2px solid var(--gold)}
+input.invalid,select.invalid,textarea.invalid{border-color:#d64b3c!important}
+.modal{max-height:92vh;overflow:auto}
