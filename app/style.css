@@ -149,7 +149,7 @@ body.on-auth .app{background:transparent;max-width:none}
 .sub-link .play{font-size:12.5px;font-weight:700;color:var(--gold)}
 /* スイング動画 */
 .swing-video{display:block;width:100%;max-height:70vh;border-radius:14px;background:#000;margin:10px 0}
-.visually-hidden{position:absolute!important;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.visually-hidden{position:absolute!important;left:0;top:0;width:1px!important;height:1px!important;max-width:1px;padding:0!important;margin:-1px!important;border:0!important;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap}
 .file-pick{display:flex!important;flex-direction:column;align-items:center;gap:4px;margin:0!important;padding:22px 16px;border:1.5px dashed var(--gold);border-radius:16px;background:#fffdf7;cursor:pointer;text-align:center}
 .file-pick-main{font-weight:700;font-size:16px;color:var(--text)}
 .file-pick-sub{font-weight:400;font-size:12.5px;color:var(--muted);word-break:break-all}
@@ -474,15 +474,15 @@ details.rm-edit[open] .rm-no::before{content:"▾ "}
 .lesson-card:hover .lc-play{filter:brightness(1.08)}
 /* 撮影（SwingFrame）への入り口 */
 .auth-shoot,.shoot-cta{display:flex;align-items:center;gap:12px;text-decoration:none;border-radius:16px;padding:14px 16px}
-.auth-shoot .ico,.shoot-cta .ico{flex:none;width:40px;height:40px;border-radius:12px;display:grid;place-items:center;font-size:18px;background:#3ddc84;color:#04140b}
+.auth-shoot .ico,.shoot-cta .ico{flex:none;width:40px;height:40px;border-radius:12px;display:grid;place-items:center;font-size:18px;background:linear-gradient(135deg,#ead8ad,#c8a96a);color:var(--ink);box-shadow:inset 0 1px 0 rgba(255,255,255,.4)}
 .auth-shoot b,.shoot-cta b{display:block;font-size:16px}
 .auth-shoot small,.shoot-cta small{display:block;font-size:12px;line-height:1.5;margin-top:2px}
-.auth-shoot i,.shoot-cta i{margin-left:auto;font-style:normal;font-size:22px}
-.auth-shoot{margin:0 0 18px;background:var(--ink);border:2px solid #3ddc84;color:#fff}
-.auth-shoot b{color:#3ddc84}
+.auth-shoot i,.shoot-cta i{margin-left:auto;font-style:normal;font-size:22px;color:var(--gold)}
+.auth-shoot,.shoot-cta{background:radial-gradient(260px 120px at 100% 0%,#22352a 0%,transparent 70%),linear-gradient(160deg,var(--ink-2),var(--ink));border:1px solid rgba(200,169,106,.55);color:#fff;box-shadow:var(--shadow)}
+.auth-shoot{margin:0 0 18px}
+.auth-shoot b,.shoot-cta b{color:var(--gold-2)}
 .auth-shoot small{color:#c9cbbf}
-.shoot-cta{margin:0 0 12px;background:var(--ink);border:2px solid #3ddc84;color:#fff}
-.shoot-cta b{color:#3ddc84}
+.shoot-cta{margin:0 0 12px}
 .shoot-cta small{color:#c9cbbf}
 /* スコア記録 */
 .stat-link{display:block;text-decoration:none;color:inherit;position:relative}
@@ -579,7 +579,7 @@ details.rm-edit[open] .rm-no::before{content:"▾ "}
 @media (min-width:960px){.kpis{grid-template-columns:repeat(4,minmax(0,1fr))}}
 .kpi{display:block;background:#fff;border:1px solid var(--line);border-radius:16px;padding:12px 16px;text-decoration:none;color:var(--text)}
 .kpi span{display:block;font-size:12px;color:var(--muted);font-weight:700}
-.kpi b{display:block;font-size:32px;line-height:1.2;font-variant-numeric:tabular-nums lining-nums;color:var(--ink)}
+.kpi>b{display:block;font-size:32px;line-height:1.2;font-variant-numeric:tabular-nums lining-nums;color:var(--ink)}
 .kpi small{font-size:11.5px;color:var(--muted)}
 .kpi.alert{border:2px solid #d64b3c;background:#fff6f4}
 .kpi.alert b{color:#c0392b}
@@ -667,7 +667,7 @@ input.invalid,select.invalid,textarea.invalid{border-color:#d64b3c!important}
 .dash-sec.celebrate.has .dash-n{background:var(--gold);color:#fff}
 .score-big{font-size:18px;color:var(--ink)}
 .cele{display:inline-block;font-size:11.5px;font-weight:800;border-radius:999px;padding:1px 8px;margin:2px 4px 2px 0;background:#fbf0d3;color:#7a5a00}
-.cele.best{background:var(--gold);color:#fff}
+.cele.best{background:var(--ink);color:var(--gold-2)}
 .cele.tie{background:#f6e3b0;color:#6b4e00}
 .cele.great{background:#e3f1e8;color:#2e6b45}
 
@@ -777,3 +777,76 @@ input.invalid,select.invalid,textarea.invalid{border-color:#d64b3c!important}
 .ps-flow li:not(:last-child)::after{content:"";position:absolute;left:12px;top:32px;bottom:-4px;width:2px;background:var(--line)}
 .ps-apply{margin-top:16px}
 .plan-sheet>.btn-sub[data-sheet]{margin-top:8px}
+
+/* =========================================================
+   仕上げ：落ち着いた高級感（見やすさを優先し、色・余白・線・影を整える）
+   ========================================================= */
+:root{
+  --shadow-sm:0 1px 2px rgba(15,23,18,.05);
+  --shadow:0 1px 2px rgba(15,23,18,.04),0 10px 28px -14px rgba(15,23,18,.18);
+  --shadow-lg:0 2px 6px rgba(15,23,18,.06),0 22px 44px -20px rgba(15,23,18,.30);
+  --hair:#e9e2d4;
+}
+body{background:var(--paper)}
+.app{background:radial-gradient(900px 420px at 50% -160px,#fdfbf6 0%,rgba(253,251,246,0) 70%),var(--paper)}
+
+/* 上部バー：深緑のグラデーションと金の細線 */
+.top{background:linear-gradient(180deg,#14211a 0%,var(--ink) 100%);border-bottom:1px solid rgba(200,169,106,.28);box-shadow:0 6px 18px -12px rgba(0,0,0,.6)}
+.brand{font-size:17px;letter-spacing:.08em}
+.top .muted{letter-spacing:.32em;font-size:10.5px}
+
+/* カード：細い線と柔らかい影 */
+.card,.stat,.kpi,.rp-card,.prep-stat,.drill-filter,.task{border-color:var(--hair);box-shadow:var(--shadow)}
+.card{border-radius:18px}
+.card.link{transition:border-color .2s,box-shadow .2s,transform .2s}
+.card.link:hover{border-color:rgba(200,169,106,.65);box-shadow:var(--shadow-lg)}
+@media (hover:hover){.card.link:hover{transform:translateY(-1px)}}
+.hero{box-shadow:var(--shadow-lg);border-color:rgba(200,169,106,.30)}
+.hero::after{content:"";display:block;height:1px;margin-top:16px;background:linear-gradient(90deg,rgba(200,169,106,.55),rgba(200,169,106,0))}
+
+/* 見出し：金の短い線で区切る */
+.eyebrow{letter-spacing:.32em;font-size:11.5px}
+.section-title{margin-top:34px;position:relative;padding-bottom:9px}
+.section-title h2{font-size:18.5px;letter-spacing:.06em}
+.section-title h2::after{content:"";position:absolute;left:0;bottom:0;width:26px;height:2px;border-radius:2px;background:linear-gradient(90deg,var(--gold),rgba(200,169,106,.2))}
+.card h3{letter-spacing:.04em}
+
+/* 数字：上品なローマン体（読みやすいように太め・等幅） */
+.stat b,.kpi>b,.rp-card b,.prep-stat b,.score-big{font-family:var(--latin);font-weight:600;font-feature-settings:"lnum" 1,"tnum" 1;letter-spacing:.01em}
+.stat b{font-size:40px;line-height:1.05}
+.kpi>b{font-size:36px;line-height:1.1}
+.rp-card b,.prep-stat b{font-size:28px}
+.stat b small,.kpi>b small,.rp-card b small,.prep-stat b small{font-family:"Noto Sans JP",sans-serif}
+.kpi small b{font-size:inherit;font-family:inherit;display:inline}
+
+/* ボタン：深緑は金の細線、サブは淡い線 */
+button:not(.btn-gold):not(.btn-sub):not(.btn-danger):not(.btn-line):not(.link):not(.tag-chip):not(.sheet-close),.btn:not(.btn-gold):not(.btn-sub):not(.btn-danger):not(.btn-line){box-shadow:inset 0 0 0 1px rgba(200,169,106,.28)}
+.btn-gold{background:linear-gradient(135deg,#ead8ad 0%,#d2b47a 55%,#bf9d5c 100%);box-shadow:0 6px 16px -8px rgba(160,124,52,.7),inset 0 1px 0 rgba(255,255,255,.45);color:#1a1407}
+.btn-gold:hover{filter:brightness(1.03)}
+.btn-sub{background:#f3eee4;box-shadow:inset 0 0 0 1px #e4dccb;color:var(--text)}
+.btn-sub:hover{background:#efe8da}
+.btn-danger{box-shadow:inset 0 0 0 1px #efd2cd}
+
+/* 入力欄 */
+.form input,.form textarea,.form select{border-color:#e2dacb;background:#fffdf9;transition:border-color .15s,box-shadow .15s}
+.form input:hover,.form textarea:hover,.form select:hover{border-color:#d6cbb5}
+.form label{color:#3a423c}
+
+/* バッジ */
+.pill{letter-spacing:.08em}
+
+/* 下のメニュー：選んでいる項目に金の線 */
+.nav{background:linear-gradient(180deg,#121d17,var(--ink));border-top-color:rgba(200,169,106,.28)}
+.nav a.active::before{content:"";position:absolute;top:-6px;left:50%;width:22px;height:2px;margin-left:-11px;border-radius:2px;background:var(--gold)}
+@media (min-width:1100px){
+  .nav{background:linear-gradient(180deg,#13201a 0%,var(--ink) 60%)}
+  .nav a.active::before{top:10px;bottom:10px;left:0;width:3px;height:auto;margin:0}
+}
+
+/* お知らせ（トースト）・確認画面 */
+.toast{background:linear-gradient(180deg,#17231c,var(--ink));color:var(--on-dark);border-color:rgba(200,169,106,.4);box-shadow:var(--shadow-lg)}
+.modal{border-radius:20px;box-shadow:0 30px 60px -20px rgba(0,0,0,.45)}
+.modal h2{font-family:var(--serif);font-weight:600;letter-spacing:.04em}
+
+/* 空のとき */
+.empty{border-radius:18px}
