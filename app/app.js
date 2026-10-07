@@ -1186,6 +1186,45 @@ const meetingPill = (m) => {
   const [label, cls] = late ? ['結果未入力', 'warn'] : MEETING_STATUS[m.status] || ['—', ''];
   return `<span class="pill ${cls}">${label}</span>`;
 };
+// 動画の返信目標（提出から何時間以内に返すか）
+const REPLY_TARGET_H = 48;
+// 平均スコアより何打以上良ければ「好スコア」としてお知らせするか
+const GREAT_MARGIN = 5;
+// レッスンを送ってから何日見ていなければ「未読」としてお知らせするか
+const UNREAD_DAYS = 3;
+const hoursText = (h) => (h >= 48 ? `${Math.floor(h / 24)}日` : `${h}時間`);
+// 返信目標までの残り時間（過ぎていれば超過時間）
+const replyDue = (iso) => {
+  const left = Math.ceil(REPLY_TARGET_H - (Date.now() - new Date(iso).getTime()) / 3600000);
+  if (left <= 0) return { over: true, cls: 'late', text: `返信目標を${hoursText(Math.max(1, -left))}超過` };
+  return { over: false, cls: left <= 12 ? 'soon' : '', text: `返信目標まであと${hoursText(left)}` };
+};
+// ベスト更新・ベストタイ・平均より大きく良いスコアを探す（18ホールのみ）
+function findCelebrations(rounds, people, acked = new Set(), days = 14) {
+  const byMember = new Map();
+  rounds.filter((r) => r.holes === 18).forEach((r) => {
+    if (!byMember.has(r.member_id)) byMember.set(r.member_id, []);
+    byMember.get(r.member_id).push(r);
+  });
+  const out = [];
+  for (const [mid, list] of byMember) {
+    list.sort((a, b) => (a.played_on !== b.played_on ? (a.played_on < b.played_on ? -1 : 1) : (a.created_at < b.created_at ? -1 : 1)));
+    const p = people.find((x) => x.id === mid) || {};
+    list.forEach((r, i) => {
+      if (daysAgo(r.created_at) > days || acked.has(r.id)) return;
+      const prev = list.slice(0, i);
+      const best = prev.length ? Math.min(...prev.map((x) => x.score)) : p.best_score ?? null;
+      const recent = prev.slice(-AVG_ROUNDS);
+      const avg = recent.length ? recent.reduce((t, x) => t + x.score, 0) / recent.length : p.avg_score ?? null;
+      const tags = [];
+      if (best != null && r.score < best) tags.push(['best', `ベストスコア更新！（これまで ${best}）`]);
+      else if (best != null && r.score === best) tags.push(['tie', 'ベストスコアタイ']);
+      if (avg != null && avg - r.score >= GREAT_MARGIN) tags.push(['great', `平均（${Math.round(avg * 10) / 10}）より ${Math.round((avg - r.score) * 10) / 10}打 良い`]);
+      if (tags.length) out.push({ r, tags, name: p.name });
+    });
+  }
+  return out.sort((a, b) => (a.r.created_at < b.r.created_at ? 1 : -1));
+}
 const memberLink = (id, name) => `<a href="#/admin/member/${id}">${esc(name || '（名前未設定）')}</a>`;
 
 // メニューの件数（確認待ちの動画・結果未入力の面談）
@@ -1201,8 +1240,8 @@ async function loadAdminBadges() {
 // ダッシュボード：対応が必要なことを1画面にまとめる
 async function viewDashboard() {
   const today0 = new Date(); today0.setHours(0, 0, 0, 0);
-  const [members, pending, meetings, rmSoon, rmAll, subs30, practice30, rounds30, refs7] = await Promise.all([
-    must(sb.from('profiles').select('id, name, email, role, plan, subscription_status, access_until, current_period_end, created_at').order('created_at', { ascending: false })),
+  const [members, pending, meetings, rmSoon, rmAll, subs30, practice30, rounds30, refs7, rounds18, acks, unread] = await Promise.all([
+    must(sb.from('profiles').select('id, name, email, role, plan, subscription_status, access_until, current_period_end, created_at, best_score, avg_score').order('created_at', { ascending: false })),
     must(sb.from('submissions').select('id, created_at, club, angle, member_id, profiles(name)').eq('status', 'pending').order('created_at')),
     must(sb.from('meetings').select('id, member_id, scheduled_at, duration_min, status, profiles(name)').gte('scheduled_at', isoDaysFrom(-45)).order('scheduled_at')),
     must(sb.from('roadmap_items').select('id, member_id, publish_on, theme, profiles(name)').is('drill_id', null).eq('hidden', false).gte('publish_on', today()).lte('publish_on', isoDaysFrom(14).slice(0, 10)).order('publish_on')),
@@ -1211,6 +1250,9 @@ async function viewDashboard() {
     must(sb.from('roadmap_practice').select('member_id, practiced_on').gte('practiced_on', isoDaysFrom(-30).slice(0, 10))),
     must(sb.from('rounds').select('member_id, played_on, created_at, score, course_name, profiles(name)').gte('created_at', isoDaysFrom(-30)).order('created_at', { ascending: false })),
     must(sb.from('roadmap_reflections').select('member_id, body, updated_at, profiles(name)').gte('updated_at', isoDaysFrom(-7)).order('updated_at', { ascending: false })),
+    must(sb.from('rounds').select('id, member_id, played_on, created_at, score, holes, course_name').eq('holes', 18)),
+    sb.from('admin_acks').select('ref_id').eq('kind', 'celebration').then((r) => r.data || []), // 設定前でも動くように
+    must(sb.from('lessons').select('id, member_id, title, created_at, profiles(name)').is('read_at', null).lte('created_at', isoDaysFrom(-UNREAD_DAYS)).gte('created_at', isoDaysFrom(-60)).order('created_at')),
   ]);
   const people = members.filter((m) => m.role !== 'admin');
   const active = people.filter(isActive);
@@ -1230,6 +1272,8 @@ async function viewDashboard() {
   const moved = new Set([...subs30.map((x) => x.member_id), ...practice30.map((x) => x.member_id), ...rounds30.map((x) => x.member_id)]);
   const quiet = active.filter((m) => !moved.has(m.id) && daysAgo(m.created_at) > 14);
   const oldestWait = pending.length ? daysAgo(pending[0].created_at) : 0;
+  const overdue = pending.filter((x) => replyDue(x.created_at).over);
+  const celebrations = findCelebrations(rounds18, people, new Set(acks.map((a) => a.ref_id)));
   const todo = pending.length + lateMeetings.length + needMeeting.length + rmSoon.length + pastDue.length + soonExpire.length;
   state.adminTodo = todo;
 
@@ -1241,16 +1285,19 @@ async function viewDashboard() {
   const row = (main, sub = '', right = '') => `<div class="dash-row"><div class="grow">${main}${sub ? `<small>${sub}</small>` : ''}</div>${right}</div>`;
   const left = [
     section('確認待ちの提出動画', '▶', pending.map((x) => row(`${memberLink(x.member_id, x.profiles?.name)}　${esc(x.club)} / ${esc(x.angle)}`,
-      `${fmtDate(x.created_at)} 提出・<b class="${daysAgo(x.created_at) >= 3 ? 'late' : ''}">${daysAgo(x.created_at)}日待ち</b>`,
+      `${fmtDate(x.created_at)} 提出・<b class="${replyDue(x.created_at).cls}">${replyDue(x.created_at).text}</b>`,
       `<a class="btn btn-sm" href="#/admin/lesson/new/s/${x.id}">レッスンを書く</a>`)), '確認待ちの動画はありません', '<a class="dash-more" href="#/admin/inbox">一覧 ›</a>'),
     section('面談：結果の入力待ち', '!', lateMeetings.map((m) => row(`${memberLink(m.member_id, m.profiles?.name)}`, `${fmtShort(m.scheduled_at)} の面談`,
       `<button type="button" class="btn btn-sm" data-action="meeting-done" data-id="${m.id}">結果を入力</button>`)), '入力待ちの面談はありません'),
-    section('今後7日の面談', '◷', upcoming.map((m) => row(`<b>${fmtShort(m.scheduled_at)}</b>　${memberLink(m.member_id, m.profiles?.name)}`, `${m.duration_min}分`,
-      todayMeetings.includes(m) ? '<span class="pill ok">今日</span>' : '')), '予定はありません', '<a class="dash-more" href="#/admin/meetings">面談管理 ›</a>', 'info'),
+    section('今後7日の面談', '◷', upcoming.map((m) => row(`<b>${fmtShort(m.scheduled_at)}</b>　${memberLink(m.member_id, m.profiles?.name)}`, `${m.duration_min}分${todayMeetings.includes(m) ? '・<b class="today">今日</b>' : ''}`,
+      `<a class="btn btn-sm btn-sub" href="#/admin/prep/${m.id}">準備メモ</a>`)), '予定はありません', '<a class="dash-more" href="#/admin/meetings">面談管理 ›</a>', 'info'),
     section('今月まだ面談の予定がない会員', '◎', needMeeting.map((m) => row(memberLink(m.id, m.name), 'サブスクリプション制（月1回）',
       `<button type="button" class="btn btn-sm btn-sub" data-action="meeting-add" data-member="${m.id}">予約を入れる</button>`)), '全員、今月の面談が入っています'),
   ];
   const right = [
+    section('お祝い（ベスト更新・好スコア）', '★', celebrations.map((c) => row(`${memberLink(c.r.member_id, c.name)}　<b class="score-big">${c.r.score}</b>`,
+      `${c.tags.map(([k, t]) => `<span class="cele ${k}">${esc(t)}</span>`).join('')}<br>${fmtDate(c.r.played_on)} ${esc(c.r.course_name)}`,
+      `<button type="button" class="btn btn-sm btn-gold" data-action="celebrate-done" data-id="${c.r.id}" data-member="${c.r.member_id}" data-label="${esc(`${c.name || ''}さん ${c.r.score}（${c.tags.map((t) => t[1]).join('・')}）`)}">お祝い済み</button>`)), '新しいお祝いはありません', '', 'celebrate'),
     section('ロードマップ：ドリル未定（2週間以内に公開）', '◎', rmSoon.map((r) => row(memberLink(r.member_id, r.profiles?.name), `${fmtDate(r.publish_on)} 公開・${esc(r.theme || 'テーマ未定')}`,
       `<a class="btn btn-sm btn-sub" href="#/admin/roadmap/${r.member_id}">編集</a>`)), 'ドリル未定の月はありません'),
     section('ロードマップ未作成の契約中会員', '+', noRoadmap.map((m) => row(memberLink(m.id, m.name), `${esc(planLabel(m.plan))}・登録 ${fmtDate(m.created_at)}`)), '全員作成済みです', '', 'watch'),
@@ -1259,6 +1306,7 @@ async function viewDashboard() {
       ...soonExpire.map((m) => row(memberLink(m.id, m.name), `利用期限 ${fmtDate(m.access_until)}（あと${Math.max(0, Math.ceil((new Date(m.access_until) - today0) / DAY))}日）`)),
     ], '支払い遅延・期限切れ間近の会員はいません'),
     section('新規登録（未契約・30日以内）', '☆', newcomers.map((m) => row(memberLink(m.id, m.name), `${esc(m.email)}・${fmtDate(m.created_at)} 登録`)), '新しい登録はありません', '', 'info'),
+    section(`レッスンを見ていない会員（${UNREAD_DAYS}日以上）`, '✉', unread.map((l) => row(memberLink(l.member_id, l.profiles?.name), `「${esc(l.title)}」${fmtDate(l.created_at)} 送付・${daysAgo(l.created_at)}日未読`)), '送ったレッスンはすべて見られています', '', 'watch'),
     section('30日間動きがない契約中会員', '…', quiet.map((m) => row(memberLink(m.id, m.name), '動画提出・練習記録・スコア記録がありません')), '全員、何かしら動きがあります', '', 'watch'),
   ];
   const feed = [
@@ -1269,12 +1317,13 @@ async function viewDashboard() {
 
   return header('やること') + `<div class="content wide">
     <div class="kpis">
-      <a class="kpi${pending.length ? ' alert' : ''}" href="#/admin/inbox"><span>確認待ちの動画</span><b>${pending.length}</b><small>${pending.length ? `いちばん古いもの ${oldestWait}日前` : 'なし'}</small></a>
+      <a class="kpi${pending.length ? ' alert' : ''}" href="#/admin/inbox"><span>確認待ちの動画</span><b>${pending.length}</b><small>${overdue.length ? `<b class="late">返信目標（${REPLY_TARGET_H}時間）超過 ${overdue.length}件</b>` : pending.length ? `いちばん古いもの ${oldestWait}日前` : 'なし'}</small></a>
       <a class="kpi" href="#/admin/meetings"><span>今日の面談</span><b>${todayMeetings.length}</b><small>今後7日で ${upcoming.length}件</small></a>
       <div class="kpi${todo ? ' alert' : ''}"><span>対応が必要</span><b>${todo}</b><small>下の一覧で確認</small></div>
       <a class="kpi" href="#/admin/members"><span>契約中の会員</span><b>${active.length}</b><small>登録 ${people.length}名</small></a>
     </div>
-    <p class="dash-legend"><span class="lg todo">対応が必要</span><span class="lg watch">様子を見る</span><span class="lg info">お知らせ</span></p>
+    <div class="dash-top"><p class="dash-legend"><span class="lg todo">対応が必要</span><span class="lg watch">様子を見る</span><span class="lg info">お知らせ</span><span class="lg celebrate">お祝い</span></p>
+      <span class="dash-links"><a class="btn btn-sm btn-sub" href="#/admin/templates">✎ テンプレート</a><a class="btn btn-sm btn-sub" href="#/admin/report">📊 月のまとめ</a></span></div>
     <div class="cols">
       <div class="col-main">${left.map((h, i) => `<div class="blk" style="--o:${i}">${h}</div>`).join('')}</div>
       <div class="col-side">${right.map((h, i) => `<div class="blk" style="--o:${10 + i}">${h}</div>`).join('')}
@@ -1306,7 +1355,8 @@ async function viewMeetings() {
     day = d;
     const t = new Date(m.scheduled_at).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
     const actions = m.status === 'scheduled'
-      ? `<button type="button" class="btn btn-sm" data-action="meeting-done" data-id="${m.id}">結果を入力</button>
+      ? `<a class="btn btn-sm btn-gold" href="#/admin/prep/${m.id}">準備メモ</a>
+         <button type="button" class="btn btn-sm" data-action="meeting-done" data-id="${m.id}">結果を入力</button>
          <button type="button" class="btn btn-sm btn-sub" data-action="meeting-move" data-id="${m.id}" data-at="${m.scheduled_at}" data-min="${m.duration_min}">日時変更</button>
          <button type="button" class="btn btn-sm btn-sub" data-action="meeting-status" data-id="${m.id}" data-status="canceled">キャンセル</button>`
       : `<button type="button" class="btn btn-sm btn-sub" data-action="meeting-done" data-id="${m.id}">まとめを編集</button>`;
@@ -1450,7 +1500,7 @@ async function viewInbox() {
     ${subs.length ? `<div class="inbox-list">` + subs.map((s) => `<div class="card">
         <div class="between"><div><b>${esc(s.profiles?.name || '（名前未設定）')}</b> <span class="pill">${esc(planLabel(s.profiles?.plan))}</span></div>
           <span class="muted">${fmtDate(s.created_at)}</span></div>
-        <div class="muted">${esc(s.club)} / ${esc(s.angle)}</div>
+        <div class="muted">${esc(s.club)} / ${esc(s.angle)}　<b class="due ${replyDue(s.created_at).cls}">${replyDue(s.created_at).text}</b></div>
         ${swingVideo(s, urls)}
         ${s.question ? `<p class="pre">${esc(s.question)}</p>` : ''}
         <div class="row" style="margin-top:10px">
@@ -1497,7 +1547,7 @@ async function viewMemberDetail(id) {
   const [m, tasks, lessons, subs, monthSubs, roadmap] = await Promise.all([
     must(sb.from('profiles').select('*').eq('id', id).maybeSingle()),
     must(sb.from('tasks').select('*').eq('member_id', id).order('sort_order').order('created_at')),
-    must(sb.from('lessons').select('id, lesson_date, title').eq('member_id', id).order('lesson_date', { ascending: false }).order('created_at', { ascending: false })),
+    must(sb.from('lessons').select('id, lesson_date, title, created_at, read_at').eq('member_id', id).order('lesson_date', { ascending: false }).order('created_at', { ascending: false })),
     must(sb.from('submissions').select('id, created_at, club, angle, status').eq('member_id', id).order('created_at', { ascending: false }).limit(20)),
     must(sb.from('submissions').select('id').eq('member_id', id).gte('created_at', monthStart())),
     must(sb.from('roadmap_items').select('id, publish_on, theme, published_at, hidden, seen_at, drills(title)').eq('member_id', id).order('publish_on')),
@@ -1507,11 +1557,12 @@ async function viewMemberDetail(id) {
     must(sb.from('roadmap_reflections').select('item_id, body, updated_at').eq('member_id', id)),
     must(sb.from('roadmap_goals').select('goal').eq('member_id', id)),
   ]) : [[], [], []];
-  const [mRounds, mMeetings, mNotes, mPractice] = await Promise.all([
+  const [mRounds, mMeetings, mNotes, mPractice, karte] = await Promise.all([
     must(sb.from('rounds').select('played_on, course_name, score, holes, created_at').eq('member_id', id).order('played_on', { ascending: false })),
     must(sb.from('meetings').select('id, scheduled_at, duration_min, status, summary').eq('member_id', id).order('scheduled_at', { ascending: false })),
     must(sb.from('staff_notes').select('id, body, pinned, created_at').eq('member_id', id).order('pinned', { ascending: false }).order('created_at', { ascending: false })),
     must(sb.from('roadmap_practice').select('practiced_on').eq('member_id', id).gte('practiced_on', isoDaysFrom(-30).slice(0, 10))),
+    sb.from('member_karte').select('*').eq('member_id', id).maybeSingle().then((r) => r.data),
   ]);
   const mst = scoreStats(mRounds, m || {});
   if (!m) return header('会員詳細', 'admin/members') + '<div class="content"><div class="empty">会員が見つかりません</div></div>';
@@ -1545,6 +1596,8 @@ async function viewMemberDetail(id) {
       <button class="btn-block" type="submit">保存する</button>
     </form>
 
+    ${karteForm(m.id, karte)}
+
     </div><div class="col-side">
     ${(() => {
       const next = mMeetings.filter((x) => x.status === 'scheduled' && new Date(x.scheduled_at).getTime() > Date.now() - 30 * 60000).at(-1);
@@ -1552,7 +1605,7 @@ async function viewMemberDetail(id) {
       // 最近の動き（30日）：動画・レッスン・スコア・ふり返り・面談・練習
       const feed = [
         ...subs.filter((x) => daysAgo(x.created_at) <= 30).map((x) => ({ t: x.created_at, h: `▶ 動画を提出（${esc(x.club)} / ${esc(x.angle)}）${x.status === 'pending' ? ' <span class="pill warn">確認待ち</span>' : ''}` })),
-        ...lessons.filter((x) => daysAgo(x.lesson_date) <= 30).map((x) => ({ t: x.lesson_date, h: `✎ レッスン「${esc(x.title)}」を送付` })),
+        ...lessons.filter((x) => daysAgo(x.lesson_date) <= 30).map((x) => ({ t: x.lesson_date, h: `✎ レッスン「${esc(x.title)}」を送付${x.read_at ? '' : ' <span class="pill mute">未読</span>'}` })),
         ...mRounds.filter((x) => daysAgo(x.played_on) <= 30).map((x) => ({ t: x.played_on, h: `⛳ スコア <b>${x.score}</b>（${esc(x.course_name)}）` })),
         ...rmRefs.filter((x) => daysAgo(x.updated_at) <= 30).map((x) => ({ t: x.updated_at, h: `💬 ふり返り：${esc(x.body.slice(0, 50))}` })),
         ...mMeetings.filter((x) => x.status !== 'scheduled' && daysAgo(x.scheduled_at) <= 30).map((x) => ({ t: x.scheduled_at, h: `◷ 面談 ${meetingPill(x)}` })),
@@ -1560,6 +1613,7 @@ async function viewMemberDetail(id) {
       return `<div class="section-title" style="margin-top:0"><h2>面談</h2><button type="button" class="btn btn-sm" data-action="meeting-add" data-member="${m.id}">＋ 予約</button></div>
     <div class="card">
       ${next ? `<div class="next-meeting"><span>次回</span><b>${fmtShort(next.scheduled_at)}</b><small>${next.duration_min}分</small>
+          <a class="btn btn-sm btn-gold" href="#/admin/prep/${next.id}">準備メモ</a>
           <button type="button" class="btn btn-sm btn-sub" data-action="meeting-move" data-id="${next.id}" data-at="${next.scheduled_at}" data-min="${next.duration_min}">日時変更</button></div>`
         : '<p class="muted small" style="margin:0">次回の面談は入っていません。LINEで日程が決まったら「＋ 予約」から登録します。</p>'}
       ${recent.length ? `<div class="mt-history">${recent.map((x) => `<div class="list-item small"><div class="grow">${fmtShort(x.scheduled_at)} ${meetingPill(x)}${x.summary ? `<div class="muted">${esc(x.summary.slice(0, 60))}</div>` : ''}</div>
@@ -1608,7 +1662,8 @@ async function viewMemberDetail(id) {
     </div>
 
     <div class="section-title"><h2>レッスン</h2><a class="btn btn-sm" href="#/admin/lesson/new/m/${m.id}">＋ 追加</a></div>
-    <div class="card">${lessons.map((l) => `<div class="list-item"><div>${fmtDate(l.lesson_date)}　<b>${esc(l.title)}</b></div>
+    <div class="card">${lessons.map((l) => `<div class="list-item"><div class="grow">${fmtDate(l.lesson_date)}　<b>${esc(l.title)}</b>
+          ${l.read_at ? `<span class="pill ok">既読 ${fmtMD(l.read_at.slice(0, 10))}</span>` : `<span class="pill ${daysAgo(l.created_at) >= UNREAD_DAYS ? 'warn' : 'mute'}">未読${daysAgo(l.created_at) >= 1 ? `（${daysAgo(l.created_at)}日）` : ''}</span>`}</div>
         <a class="btn btn-sm btn-sub" href="#/admin/lesson/${l.id}">編集</a></div>`).join('') || '<div class="muted">レッスンはまだありません</div>'}</div>
 
     <div class="section-title"><h2>提出動画</h2></div>
@@ -1616,6 +1671,261 @@ async function viewMemberDetail(id) {
         ${s.status === 'pending' ? `<a class="btn btn-sm" href="#/admin/lesson/new/s/${s.id}">レッスンを書く</a>` : '<span class="pill ok">対応済み</span>'}</div>`).join('') || '<div class="muted">提出はまだありません</div>'}</div>
   </div></div>
   </div>` + adminNav('admin/members');
+}
+
+// カウンセリングシート（会員には見えない）
+const KARTE_FIELDS = [
+  ['golf_history', 'ゴルフ歴・ラウンド頻度', '例：歴5年。月1〜2回ラウンド', 500],
+  ['practice_env', '練習環境・練習頻度', '例：近所の練習場に週1回。自宅でパター練習', 500],
+  ['body_notes', 'ケガ・体の状態', '例：腰痛あり。左手首を以前痛めた', 500],
+  ['goals', '目標（具体的に・いつまでに）', '例：来年の春までに90切り。社内コンペで優勝したい', 500],
+  ['issues', '悩み・課題', '例：ドライバーのスライス。アプローチのざっくり', 500],
+  ['contact_pref', '連絡方法・連絡しやすい時間帯', '例：LINE。平日20時以降', 300],
+  ['notes', 'その他', '例：3月は仕事の繁忙期で練習量が落ちる', 2000],
+];
+function karteForm(memberId, k) {
+  k = k || {};
+  const filled = KARTE_FIELDS.some(([n]) => k[n]);
+  return `<form class="card form karte" data-form="karte" data-member="${memberId}">
+    <div class="between"><b>カウンセリングシート</b><span class="muted small">会員には見えません${k.updated_at ? `・${fmtShort(k.updated_at)} 更新` : ''}</span></div>
+    ${filled ? '' : '<p class="muted small" style="margin:4px 0 0">初回カウンセリングで聞いた内容を残しておくと、面談の準備メモにも表示されます。</p>'}
+    ${KARTE_FIELDS.map(([n, label, ph, max]) => `<label for="k_${n}">${label}</label><textarea id="k_${n}" name="${n}" rows="2" maxlength="${max}" placeholder="${ph}">${esc(k[n] || '')}</textarea>`).join('')}
+    <button class="btn-block" type="submit">シートを保存する</button>
+  </form>`;
+}
+
+// 面談の準備メモ：前回の面談から今日までの動きを1画面にまとめる
+async function viewMeetingPrep(id) {
+  const mt = await must(sb.from('meetings').select('id, member_id, scheduled_at, duration_min, status, summary').eq('id', id).maybeSingle());
+  if (!mt) return header('面談の準備メモ', 'admin/meetings') + '<div class="content"><div class="empty">面談が見つかりません</div></div>' + adminNav('admin/meetings');
+  const mid = mt.member_id;
+  const [m, prevList, karte, notes, rounds, roadmap, tasks] = await Promise.all([
+    must(sb.from('profiles').select('id, name, plan, goal, theme, best_score, avg_score, created_at').eq('id', mid).maybeSingle()),
+    must(sb.from('meetings').select('scheduled_at, summary').eq('member_id', mid).eq('status', 'done').lt('scheduled_at', mt.scheduled_at).order('scheduled_at', { ascending: false }).limit(1)),
+    must(sb.from('member_karte').select('*').eq('member_id', mid).maybeSingle()),
+    must(sb.from('staff_notes').select('body, pinned, created_at').eq('member_id', mid).order('pinned', { ascending: false }).order('created_at', { ascending: false }).limit(30)),
+    must(sb.from('rounds').select('id, member_id, played_on, created_at, score, holes, course_name').eq('member_id', mid).order('played_on', { ascending: false })),
+    must(sb.from('roadmap_items').select('id, publish_on, theme, hidden, drills(title)').eq('member_id', mid).order('publish_on')),
+    must(sb.from('tasks').select('title, detail, done').eq('member_id', mid).order('sort_order')),
+  ]);
+  const prev = prevList[0];
+  const since = prev ? prev.scheduled_at : isoDaysFrom(-30);
+  const sinceYmd = new Date(since).toLocaleDateString('sv-SE');
+  const [subs, lessons, practice, refs] = await Promise.all([
+    must(sb.from('submissions').select('created_at, club, angle, status').eq('member_id', mid).gte('created_at', since).order('created_at')),
+    must(sb.from('lessons').select('id, title, created_at, read_at').eq('member_id', mid).gte('created_at', since).order('created_at')),
+    must(sb.from('roadmap_practice').select('practiced_on').eq('member_id', mid).gte('practiced_on', sinceYmd)),
+    must(sb.from('roadmap_reflections').select('body, updated_at').eq('member_id', mid).gte('updated_at', since).order('updated_at', { ascending: false })),
+  ]);
+  const days = Math.max(1, daysAgo(since));
+  const practiceDays = new Set(practice.map((x) => x.practiced_on)).size;
+  const periodRounds = rounds.filter((r) => r.played_on >= sinceYmd);
+  const st = scoreStats(rounds, m || {});
+  const cele = findCelebrations(rounds, [m || { id: mid }], new Set(), days);
+  const unread = lessons.filter((l) => !l.read_at);
+  const nowItem = roadmap.filter((r) => !r.hidden && r.publish_on <= today()).at(-1);
+  const nextItem = roadmap.find((r) => r.publish_on > today());
+  const tDone = tasks.filter((t) => t.done).length;
+  const periodNotes = notes.filter((n) => n.pinned || n.created_at >= since);
+
+  // 話すことのヒント（データから自動で作る）
+  const hints = [];
+  if (cele.length) hints.push(['good', `お祝い：${cele.map((c) => `${fmtMD(c.r.played_on)} ${c.r.score}（${c.tags.map((t) => t[1]).join('・')}）`).join('、')}`]);
+  if (karte?.body_notes) hints.push(['warn', `体の状態を確認：${karte.body_notes}`]);
+  if (unread.length) hints.push(['warn', `まだ見ていないレッスンが${unread.length}件：${unread.map((l) => `「${l.title}」`).join('')}`]);
+  if (!practiceDays) hints.push(['warn', 'この期間、練習の記録がありません。練習できているか聞いてみる']);
+  else if (practiceDays / days * 7 < 1) hints.push(['', `練習の記録は${days}日間で${practiceDays}日。続けやすい練習方法を一緒に考える`]);
+  if (!subs.length) hints.push(['', 'この期間、動画の提出がありません。次の提出を促す']);
+  if (tasks.length) hints.push([tDone < tasks.length ? '' : 'good', `今月の課題：${tasks.length}件中 ${tDone}件 完了`]);
+  if (nextItem) hints.push([nextItem.drills ? '' : 'warn', nextItem.drills ? `次のドリル（${fmtMD(nextItem.publish_on)} 公開）「${nextItem.drills.title}」を予告する` : `次のドリル（${fmtMD(nextItem.publish_on)} 公開予定）がまだ未定です`]);
+  if (karte?.goals || m?.goal) hints.push(['', `目標「${karte?.goals || m.goal}」に対する進み具合を確認する`]);
+  if (prev?.summary) hints.push(['', '前回のまとめの内容ができているか確認する']);
+
+  const stat = (label, val, sub = '') => `<div class="prep-stat"><span>${label}</span><b>${val}</b>${sub ? `<small>${sub}</small>` : ''}</div>`;
+  return header('面談の準備メモ', 'admin/meetings') + `<div class="content wide">
+    <div class="card prep-head">
+      <div class="grow"><div class="muted small">${fmtShort(mt.scheduled_at)}・${mt.duration_min}分 ${meetingPill(mt)}</div>
+        <h2>${memberLink(mid, m?.name)} さん</h2>
+        <div class="muted small">${esc(planLabel(m?.plan))}${prev ? `・前回の面談 ${fmtShort(prev.scheduled_at)}（${days}日前）` : '・前回の面談の記録なし（直近30日を表示）'}</div></div>
+      <div class="prep-actions">
+        <button type="button" class="btn btn-sm" data-action="meeting-done" data-id="${mt.id}">${mt.status === 'scheduled' ? '結果を入力' : 'まとめを編集'}</button>
+        <button type="button" class="btn btn-sm btn-sub" data-action="print">印刷</button>
+      </div>
+    </div>
+    <div class="cols"><div class="col-main">
+      <section class="card"><b>話すことのヒント</b>
+        ${hints.length ? `<ul class="prep-hints">${hints.map(([k, t]) => `<li class="${k}">${esc(t)}</li>`).join('')}</ul>` : '<p class="muted small">特にありません</p>'}</section>
+
+      <div class="section-title"><h2>この期間の動き</h2><span class="muted small">${fmtDate(sinceYmd)} 〜 今日（${days}日間）</span></div>
+      <div class="prep-stats">
+        ${stat('動画の提出', `${subs.length}<small>本</small>`, subs.filter((x) => x.status === 'pending').length ? `確認待ち ${subs.filter((x) => x.status === 'pending').length}本` : '')}
+        ${stat('送ったレッスン', `${lessons.length}<small>件</small>`, unread.length ? `未読 ${unread.length}件` : lessons.length ? 'すべて既読' : '')}
+        ${stat('練習した日', `${practiceDays}<small>日</small>`, days >= 7 ? `週あたり ${Math.round(practiceDays / days * 7 * 10) / 10}日` : `${days}日間で`)}
+        ${stat('ラウンド', `${periodRounds.length}<small>回</small>`, periodRounds.length ? `ベスト ${Math.min(...periodRounds.map((r) => r.score))}` : '')}
+      </div>
+
+      <section class="card"><div class="between"><b>スコア</b><span class="muted small">全体：ベスト ${esc(st.best ?? '—')}・平均 ${esc(st.avg ?? '—')}</span></div>
+        ${periodRounds.length ? periodRounds.map((r) => { const c = cele.find((x) => x.r.id === r.id); return `<div class="list-item small"><span>${fmtDate(r.played_on)}　${esc(r.course_name)}${r.holes === 9 ? '（9H）' : ''}${c ? c.tags.map(([k, t]) => ` <span class="cele ${k}">${esc(t)}</span>`).join('') : ''}</span><b>${r.score}</b></div>`; }).join('') : '<p class="muted small" style="margin:6px 0 0">この期間のラウンド記録はありません</p>'}</section>
+
+      <section class="card"><b>ドリル・課題</b>
+        <div class="list-item small"><span>今のドリル</span><b>${nowItem ? `${esc(nowItem.drills?.title || nowItem.theme || '未定')}` : '—'}</b></div>
+        <div class="list-item small"><span>次のドリル</span><b>${nextItem ? `${fmtMD(nextItem.publish_on)} ${esc(nextItem.drills?.title || nextItem.theme || '未定')}` : '—'}</b></div>
+        ${tasks.map((t) => `<div class="list-item small"><span>${t.done ? '✅' : '⬜️'} ${esc(t.title)} <span class="muted">${esc(t.detail)}</span></span></div>`).join('')}
+        ${refs.length ? `<p class="small" style="margin:10px 0 4px"><b>会員のふり返り</b></p>${refs.map((x) => `<p class="pre small prep-quote">${esc(x.body)}<span class="muted">（${fmtDate(x.updated_at)}）</span></p>`).join('')}` : ''}
+      </section>
+
+      <section class="card"><b>この期間の動画とレッスン</b>
+        ${[...subs.map((x) => ({ t: x.created_at, h: `▶ 動画（${esc(x.club)} / ${esc(x.angle)}）${x.status === 'pending' ? ' <span class="pill warn">確認待ち</span>' : ''}` })),
+          ...lessons.map((x) => ({ t: x.created_at, h: `✎ レッスン「${esc(x.title)}」${x.read_at ? ' <span class="pill ok">既読</span>' : ' <span class="pill mute">未読</span>'}` }))]
+          .sort((a, b) => (a.t < b.t ? -1 : 1)).map((f) => `<div class="list-item small"><span>${f.h}</span><span class="muted">${fmtDate(f.t)}</span></div>`).join('') || '<p class="muted small" style="margin:6px 0 0">ありません</p>'}
+      </section>
+    </div><div class="col-side">
+      <div class="section-title" style="margin-top:0"><h2>前回の面談のまとめ</h2></div>
+      <div class="card">${prev?.summary ? `<p class="pre" style="margin:0">${esc(prev.summary)}</p>` : '<p class="muted small" style="margin:0">記録がありません</p>'}</div>
+
+      <div class="section-title"><h2>カウンセリングシート</h2><a class="muted small" href="#/admin/member/${mid}">編集 ›</a></div>
+      <div class="card">${KARTE_FIELDS.filter(([n]) => karte?.[n]).map(([n, label]) => `<div class="karte-row"><span>${label}</span><p class="pre">${esc(karte[n])}</p></div>`).join('') || '<p class="muted small" style="margin:0">まだ記入されていません</p>'}</div>
+
+      <div class="section-title"><h2>担当者メモ</h2><span class="muted small">固定＋この期間</span></div>
+      <div class="card">${periodNotes.map((n) => `<div class="note${n.pinned ? ' pinned' : ''}"><p class="pre">${esc(n.body)}</p><span class="muted small">${n.pinned ? '📌 ' : ''}${fmtShort(n.created_at)}</span></div>`).join('') || '<p class="muted small" style="margin:0">ありません</p>'}</div>
+    </div></div>
+  </div>` + adminNav('admin/meetings');
+}
+
+// レッスン文のテンプレート
+const TPL_FIELDS = { point: '今回の診断（ポイント）', feedback: 'フィードバック', practice: '次回までの練習' };
+let lessonTemplates = [];
+const tplPicker = (field) => {
+  const items = lessonTemplates.filter((t) => t.field === field);
+  return `<div class="tpl-bar" data-tpl-bar="${field}">
+    ${items.length ? `<select data-tpl-for="${field}" aria-label="${TPL_FIELDS[field]}のテンプレートから挿入"><option value="">テンプレートから挿入…</option>${items.map((t) => `<option value="${t.id}">${esc(t.title)}</option>`).join('')}</select>` : ''}
+    <button type="button" class="link" data-action="tpl-save" data-field="${field}">この欄の文をテンプレートに保存</button></div>`;
+};
+async function viewTemplates() {
+  const list = await must(sb.from('lesson_templates').select('*').order('title'));
+  return header('レッスン文のテンプレート', 'admin/dashboard') + `<div class="content">
+    <p class="muted small">よく使う文を登録しておくと、レッスン作成画面の各欄にある「テンプレートから挿入」で選ぶだけで入力できます。挿入したあとに、会員に合わせて書き足してください。</p>
+    <form class="card form" data-form="tpl-new">
+      <b>新しいテンプレート</b>
+      <label for="tpl-field">使う欄</label><select id="tpl-field" name="field">${Object.entries(TPL_FIELDS).map(([k, l]) => `<option value="${k}"${k === 'feedback' ? ' selected' : ''}>${l}</option>`).join('')}</select>
+      <label for="tpl-title">名前（選ぶときに表示）</label><input id="tpl-title" name="title" maxlength="50" placeholder="例：前傾キープの基本" required>
+      <label for="tpl-body">本文</label><textarea id="tpl-body" name="body" rows="5" maxlength="3000" required></textarea>
+      <button class="btn-block" type="submit">登録する</button>
+    </form>
+    ${Object.entries(TPL_FIELDS).map(([k, l]) => {
+      const items = list.filter((t) => t.field === k);
+      return `<div class="section-title"><h2>${l}</h2><span class="muted small">${items.length}件</span></div>
+      <div class="card">${items.map((t) => `<div class="tpl-item"><div class="grow"><b>${esc(t.title)}</b><p class="pre muted small">${esc(t.body.slice(0, 140))}${t.body.length > 140 ? '…' : ''}</p></div>
+        <div class="tpl-actions"><button type="button" class="btn btn-sm btn-sub" data-action="tpl-edit" data-id="${t.id}">編集</button>
+          <button type="button" class="btn-sm btn-danger" data-action="tpl-delete" data-id="${t.id}" data-title="${esc(t.title)}">削除</button></div></div>`).join('') || '<p class="muted small" style="margin:0">まだありません</p>'}</div>`;
+    }).join('')}
+  </div>` + adminNav('admin/dashboard');
+}
+
+// 月のまとめ（経営の数字）
+async function viewReport(ym) {
+  const now = new Date();
+  const [y, mo] = /^\d{4}-\d{2}$/.test(ym || '') ? ym.split('-').map(Number) : [now.getFullYear(), now.getMonth() + 1];
+  const from = new Date(y, mo - 1, 1); const to = new Date(y, mo, 1); const pFrom = new Date(y, mo - 2, 1);
+  const key = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  const [people, events, subs, lessons, meetings, practice, rounds] = await Promise.all([
+    must(sb.from('profiles').select('id, role, plan, created_at, subscription_status, access_until, best_score, avg_score').neq('role', 'admin')),
+    must(sb.from('membership_events').select('member_id, kind, created_at')),
+    must(sb.from('submissions').select('created_at, reviewed_at, status').gte('created_at', pFrom.toISOString()).lt('created_at', to.toISOString())),
+    must(sb.from('lessons').select('created_at, read_at').gte('created_at', pFrom.toISOString()).lt('created_at', to.toISOString())),
+    must(sb.from('meetings').select('member_id, status, scheduled_at').gte('scheduled_at', pFrom.toISOString()).lt('scheduled_at', to.toISOString())),
+    must(sb.from('roadmap_practice').select('member_id, practiced_on').gte('practiced_on', pFrom.toLocaleDateString('sv-SE')).lt('practiced_on', to.toLocaleDateString('sv-SE'))),
+    must(sb.from('rounds').select('id, member_id, played_on, created_at, score, holes')),
+  ]);
+  const ms = (iso) => new Date(iso).getTime();
+  const subActive = (p) => ['active', 'trialing'].includes(p.subscription_status);
+  // 利用期限が切れた会員は、期限の翌日に「終了」したものとして数える
+  const expired = people.filter((p) => !subActive(p) && p.access_until && p.access_until < today())
+    .map((p) => ({ member_id: p.id, kind: 'stop', created_at: new Date(`${p.access_until}T23:59:59`).toISOString() }));
+  const allEvents = [...events, ...expired];
+  const activeNow = people.filter(isActive).length;
+  const best = findCelebrations(rounds, people, new Set(), Infinity).filter((c) => c.tags.some(([k]) => k === 'best'));
+  const calc = (a, b) => {
+    const A = a.getTime();
+    const inR = (iso) => iso && ms(iso) >= A && ms(iso) < b.getTime();
+    const aY = a.toLocaleDateString('sv-SE'); const bY = b.toLocaleDateString('sv-SE');
+    const inD = (ymd) => ymd && ymd >= aY && ymd < bY;
+    const after = (iso) => ms(iso) >= A;
+    const starts = allEvents.filter((e) => e.kind === 'start' && inR(e.created_at));
+    const stops = allEvents.filter((e) => e.kind === 'stop' && inR(e.created_at));
+    const atStart = activeNow - allEvents.filter((e) => e.kind === 'start' && after(e.created_at)).length + allEvents.filter((e) => e.kind === 'stop' && after(e.created_at)).length;
+    const s = subs.filter((x) => inR(x.created_at));
+    const replied = s.filter((x) => x.reviewed_at);
+    const hrs = replied.map((x) => (ms(x.reviewed_at) - ms(x.created_at)) / 3600000);
+    const l = lessons.filter((x) => inR(x.created_at));
+    const mt = meetings.filter((x) => inR(x.scheduled_at));
+    const done = mt.filter((x) => x.status === 'done').length; const noShow = mt.filter((x) => x.status === 'no_show').length;
+    const pr = practice.filter((x) => inD(x.practiced_on));
+    const prMembers = new Set(pr.map((x) => x.member_id)).size;
+    return {
+      starts: starts.length, stops: new Set(stops.map((e) => e.member_id)).size, atStart: Math.max(0, atStart),
+      keep: atStart > 0 ? Math.max(0, Math.round((1 - new Set(stops.map((e) => e.member_id)).size / atStart) * 100)) : null,
+      signups: people.filter((p) => inR(p.created_at)).length,
+      subs: s.length, pending: s.length - replied.length,
+      avgReply: hrs.length ? Math.round(hrs.reduce((t, h) => t + h, 0) / hrs.length * 10) / 10 : null,
+      inTarget: hrs.length ? Math.round(hrs.filter((h) => h <= REPLY_TARGET_H).length / hrs.length * 100) : null,
+      lessons: l.length, readRate: l.length ? Math.round(l.filter((x) => x.read_at).length / l.length * 100) : null,
+      done, noShow, canceled: mt.filter((x) => x.status === 'canceled').length,
+      meetRate: done + noShow ? Math.round(done / (done + noShow) * 100) : null,
+      practiceDays: new Set(pr.map((x) => `${x.member_id}:${x.practiced_on}`)).size, prMembers,
+      rounds: rounds.filter((r) => inD(r.played_on)).length,
+      bests: best.filter((c) => inD(c.r.played_on)).length,
+    };
+  };
+  const c = calc(from, to); const p = calc(pFrom, from);
+  // 前の月との差（better：増えると良い 'up'／減ると良い 'down'）
+  const diff = (k, unit = '', better = 'up') => {
+    if (c[k] == null || p[k] == null) return '';
+    const d = Math.round((c[k] - p[k]) * 10) / 10;
+    if (!d) return '<small class="rp-d">前月と同じ</small>';
+    const good = (d > 0) === (better === 'up');
+    return `<small class="rp-d ${good ? 'up' : 'down'}">前月より ${d > 0 ? '+' : ''}${d}${unit}</small>`;
+  };
+  const card = (label, val, unit, k, dUnit = unit, better = 'up', note = '') => `<div class="rp-card"><span>${label}</span><b>${val ?? '—'}${val != null ? `<small>${unit}</small>` : ''}</b>${k ? diff(k, dUnit, better) : ''}${note ? `<small class="muted">${note}</small>` : ''}</div>`;
+  const prevKey = key(pFrom); const nextKey = key(to);
+  const isCurrent = key(from) === key(now);
+  return header('月のまとめ', 'admin/dashboard') + `<div class="content wide">
+    <div class="rp-month">
+      <a class="btn btn-sm btn-sub" href="#/admin/report/${prevKey}" aria-label="前の月">‹ 前の月</a>
+      <b>${y}年${mo}月${isCurrent ? '<small>（今日まで）</small>' : ''}</b>
+      ${to.getTime() <= Date.now() ? `<a class="btn btn-sm btn-sub" href="#/admin/report/${nextKey}" aria-label="次の月">次の月 ›</a>` : '<span class="rp-sp"></span>'}
+    </div>
+    <div class="section-title"><h2>会員</h2></div>
+    <div class="rp-grid">
+      ${card('契約中（今）', activeNow, '名', '', '', 'up')}
+      ${card('入会（契約開始）', c.starts, '名', 'starts', '名')}
+      ${card('退会・期限切れ', c.stops, '名', 'stops', '名', 'down')}
+      ${card('継続率', c.keep, '%', 'keep', 'pt', 'up', c.atStart ? `月初の契約 ${c.atStart}名のうち` : '')}
+      ${card('新規登録', c.signups, '名', 'signups', '名')}
+    </div>
+    <div class="section-title"><h2>動画とレッスン</h2></div>
+    <div class="rp-grid">
+      ${card('提出された動画', c.subs, '本', 'subs', '本')}
+      ${card('平均の返信時間', c.avgReply, '時間', 'avgReply', '時間', 'down')}
+      ${card(`${REPLY_TARGET_H}時間以内の返信`, c.inTarget, '%', 'inTarget', 'pt', 'up', c.pending ? `未対応 ${c.pending}本` : '')}
+      ${card('送ったレッスン', c.lessons, '件', 'lessons', '件')}
+      ${card('レッスンの既読率', c.readRate, '%', 'readRate', 'pt')}
+    </div>
+    <div class="section-title"><h2>面談</h2></div>
+    <div class="rp-grid">
+      ${card('実施', c.done, '回', 'done', '回')}
+      ${card('欠席', c.noShow, '回', 'noShow', '回', 'down')}
+      ${card('キャンセル', c.canceled, '回', 'canceled', '回', 'down')}
+      ${card('実施率', c.meetRate, '%', 'meetRate', 'pt', 'up', '実施 ÷（実施＋欠席）')}
+    </div>
+    <div class="section-title"><h2>練習とスコア</h2></div>
+    <div class="rp-grid">
+      ${card('練習の記録', c.practiceDays, '日', 'practiceDays', '日', 'up', `記録した会員 ${c.prMembers}名`)}
+      ${card('ラウンド', c.rounds, '回', 'rounds', '回')}
+      ${card('ベストスコア更新', c.bests, '回', 'bests', '回')}
+    </div>
+    <p class="muted small" style="margin-top:16px">※ 入会・退会・継続率は、この機能を入れた日（データベースの設定を実行した日）からの記録で計算します。それより前の入会は「登録日」で数えています。${isCurrent ? '今月の数字は今日までの集計です。' : ''}</p>
+  </div>` + adminNav('admin/dashboard');
 }
 
 // 新規（提出動画から / 会員から）または既存レッスンの編集
@@ -1634,25 +1944,27 @@ async function viewLessonForm(route) {
     memberId = lesson.member_id;
     submission = lesson.submissions;
   }
-  const [member, urls, library, picked] = await Promise.all([
+  const [member, urls, library, picked, tpls] = await Promise.all([
     must(sb.from('profiles').select('id, name').eq('id', memberId).maybeSingle()),
     signedVideoUrls([submission]),
     must(sb.from('drills').select('id, title, description, video_path').order('created_at', { ascending: false })),
     lesson.id ? must(sb.from('lesson_drills').select('drill_id').eq('lesson_id', lesson.id)) : [],
+    sb.from('lesson_templates').select('id, field, title, body').order('title').then((r) => r.data || []),
   ]);
+  lessonTemplates = tpls;
   const pickedIds = new Set(picked.map((x) => x.drill_id));
   const back = `admin/member/${memberId}`;
   return header(lesson.id ? 'レッスン編集' : 'レッスン作成', back) + `<div class="content">
-    <div class="muted">会員：<b>${esc(member?.name || '')}</b></div>
+    <div class="between"><div class="muted">会員：<b>${esc(member?.name || '')}</b></div><a class="muted small" href="#/admin/templates">テンプレートを管理 ›</a></div>
     ${submission ? `<div class="card"><b>提出動画</b>（${esc(submission.club)} / ${esc(submission.angle)}）${swingVideo(submission, urls)}
         ${submission.question ? `<p class="pre">${esc(submission.question)}</p>` : ''}</div>` : ''}
     <form class="card form" data-form="lesson" data-id="${esc(lesson.id || '')}" data-member="${esc(memberId)}" data-submission="${esc(submission?.id || '')}">
       <label for="lesson_date">日付</label><input id="lesson_date" name="lesson_date" type="date" value="${esc(lesson.lesson_date)}" required>
       <label for="title">タイトル</label><input id="title" name="title" value="${esc(lesson.title)}" maxlength="100" placeholder="例：ドライバーの右プッシュ" required>
-      <label for="point">今回の診断（ポイント）</label><input id="point" name="point" value="${esc(lesson.point)}" maxlength="300" placeholder="例：切り返しで上体が先行している">
-      <label for="feedback">フィードバック</label><textarea id="feedback" name="feedback" rows="7" maxlength="5000">${esc(lesson.feedback)}</textarea>
+      <label for="point">今回の診断（ポイント）</label><input id="point" name="point" value="${esc(lesson.point)}" maxlength="300" placeholder="例：切り返しで上体が先行している">${tplPicker('point')}
+      <label for="feedback">フィードバック</label><textarea id="feedback" name="feedback" rows="7" maxlength="5000">${esc(lesson.feedback)}</textarea>${tplPicker('feedback')}
       <p class="muted small" style="margin:4px 0 0">空行で段落が分かれます。行の先頭に「・」を付けると箇条書きになり、その直前の短い行（例：ポイント）は見出しになります。</p>
-      <label for="practice">次回までの練習</label><textarea id="practice" name="practice" rows="4" maxlength="2000" placeholder="① ハーフスイング 20球&#10;② 7I 30球">${esc(lesson.practice)}</textarea>
+      <label for="practice">次回までの練習</label><textarea id="practice" name="practice" rows="4" maxlength="2000" placeholder="① ハーフスイング 20球&#10;② 7I 30球">${esc(lesson.practice)}</textarea>${tplPicker('practice')}
       <label for="video_url">コーチの解説動画（YouTube・任意）</label><input id="video_url" name="video_url" type="url" value="${esc(lesson.video_url || '')}" placeholder="https://youtu.be/...">
       <fieldset class="drill-pick"><legend>ドリル動画（任意）</legend>
         <div class="between small"><span>ドリル集から選ぶ（<b>${library.length}</b>件）</span><span class="drill-count" id="drill-count" aria-live="polite">選択中 <b>${pickedIds.size}</b>件</span></div>
@@ -1701,6 +2013,9 @@ async function render() {
       await loadAdminBadges();
       if (r[1] === 'dashboard') return paint(await viewDashboard());
       if (r[1] === 'meetings') return paint(await viewMeetings());
+      if (r[1] === 'prep' && r[2]) return paint(await viewMeetingPrep(r[2]));
+      if (r[1] === 'report') return paint(await viewReport(r[2]));
+      if (r[1] === 'templates') return paint(await viewTemplates());
       if (r[1] === 'members') return paint(await viewMembers());
       if (r[1] === 'drills') return paint(await viewDrills());
       if (r[1] === 'roadmap' && r[2]) return paint(await viewRoadmapEdit(r[2]));
@@ -1914,6 +2229,55 @@ const actions = {
     await must(sb.from('meetings').update({ status: v.status, summary: v.summary.trim() }).eq('id', m.id));
     if (v.note.trim()) await must(sb.from('staff_notes').insert({ member_id: m.member_id, body: `【面談 ${fmtShort(m.scheduled_at)}】${v.note.trim()}` }));
     toast('面談の結果を保存しました'); render();
+  },
+  'celebrate-done': async (el) => {
+    const v = await confirmDialog({
+      title: 'お祝い済みにしますか？',
+      body: `<p>${esc(el.dataset.label)}</p><div class="form modal-form"><label>送った内容のメモ <span class="muted">（任意・担当者メモに残ります）</span></label>
+        <textarea name="note" rows="2" maxlength="500" placeholder="例：LINEでお祝いメッセージを送った"></textarea></div>`,
+      ok: 'お祝い済みにする',
+    });
+    if (!v) return;
+    await must(sb.from('admin_acks').upsert({ kind: 'celebration', ref_id: el.dataset.id }));
+    if (v.note.trim()) await must(sb.from('staff_notes').insert({ member_id: el.dataset.member, body: `【お祝い】${el.dataset.label}：${v.note.trim()}` }));
+    toast('お祝い済みにしました'); render();
+  },
+  print: () => window.print(),
+  'tpl-save': async (el) => {
+    const field = el.dataset.field;
+    const box = document.getElementById(field);
+    const sel = box.value.slice(box.selectionStart, box.selectionEnd);
+    const text = (sel || box.value).trim();
+    if (!text) throw new Error('先に欄に文を入力してください（一部を選んでおくと、その部分だけを保存します）');
+    const v = await confirmDialog({
+      title: 'テンプレートに保存',
+      body: `<div class="form modal-form"><label>名前（選ぶときに表示）</label><input name="title" maxlength="50" required placeholder="例：前傾キープの基本">
+        <label>本文（${TPL_FIELDS[field]}）</label><textarea name="body" rows="5" maxlength="3000" required>${esc(text)}</textarea></div>`,
+      ok: '保存する',
+    });
+    if (!v) return;
+    const row = await must(sb.from('lesson_templates').insert({ field, title: v.title.trim(), body: v.body.trim() }).select('id, field, title, body').single());
+    lessonTemplates.push(row);
+    document.querySelector(`[data-tpl-bar="${field}"]`).outerHTML = tplPicker(field);
+    toast(`テンプレート「${row.title}」を保存しました`);
+  },
+  'tpl-edit': async (el) => {
+    const t = await must(sb.from('lesson_templates').select('*').eq('id', el.dataset.id).single());
+    const v = await confirmDialog({
+      title: 'テンプレートを編集',
+      body: `<div class="form modal-form"><label>使う欄</label><select name="field">${Object.entries(TPL_FIELDS).map(([k, l]) => `<option value="${k}"${k === t.field ? ' selected' : ''}>${l}</option>`).join('')}</select>
+        <label>名前</label><input name="title" maxlength="50" required value="${esc(t.title)}">
+        <label>本文</label><textarea name="body" rows="7" maxlength="3000" required>${esc(t.body)}</textarea></div>`,
+      ok: '保存する',
+    });
+    if (!v) return;
+    await must(sb.from('lesson_templates').update({ field: v.field, title: v.title.trim(), body: v.body.trim() }).eq('id', t.id));
+    toast('保存しました'); render();
+  },
+  'tpl-delete': async (el) => {
+    if (!(await confirmDialog({ title: 'テンプレートを削除しますか？', body: `<p>「${esc(el.dataset.title)}」</p><p>これまでに送ったレッスンの文は消えません。</p>`, ok: '削除する' }))) return;
+    await must(sb.from('lesson_templates').delete().eq('id', el.dataset.id));
+    toast('削除しました'); render();
   },
   'note-pin': async (el) => {
     await must(sb.from('staff_notes').update({ pinned: el.dataset.pinned !== 'true' }).eq('id', el.dataset.id));
@@ -2147,6 +2511,16 @@ const forms = {
     }));
     render();
   },
+  karte: async (f) => {
+    const row = { member_id: f.dataset.member, updated_at: new Date().toISOString(), updated_by: state.profile.id };
+    KARTE_FIELDS.forEach(([n]) => { row[n] = f.elements[n].value.trim(); });
+    await must(sb.from('member_karte').upsert(row));
+    toast('カウンセリングシートを保存しました'); render();
+  },
+  'tpl-new': async (f) => {
+    await must(sb.from('lesson_templates').insert({ field: f.field.value, title: f.title.value.trim(), body: f.body.value.trim() }));
+    toast('テンプレートを登録しました'); render();
+  },
   'staff-note': async (f) => {
     const body = f.body.value.trim();
     if (!body) throw new Error('メモを入力してください');
@@ -2307,6 +2681,21 @@ document.addEventListener('submit', async (ev) => {
 // 動画を選んだら、ファイル名と容量を表示してプレビューする
 let previewUrl = null;
 document.addEventListener('change', (ev) => {
+  if (ev.target.dataset.tplFor) {
+    const t = lessonTemplates.find((x) => x.id === ev.target.value);
+    const box = document.getElementById(ev.target.dataset.tplFor);
+    ev.target.value = '';
+    if (!t || !box) return;
+    if (box.tagName === 'INPUT') box.value = box.value ? `${box.value} ${t.body}` : t.body;
+    else {
+      const at = box.selectionEnd ?? box.value.length;
+      const before = box.value.slice(0, at);
+      const pad = before && !before.endsWith('\n') ? '\n' : '';
+      box.setRangeText(pad + t.body, at, at, 'end');
+    }
+    box.focus();
+    return;
+  }
   if (ev.target.matches('[data-status-radio]')) {
     ev.target.closest('.modal-form').querySelector('input[name="status"]').value = ev.target.value;
     return;
