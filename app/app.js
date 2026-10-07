@@ -1233,7 +1233,8 @@ async function viewDashboard() {
   const todo = pending.length + lateMeetings.length + needMeeting.length + rmSoon.length + pastDue.length + soonExpire.length;
   state.adminTodo = todo;
 
-  const section = (title, icon, list, empty, more = '') => `<section class="card dash-sec${list.length ? ' has' : ''}">
+  // kind: todo=対応が必要（赤・「対応が必要」の数に含む） / watch=様子を見る（黄） / info=お知らせ（青）
+  const section = (title, icon, list, empty, more = '', kind = 'todo') => `<section class="card dash-sec ${kind}${list.length ? ' has' : ''}">
       <div class="dash-h"><span class="dash-i" aria-hidden="true">${icon}</span><b>${title}</b><span class="dash-n">${list.length}</span>${more}</div>
       ${list.length ? `<div class="dash-list">${list.join('')}</div>` : `<p class="dash-ok">✓ ${empty}</p>`}
     </section>`;
@@ -1245,20 +1246,20 @@ async function viewDashboard() {
     section('面談：結果の入力待ち', '!', lateMeetings.map((m) => row(`${memberLink(m.member_id, m.profiles?.name)}`, `${fmtShort(m.scheduled_at)} の面談`,
       `<button type="button" class="btn btn-sm" data-action="meeting-done" data-id="${m.id}">結果を入力</button>`)), '入力待ちの面談はありません'),
     section('今後7日の面談', '◷', upcoming.map((m) => row(`<b>${fmtShort(m.scheduled_at)}</b>　${memberLink(m.member_id, m.profiles?.name)}`, `${m.duration_min}分`,
-      todayMeetings.includes(m) ? '<span class="pill ok">今日</span>' : '')), '予定はありません', '<a class="dash-more" href="#/admin/meetings">面談管理 ›</a>'),
+      todayMeetings.includes(m) ? '<span class="pill ok">今日</span>' : '')), '予定はありません', '<a class="dash-more" href="#/admin/meetings">面談管理 ›</a>', 'info'),
     section('今月まだ面談の予定がない会員', '◎', needMeeting.map((m) => row(memberLink(m.id, m.name), 'サブスクリプション制（月1回）',
       `<button type="button" class="btn btn-sm btn-sub" data-action="meeting-add" data-member="${m.id}">予約を入れる</button>`)), '全員、今月の面談が入っています'),
   ];
   const right = [
     section('ロードマップ：ドリル未定（2週間以内に公開）', '◎', rmSoon.map((r) => row(memberLink(r.member_id, r.profiles?.name), `${fmtDate(r.publish_on)} 公開・${esc(r.theme || 'テーマ未定')}`,
       `<a class="btn btn-sm btn-sub" href="#/admin/roadmap/${r.member_id}">編集</a>`)), 'ドリル未定の月はありません'),
-    section('ロードマップ未作成の契約中会員', '+', noRoadmap.map((m) => row(memberLink(m.id, m.name), `${esc(planLabel(m.plan))}・登録 ${fmtDate(m.created_at)}`)), '全員作成済みです'),
+    section('ロードマップ未作成の契約中会員', '+', noRoadmap.map((m) => row(memberLink(m.id, m.name), `${esc(planLabel(m.plan))}・登録 ${fmtDate(m.created_at)}`)), '全員作成済みです', '', 'watch'),
     section('契約・支払い', '¥', [
       ...pastDue.map((m) => row(memberLink(m.id, m.name), '<b class="late">支払い遅延</b>')),
       ...soonExpire.map((m) => row(memberLink(m.id, m.name), `利用期限 ${fmtDate(m.access_until)}（あと${Math.max(0, Math.ceil((new Date(m.access_until) - today0) / DAY))}日）`)),
     ], '支払い遅延・期限切れ間近の会員はいません'),
-    section('新規登録（未契約・30日以内）', '☆', newcomers.map((m) => row(memberLink(m.id, m.name), `${esc(m.email)}・${fmtDate(m.created_at)} 登録`)), '新しい登録はありません'),
-    section('30日間動きがない契約中会員', '…', quiet.map((m) => row(memberLink(m.id, m.name), '動画提出・練習記録・スコア記録がありません')), '全員、何かしら動きがあります'),
+    section('新規登録（未契約・30日以内）', '☆', newcomers.map((m) => row(memberLink(m.id, m.name), `${esc(m.email)}・${fmtDate(m.created_at)} 登録`)), '新しい登録はありません', '', 'info'),
+    section('30日間動きがない契約中会員', '…', quiet.map((m) => row(memberLink(m.id, m.name), '動画提出・練習記録・スコア記録がありません')), '全員、何かしら動きがあります', '', 'watch'),
   ];
   const feed = [
     ...refs7.map((x) => ({ t: x.updated_at, html: `💬 ${memberLink(x.member_id, x.profiles?.name)} がふり返りを書きました<small>${esc(x.body.slice(0, 60))}</small>` })),
@@ -1273,6 +1274,7 @@ async function viewDashboard() {
       <div class="kpi${todo ? ' alert' : ''}"><span>対応が必要</span><b>${todo}</b><small>下の一覧で確認</small></div>
       <a class="kpi" href="#/admin/members"><span>契約中の会員</span><b>${active.length}</b><small>登録 ${people.length}名</small></a>
     </div>
+    <p class="dash-legend"><span class="lg todo">対応が必要</span><span class="lg watch">様子を見る</span><span class="lg info">お知らせ</span></p>
     <div class="cols">
       <div class="col-main">${left.map((h, i) => `<div class="blk" style="--o:${i}">${h}</div>`).join('')}</div>
       <div class="col-side">${right.map((h, i) => `<div class="blk" style="--o:${10 + i}">${h}</div>`).join('')}
@@ -1476,6 +1478,7 @@ async function viewMembers() {
     if (m.next_meeting_at && new Date(m.next_meeting_at).getTime() > Date.now()) f.push(`<span class="flag">面談 ${fmtShort(m.next_meeting_at)}</span>`);
     if (m.access_until && m.access_until >= today() && m.access_until <= isoDaysFrom(14).slice(0, 10)) f.push(`<span class="flag yellow">期限 ${fmtDate(m.access_until)}</span>`);
     if (m.subscription_status === 'past_due') f.push('<span class="flag red">支払い遅延</span>');
+    if (!isActive(m) && daysAgo(m.created_at) <= 30) f.push('<span class="flag blue">新規登録</span>');
     return f.length ? `<div class="flags">${f.join('')}</div>` : '';
   };
   return header('会員一覧') + `<div class="content wide">

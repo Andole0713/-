@@ -584,12 +584,20 @@ details.rm-edit[open] .rm-no::before{content:"▾ "}
 .kpi.alert{border:2px solid #d64b3c;background:#fff6f4}
 .kpi.alert b{color:#c0392b}
 .dash-sec{padding:14px 16px;margin:0 0 12px}
-.dash-sec.has{border-left:4px solid var(--gold)}
+.dash-sec.has{border-left:4px solid #d64b3c}
+.dash-sec.watch.has{border-left-color:#d9a21b}
+.dash-sec.info.has{border-left-color:#3a7bbf}
 .dash-h{display:flex;align-items:center;gap:8px}
 .dash-h b{font-size:15px}
 .dash-i{flex:none;width:26px;height:26px;border-radius:8px;background:var(--ink);color:var(--gold-2);display:grid;place-items:center;font-size:12px;font-style:normal}
 .dash-n{min-width:24px;text-align:center;font-size:12px;font-weight:800;border-radius:999px;padding:1px 8px;background:var(--paper-2)}
 .dash-sec.has .dash-n{background:#d64b3c;color:#fff}
+.dash-sec.watch.has .dash-n{background:#f3c64a;color:#4a3500}
+.dash-sec.info.has .dash-n{background:#3a7bbf;color:#fff}
+.dash-legend{display:flex;flex-wrap:wrap;gap:14px;margin:0 0 12px;font-size:12px;color:var(--muted)}
+.dash-legend .lg::before{content:"";display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:5px;vertical-align:-1px;background:#d64b3c}
+.dash-legend .lg.watch::before{background:#f3c64a}
+.dash-legend .lg.info::before{background:#3a7bbf}
 .dash-more{margin-left:auto;font-size:12.5px;font-weight:700;color:var(--gold);text-decoration:none}
 .dash-list{margin-top:8px}
 .dash-row{display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid var(--line);font-size:14px}
@@ -630,6 +638,7 @@ b.late,.late{color:#c0392b}
 .flag{font-size:11.5px;font-weight:700;border-radius:999px;padding:2px 9px;background:var(--paper-2);color:var(--ink)}
 .flag.red{background:#fde3df;color:#b03a2e}
 .flag.yellow{background:#fbf0d3;color:#7a5a00}
+.flag.blue{background:#e1ecf8;color:#24598f}
 .last-meeting{margin-top:12px;background:var(--paper);border-radius:12px;padding:8px 12px}
 .last-meeting summary{cursor:pointer;font-weight:700;font-size:13.5px}
 .last-meeting p{margin:6px 0 0;font-size:14px}
