@@ -520,6 +520,53 @@ function viewRecovery() {
 
 // ---------- 画面：未契約（プラン選択） ----------
 
+// 申し込みボタン（カード決済のプランは決済ページへ、それ以外は LINE・電話）
+const planApply = (pl) => (pl.checkout
+  ? `<button class="btn-block btn-gold" data-action="checkout" data-plan="${esc(pl.id)}">このプランで申し込む</button>`
+  : `<p class="muted small" style="margin:12px 0 0">このプランは LINE またはお電話でお申し込みください。</p>
+     <a class="btn btn-block btn-line" href="${esc(CONTACT.lineUrl)}" target="_blank" rel="noopener">LINEで申し込む</a>
+     <a class="btn btn-block btn-sub" href="tel:${esc(CONTACT.tel)}">電話で申し込む（${esc(CONTACT.telDisplay)}）</a>`);
+
+// プランの詳細（閉じるボタン・背景・Esc で閉じる）
+function showPlanDetail(pl) {
+  const d = pl.detail;
+  const prev = document.activeElement;
+  const wrap = document.createElement('div');
+  wrap.className = 'modal-backdrop';
+  wrap.innerHTML = `<div class="modal plan-sheet" role="dialog" aria-modal="true" aria-labelledby="plan-sheet-title">
+    <button type="button" class="sheet-close" data-sheet="close" aria-label="閉じる">×</button>
+    <span class="eyebrow">${esc(pl.en)}</span>
+    <h2 id="plan-sheet-title">${esc(pl.name)}</h2>
+    <p class="lead">${esc(pl.lead)}</p>
+    <dl class="spec"><div><dt>対象</dt><dd>${esc(pl.target)}</dd></div><div><dt>お支払い</dt><dd>${esc(pl.payment)}</dd></div><div><dt>料金</dt><dd>${esc(pl.price)}</dd></div></dl>
+    <h3>こんな方におすすめ</h3>
+    <ul class="ps-check">${d.forWho.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>
+    <h3>内容</h3>
+    <div class="ps-contents">${d.contents.map(([t, x]) => `<div><b>${esc(t)}</b><p>${esc(x)}</p></div>`).join('')}</div>
+    <h3>1か月の流れ</h3>
+    <ol class="ps-flow">${d.flow.map((x) => `<li>${esc(x)}</li>`).join('')}</ol>
+    <h3>お支払い・ご契約について</h3>
+    <ul class="ps-terms">${d.terms.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>
+    <p class="muted small">※ 料金・内容は変更になる場合があります。ご不明な点は LINE またはお電話（${esc(CONTACT.hours)}）でお気軽にご相談ください。</p>
+    <div class="ps-apply">${planApply(pl)}</div>
+    <button type="button" class="btn-block btn-sub" data-sheet="close">閉じる</button>
+  </div>`;
+  const close = () => { document.removeEventListener('keydown', onKey, true); wrap.remove(); prev?.focus?.(); };
+  const onKey = (e) => {
+    if (e.key === 'Escape') { e.preventDefault(); close(); }
+    if (e.key === 'Tab') {
+      const items = [...wrap.querySelectorAll('button, a[href]')];
+      const i = items.indexOf(document.activeElement);
+      e.preventDefault();
+      items[(i + (e.shiftKey ? items.length - 1 : 1)) % items.length].focus();
+    }
+  };
+  wrap.addEventListener('click', (e) => { if (e.target === wrap || e.target.closest('[data-sheet="close"]')) close(); });
+  document.addEventListener('keydown', onKey, true);
+  document.body.appendChild(wrap);
+  wrap.querySelector('.sheet-close').focus();
+}
+
 function viewPlans() {
   const p = state.profile;
   const troubled = ['past_due', 'unpaid', 'incomplete', 'paused'].includes(p.subscription_status);
@@ -535,11 +582,8 @@ function viewPlans() {
         <dl class="spec"><div><dt>対象</dt><dd>${esc(pl.target)}</dd></div><div><dt>お支払い</dt><dd>${esc(pl.payment)}</dd></div></dl>
         <div class="price">${esc(pl.price)}</div>
         <ul>${pl.features.map((f) => `<li>${esc(f)}</li>`).join('')}</ul>
-        ${pl.checkout
-          ? `<button class="btn-block btn-gold" data-action="checkout" data-plan="${esc(pl.id)}">このプランで申し込む</button>`
-          : `<p class="muted small" style="margin:12px 0 0">このプランは LINE またはお電話でお申し込みください。</p>
-             <a class="btn btn-block btn-line" href="${esc(CONTACT.lineUrl)}" target="_blank" rel="noopener">LINEで申し込む</a>
-             <a class="btn btn-block btn-sub" href="tel:${esc(CONTACT.tel)}">電話で申し込む（${esc(CONTACT.telDisplay)}）</a>`}
+        ${pl.detail ? `<button type="button" class="btn-block btn-sub plan-detail-btn" data-action="plan-detail" data-plan="${esc(pl.id)}">詳細を見る</button>` : ''}
+        ${planApply(pl)}
       </div>`).join('')}
     <p class="muted small">カード決済は Stripe の安全な決済ページで行います。解約・プラン変更はいつでも「アカウント」から行えます。</p>
   </div>` + nav([['plans', 'card', 'プラン'], ['account', 'user', 'アカウント']], 'plans');
@@ -2214,6 +2258,7 @@ const actions = {
   },
   reload: () => location.reload(),
   logout: async () => { await sb.auth.signOut(); location.hash = ''; },
+  'plan-detail': (el) => showPlanDetail(PLANS.find((p) => p.id === el.dataset.plan)),
   checkout: async (el) => {
     el.disabled = true; el.textContent = '決済ページへ移動中…';
     try {

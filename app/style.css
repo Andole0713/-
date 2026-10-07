@@ -754,3 +754,26 @@ input.invalid,select.invalid,textarea.invalid{border-color:#d64b3c!important}
 .drill-row b{font-size:15px}
 .drill-go{font-size:22px;color:var(--muted);flex:none}
 .drill-detail h2{margin:12px 0 4px;font-size:19px}
+
+/* ---------- プランの詳細 ---------- */
+.plan-detail-btn{margin-top:14px}
+.plan-detail-btn+.btn-block,.plan-detail-btn+.muted{margin-top:8px}
+.modal.plan-sheet{max-width:560px;padding:24px 22px 20px}
+.plan-sheet h2{margin:2px 0 6px;font-size:22px}
+.plan-sheet h3{font-size:15px;margin:20px 0 8px;padding-left:10px;border-left:3px solid var(--gold)}
+.plan-sheet .lead{margin:0;font-size:14px;line-height:1.7}
+.sheet-close{position:sticky;top:0;float:right;margin:-12px -10px 0 8px;z-index:1;box-shadow:0 1px 4px rgba(0,0,0,.12);width:36px;height:36px;border-radius:50%;border:0;background:var(--paper-2);font-size:20px;line-height:1;cursor:pointer;padding:0;margin:0}
+.ps-check,.ps-terms{margin:0;padding:0;list-style:none}
+.ps-check li,.ps-terms li{position:relative;padding:5px 0 5px 22px;font-size:14px;line-height:1.6}
+.ps-check li::before{content:"✓";position:absolute;left:2px;color:var(--gold);font-weight:800}
+.ps-terms li::before{content:"・";position:absolute;left:4px;color:var(--muted)}
+.ps-contents{display:flex;flex-direction:column;gap:8px}
+.ps-contents div{background:var(--paper-2);border-radius:12px;padding:10px 12px}
+.ps-contents b{font-size:14px}
+.ps-contents p{margin:2px 0 0;font-size:13.5px;line-height:1.65}
+.ps-flow{margin:0;padding:0;list-style:none;counter-reset:f}
+.ps-flow li{counter-increment:f;position:relative;padding:7px 0 7px 38px;font-size:14px;line-height:1.5}
+.ps-flow li::before{content:counter(f);position:absolute;left:0;top:5px;width:26px;height:26px;border-radius:50%;background:var(--ink);color:var(--gold-2);font-weight:800;font-size:13px;display:grid;place-items:center}
+.ps-flow li:not(:last-child)::after{content:"";position:absolute;left:12px;top:32px;bottom:-4px;width:2px;background:var(--line)}
+.ps-apply{margin-top:16px}
+.plan-sheet>.btn-sub[data-sheet]{margin-top:8px}
