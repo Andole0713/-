@@ -39,7 +39,7 @@
    - Region は **Northeast Asia (Tokyo)** を選択
    - Database Password は安全な場所に保管
 2. 左メニュー **SQL Editor** を開き、`supabase/migrations/20260926000000_init.sql` の中身をすべて貼り付けて **Run**
-   - あとから追加された設定ファイル（`supabase/migrations/` の日付が新しいもの。例：`20261004000000_my_clubs.sql`、`20261005000000_extra_submissions.sql`、`20261006000000_member_experience.sql`、`20261007000000_drills.sql`、`20261008000000_roadmap.sql`、`20261009000000_roadmap_extras.sql`、`20261010000000_roadmap_unpublish.sql`、`20261011000000_rounds.sql`、`20261012000000_round_halves.sql`、`20261013000000_admin_ops.sql`、`20261014000000_admin_insights.sql`）も、同じように古い順に実行してください。初期設定を新しく実行した場合も、重ねて実行して問題ありません
+   - あとから追加された設定ファイル（`supabase/migrations/` の日付が新しいもの。例：`20261004000000_my_clubs.sql`、`20261005000000_extra_submissions.sql`、`20261006000000_member_experience.sql`、`20261007000000_drills.sql`、`20261008000000_roadmap.sql`、`20261009000000_roadmap_extras.sql`、`20261010000000_roadmap_unpublish.sql`、`20261011000000_rounds.sql`、`20261012000000_round_halves.sql`、`20261013000000_admin_ops.sql`、`20261014000000_admin_insights.sql`、`20261015000000_drill_tags.sql`）も、同じように古い順に実行してください。初期設定を新しく実行した場合も、重ねて実行して問題ありません
 3. 動画の保存場所を確認
    - 左メニュー **Storage** に `swing-videos`（非公開）ができていることを確認
    - **Project Settings → Storage** の **Upload file size limit** を大きめ（例：5GB）に変更（1本あたりの上限は設けない運用のため。Pro プランで変更できます）
@@ -287,3 +287,4 @@ prototype/                   旧デモ（ブラウザ内保存の試作品）
 - **カウンセリングシート**：会員詳細ページで記入します（会員には見えません）
 - **テンプレート**：「やること」画面の「✎ テンプレート」、またはレッスン作成画面の各欄から登録・挿入できます
 - **月のまとめ**：「やること」画面の「📊 月のまとめ」から、入会・退会・継続率・返信時間・面談の実施率などを月ごとに確認できます（入会・退会の記録は `20261014000000_admin_insights.sql` を実行した日から）
+- **ドリルの区分**：ドリル集でドリルを登録・編集するときに、P1〜P10・クラブ・球筋・ミス・ショットなどの区分を複数付けられます。ドリル集とレッスン作成画面で、区分を押すと絞り込めます（区分の一覧は `app/app.js` の `DRILL_TAGS` で変更できます）

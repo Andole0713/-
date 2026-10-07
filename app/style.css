@@ -727,3 +727,30 @@ input.invalid,select.invalid,textarea.invalid{border-color:#d64b3c!important}
   .content{max-width:none;padding:0}
   .card,.prep-stat{break-inside:avoid;box-shadow:none}
 }
+
+/* ---------- ドリルの区分・絞り込み・詳細 ---------- */
+.tag-pills{display:flex;flex-wrap:wrap;gap:4px;margin:4px 0 2px}
+.tag-pill{font-size:11px;font-weight:700;border-radius:999px;padding:1px 8px;background:#eef3ec;color:#2f5a3a;white-space:nowrap}
+.drill-filter{background:#fff;border:1px solid var(--line);border-radius:14px;padding:12px;margin:0 0 10px}
+.drill-filter .drill-search{margin:0;width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid var(--line);border-radius:10px;font:inherit;font-size:15px;background:#fff}
+.tag-groups{display:flex;flex-direction:column;gap:8px;margin-top:10px}
+.tag-group{display:flex;gap:8px;align-items:flex-start}
+.tag-group>span{flex:none;width:92px;font-size:11.5px;font-weight:700;color:var(--muted);padding-top:5px;line-height:1.3}
+.tag-group>div{display:flex;flex-wrap:wrap;gap:6px}
+@media (max-width:520px){.tag-group{flex-direction:column;gap:4px}.tag-group>span{width:auto;padding:0}}
+.tag-chip{font-size:12.5px;font-weight:700;border:1px solid var(--line);background:#fff;color:var(--ink);border-radius:999px;padding:4px 11px;cursor:pointer;margin:0;width:auto}
+.tag-chip[aria-pressed="true"]{background:var(--ink);color:var(--gold-2);border-color:var(--ink)}
+.drill-filter-foot{margin-top:8px;min-height:18px}
+.drill-filter-foot .link{font-size:12.5px;width:auto;padding:0}
+.tag-field{border:1px solid var(--line);border-radius:12px;padding:8px 12px 12px;margin:14px 0 4px}
+.tag-field legend{font-size:13px;font-weight:700;padding:0 6px}
+.form label.tag-check,.tag-check{display:inline-flex;align-items:center;margin:0;cursor:pointer;font-weight:400}
+.tag-check input{position:absolute;opacity:0;width:1px;height:1px}
+.tag-check span{font-size:12.5px;font-weight:700;border:1px solid var(--line);border-radius:999px;padding:4px 11px;background:#fff}
+.tag-check input:checked+span{background:var(--ink);color:var(--gold-2);border-color:var(--ink)}
+.tag-check input:focus-visible+span{outline:2px solid var(--gold);outline-offset:2px}
+.card.link.drill-row{display:flex;flex-direction:row;align-items:center;gap:10px;text-decoration:none;color:inherit}
+.card.link.drill-row.hidden{display:none}
+.drill-row b{font-size:15px}
+.drill-go{font-size:22px;color:var(--muted);flex:none}
+.drill-detail h2{margin:12px 0 4px;font-size:19px}

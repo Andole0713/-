@@ -224,13 +224,54 @@ function drillMedia(d, urls) {
 }
 function drillCard(d, urls, extra = '') {
   return `<article class="drill-card">
-    <h3>${esc(d.title)}</h3>
+    <h3>${esc(d.title)}</h3>${tagPills(d.tags)}
     ${d.description ? `<p class="pre">${esc(d.description)}</p>` : ''}
     ${drillMedia(d, urls)}${extra}
   </article>`;
 }
+// ドリルの区分（複数選べる）。グループ名：区分の一覧
+const DRILL_TAGS = [
+  ['スイング（P1〜P10）', ['P1 アドレス', 'P2 テークバック', 'P3 左腕水平', 'P4 トップ', 'P5 切り返し', 'P6 シャフト水平（ダウン）', 'P7 インパクト', 'P8 シャフト水平（フォロー）', 'P9 右腕水平', 'P10 フィニッシュ']],
+  ['クラブ', ['ドライバー', 'FW・UT', 'アイアン', 'ウェッジ', 'パター']],
+  ['球筋', ['ドロー', 'フェード', 'ストレート', '高い球', '低い球']],
+  ['ミス・悩み', ['スライス', 'フック', 'ダフリ', 'トップ', 'シャンク', '飛距離アップ', '方向性']],
+  ['ショット', ['フルスイング', 'ハーフスイング', 'アプローチ', 'バンカー', '傾斜']],
+  ['そのほか', ['グリップ', 'リズム・テンポ', '体の使い方', '自宅でできる']],
+];
+const DRILL_TAG_ORDER = DRILL_TAGS.flatMap(([, list]) => list);
+const sortTags = (tags = []) => [...tags].sort((a, b) => DRILL_TAG_ORDER.indexOf(a) - DRILL_TAG_ORDER.indexOf(b));
+const tagPills = (tags = []) => (tags.length ? `<span class="tag-pills">${sortTags(tags).map((t) => `<span class="tag-pill">${esc(t)}</span>`).join('')}</span>` : '');
+// ドリルを探すための絞り込み（名前＋区分。区分は複数選ぶと「すべて当てはまる」もの）
+function drillFilter(drills) {
+  const used = new Set(drills.flatMap((d) => d.tags || []));
+  const groups = DRILL_TAGS.map(([g, list]) => [g, list.filter((t) => used.has(t))]).filter(([, list]) => list.length);
+  return `<div class="drill-filter" data-drill-filter>
+    <input type="search" class="drill-search" placeholder="ドリル名・説明で探す" data-action="filter-drills" aria-label="ドリル名・説明で探す">
+    ${groups.length ? `<div class="tag-groups">${groups.map(([g, list]) => `<div class="tag-group"><span>${g}</span><div>${list.map((t) => `<button type="button" class="tag-chip" data-action="drill-tag" data-tag="${esc(t)}" aria-pressed="false">${esc(t)}</button>`).join('')}</div></div>`).join('')}</div>` : ''}
+    <div class="between small drill-filter-foot"><span class="drill-hit" aria-live="polite"></span><button type="button" class="link hidden" data-action="drill-tag-clear">絞り込みを解除</button></div>
+  </div>`;
+}
+const drillSearchAttrs = (d) => `data-text="${esc(`${d.title} ${d.description || ''}`.toLowerCase())}" data-tags="${esc((d.tags || []).join('|'))}"`;
+function applyDrillFilter() {
+  const box = document.querySelector('[data-drill-filter]');
+  if (!box) return;
+  const q = box.querySelector('.drill-search').value.trim().toLowerCase();
+  const on = [...box.querySelectorAll('.tag-chip[aria-pressed="true"]')].map((b) => b.dataset.tag);
+  let hit = 0; let all = 0;
+  document.querySelectorAll('[data-tags]').forEach((el) => {
+    const tags = el.dataset.tags ? el.dataset.tags.split('|') : [];
+    const show = (!q || el.dataset.text.includes(q)) && on.every((t) => tags.includes(t));
+    el.classList.toggle('hidden', !show);
+    all++; if (show) hit++;
+  });
+  box.querySelector('.drill-hit').textContent = q || on.length ? `${all}件中 ${hit}件` : '';
+  box.querySelector('[data-action="drill-tag-clear"]').classList.toggle('hidden', !(q || on.length));
+}
+// 区分を選ぶチェック（登録・編集で共通）
+const tagChecks = (name, selected = []) => `<div class="tag-groups pick">${DRILL_TAGS.map(([g, list]) => `<div class="tag-group"><span>${g}</span><div>${list.map((t) => `<label class="tag-check"><input type="checkbox" name="${name}" value="${esc(t)}"${selected.includes(t) ? ' checked' : ''}><span>${esc(t)}</span></label>`).join('')}</div></div>`).join('')}</div>`;
+
 // 管理者：ドリル（動画ファイル または YouTube）を1件追加して、その id を返す
-async function createDrill({ title, description, file, url }, onProgress) {
+async function createDrill({ title, description, file, url, tags = [] }, onProgress) {
   if (!title) throw new Error('ドリル名を入力してください');
   let video_path = null; let video_url = null;
   if (file) {
@@ -243,7 +284,7 @@ async function createDrill({ title, description, file, url }, onProgress) {
   } else {
     throw new Error('ドリルの動画ファイルを選ぶか、YouTube のリンクを入力してください');
   }
-  const row = await must(sb.from('drills').insert({ title, description, video_path, video_url }).select('id').single());
+  const row = await must(sb.from('drills').insert({ title, description, video_path, video_url, ...(tags.length ? { tags } : {}) }).select('id').single());
   return row.id;
 }
 // 新しいドリルの入力欄（ドリル集の画面とレッスン作成画面で共通）
@@ -252,12 +293,14 @@ function drillFields(prefix) {
     <label for="${prefix}desc">説明（任意）</label><textarea id="${prefix}desc" name="${prefix}desc" rows="3" maxlength="1000" placeholder="例：トップで一瞬止めてから、左足を踏み込んで切り返します。10回×2セット"></textarea>
     <label for="${prefix}file">動画ファイル</label><input id="${prefix}file" name="${prefix}file" type="file" accept="video/*">
     <label for="${prefix}url">または YouTube のリンク</label><input id="${prefix}url" name="${prefix}url" type="url" placeholder="https://youtu.be/...">
+    <fieldset class="tag-field"><legend>区分（複数選べます・任意）</legend>${tagChecks(`${prefix}tag`)}</fieldset>
     <div id="${prefix}progress" class="hidden" aria-live="polite"><div class="between small"><span>アップロード中…</span><span class="pct">0%</span></div><div class="meter"><i style="width:0%"></i></div></div>`;
 }
 function drillFromForm(f, prefix) {
   return {
     title: f[`${prefix}title`].value.trim(), description: f[`${prefix}desc`].value.trim(),
     file: f[`${prefix}file`].files[0] || null, url: f[`${prefix}url`].value.trim(),
+    tags: [...f.querySelectorAll(`input[name="${prefix}tag"]:checked`)].map((i) => i.value),
   };
 }
 function drillProgress(prefix) {
@@ -1485,13 +1528,51 @@ async function viewDrills() {
         <button class="btn-block" type="submit">ドリルを登録する</button></form>
     </details>
     <div class="section-title"><h2>登録済み（${drills.length}件）</h2></div>
-    ${drills.map((d) => `<div class="card list-item drill-row">
-        <div class="grow"><b>${esc(d.title)}</b><div class="muted small">${d.video_path ? '動画ファイル' : 'YouTube'}・${used.get(d.id) || 0}件のレッスンで使用・${fmtDate(d.created_at)}</div></div>
-        <button class="btn-sm btn-danger" data-action="delete-drill" data-id="${d.id}" data-path="${esc(d.video_path || '')}" data-title="${esc(d.title)}" data-used="${used.get(d.id) || 0}">削除</button>
-      </div>`).join('') || '<div class="empty">まだドリルはありません</div>'}
+    ${drills.length ? drillFilter(drills) : ''}
+    ${drills.map((d) => `<a class="card link drill-row" href="#/admin/drill/${d.id}" ${drillSearchAttrs(d)}>
+        <div class="grow"><b>${esc(d.title)}</b>${tagPills(d.tags)}
+          <div class="muted small">${d.video_path ? '動画ファイル' : 'YouTube'}・${used.get(d.id) || 0}件のレッスンで使用・${fmtDate(d.created_at)}</div></div>
+        <span class="drill-go" aria-hidden="true">›</span>
+      </a>`).join('') || '<div class="empty">まだドリルはありません</div>'}
   </div>` + adminNav('admin/drills');
 }
 
+// ドリルの詳細：動画・説明・区分の確認と編集、どの会員に使ったか
+async function viewDrillDetail(id) {
+  const d = await must(sb.from('drills').select('*').eq('id', id).maybeSingle());
+  if (!d) return header('ドリル', 'admin/drills') + '<div class="content"><div class="empty">ドリルが見つかりません</div></div>' + adminNav('admin/drills');
+  const [urls, links, rms] = await Promise.all([
+    signedDrillUrls([d]),
+    must(sb.from('lesson_drills').select('lesson_id, lessons(id, title, lesson_date, member_id, profiles(name))').eq('drill_id', id)),
+    must(sb.from('roadmap_items').select('id, publish_on, member_id, profiles(name)').eq('drill_id', id).order('publish_on')),
+  ]);
+  const lessons = links.map((x) => x.lessons).filter(Boolean).sort((a, b) => (a.lesson_date < b.lesson_date ? 1 : -1));
+  return header(d.title, 'admin/drills') + `<div class="content wide"><div class="cols"><div class="col-main">
+    <div class="card drill-detail">
+      ${drillMedia(d, urls)}
+      <h2>${esc(d.title)}</h2>
+      ${tagPills(d.tags)}
+      ${d.description ? `<p class="pre">${esc(d.description)}</p>` : '<p class="muted small">説明はありません</p>'}
+      <p class="muted small" style="margin:8px 0 0">${d.video_path ? '動画ファイル' : 'YouTube'}・登録 ${fmtDate(d.created_at)}</p>
+    </div>
+    <div class="section-title"><h2>使った会員</h2><span class="muted small">レッスン ${lessons.length}件・ロードマップ ${rms.length}件</span></div>
+    <div class="card">
+      ${lessons.map((l) => `<div class="list-item small"><span>${fmtDate(l.lesson_date)}　${memberLink(l.member_id, l.profiles?.name)}　<a class="muted" href="#/admin/lesson/${l.id}">「${esc(l.title)}」</a></span><span class="pill">レッスン</span></div>`).join('')}
+      ${rms.map((r) => `<div class="list-item small"><span>${fmtDate(r.publish_on)}　${memberLink(r.member_id, r.profiles?.name)}</span><span class="pill">ロードマップ</span></div>`).join('')}
+      ${lessons.length || rms.length ? '' : '<p class="muted small" style="margin:0">まだ使われていません</p>'}
+    </div>
+  </div><div class="col-side">
+    <form class="card form" data-form="drill-edit" data-id="${d.id}">
+      <b>ドリルを編集</b>
+      <label for="de-title">ドリル名</label><input id="de-title" name="title" maxlength="100" value="${esc(d.title)}" required>
+      <label for="de-desc">説明</label><textarea id="de-desc" name="description" rows="4" maxlength="1000">${esc(d.description || '')}</textarea>
+      ${d.video_url ? `<label for="de-url">YouTube のリンク</label><input id="de-url" name="video_url" type="url" value="${esc(d.video_url)}" required>` : '<p class="muted small" style="margin:8px 0 0">動画ファイルを差し替えたいときは、新しいドリルとして登録してください。</p>'}
+      <fieldset class="tag-field"><legend>区分（複数選べます）</legend>${tagChecks('tag', d.tags || [])}</fieldset>
+      <button class="btn-block" type="submit">保存する</button>
+    </form>
+    <button class="btn-block btn-danger" data-action="delete-drill" data-id="${d.id}" data-path="${esc(d.video_path || '')}" data-title="${esc(d.title)}" data-used="${lessons.length}">このドリルを削除</button>
+  </div></div></div>` + adminNav('admin/drills');
+}
 
 async function viewInbox() {
   const subs = await must(sb.from('submissions').select('*, profiles(name, plan)').eq('status', 'pending').order('created_at'));
@@ -1947,7 +2028,7 @@ async function viewLessonForm(route) {
   const [member, urls, library, picked, tpls] = await Promise.all([
     must(sb.from('profiles').select('id, name').eq('id', memberId).maybeSingle()),
     signedVideoUrls([submission]),
-    must(sb.from('drills').select('id, title, description, video_path').order('created_at', { ascending: false })),
+    must(sb.from('drills').select('*').order('created_at', { ascending: false })),
     lesson.id ? must(sb.from('lesson_drills').select('drill_id').eq('lesson_id', lesson.id)) : [],
     sb.from('lesson_templates').select('id, field, title, body').order('title').then((r) => r.data || []),
   ]);
@@ -1968,10 +2049,10 @@ async function viewLessonForm(route) {
       <label for="video_url">コーチの解説動画（YouTube・任意）</label><input id="video_url" name="video_url" type="url" value="${esc(lesson.video_url || '')}" placeholder="https://youtu.be/...">
       <fieldset class="drill-pick"><legend>ドリル動画（任意）</legend>
         <div class="between small"><span>ドリル集から選ぶ（<b>${library.length}</b>件）</span><span class="drill-count" id="drill-count" aria-live="polite">選択中 <b>${pickedIds.size}</b>件</span></div>
-        ${library.length ? `<input type="search" class="drill-search" placeholder="ドリル名で絞り込む" data-action="filter-drills" aria-label="ドリル名で絞り込む">
-        <div class="drill-options">${library.map((d) => `<label class="drill-opt">
+        ${library.length ? `${drillFilter(library)}
+        <div class="drill-options">${library.map((d) => `<label class="drill-opt" ${drillSearchAttrs(d)}>
             <input type="checkbox" name="drill" value="${d.id}"${pickedIds.has(d.id) ? ' checked' : ''}>
-            <span class="grow"><b>${esc(d.title)}</b>${d.description ? `<small>${esc(d.description.split('\n')[0].slice(0, 40))}</small>` : ''}</span>
+            <span class="grow"><b>${esc(d.title)}</b>${tagPills(d.tags)}${d.description ? `<small>${esc(d.description.split('\n')[0].slice(0, 40))}</small>` : ''}</span>
             <span class="drill-type">${d.video_path ? '動画' : 'YouTube'}</span></label>`).join('')}</div>`
           : '<p class="muted small">まだドリル集にドリルがありません。下の「新しいドリルを登録して付ける」か、メニューの<a href="#/admin/drills">ドリル集</a>から登録できます。</p>'}
         <details class="add-drill"><summary>＋ 新しいドリルを登録して付ける</summary>${drillFields('ld_')}</details>
@@ -2018,6 +2099,7 @@ async function render() {
       if (r[1] === 'templates') return paint(await viewTemplates());
       if (r[1] === 'members') return paint(await viewMembers());
       if (r[1] === 'drills') return paint(await viewDrills());
+      if (r[1] === 'drill' && r[2]) return paint(await viewDrillDetail(r[2]));
       if (r[1] === 'roadmap' && r[2]) return paint(await viewRoadmapEdit(r[2]));
       if (r[1] === 'member' && r[2]) return paint(await viewMemberDetail(r[2]));
       if (r[1] === 'lesson' && r[2]) return paint(await viewLessonForm(r));
@@ -2368,6 +2450,16 @@ const actions = {
     document.getElementById('rm-rows').insertAdjacentHTML('beforeend', html);
     rmDirty();
   },
+  'drill-tag': (el) => {
+    el.setAttribute('aria-pressed', String(el.getAttribute('aria-pressed') !== 'true'));
+    applyDrillFilter();
+  },
+  'drill-tag-clear': () => {
+    const box = document.querySelector('[data-drill-filter]');
+    box.querySelector('.drill-search').value = '';
+    box.querySelectorAll('.tag-chip').forEach((b) => b.setAttribute('aria-pressed', 'false'));
+    applyDrillFilter();
+  },
   'delete-drill': async (el) => {
     const used = Number(el.dataset.used);
     const ok = await confirmDialog({
@@ -2381,7 +2473,7 @@ const actions = {
       if (error) throw error;
     }
     await must(sb.from('drills').delete().eq('id', el.dataset.id));
-    toast('ドリルを削除しました'); render();
+    toast('ドリルを削除しました'); go('admin/drills');
   },
   'delete-lesson': async (el) => {
     if (!confirm('このレッスンを削除します。よろしいですか？')) return;
@@ -2582,6 +2674,19 @@ const forms = {
     if (added.length) await must(sb.from('roadmap_items').insert(added));
     toast('ロードマップを保存しました'); render();
   },
+  'drill-edit': async (f) => {
+    const row = {
+      title: f.title.value.trim(), description: f.description.value.trim(),
+      tags: [...f.querySelectorAll('input[name="tag"]:checked')].map((i) => i.value),
+    };
+    if (!row.title) throw new Error('ドリル名を入力してください');
+    if (f.video_url) {
+      row.video_url = normalizeYoutube(f.video_url.value);
+      if (!row.video_url) throw new Error('YouTube のリンクを入力してください');
+    }
+    await must(sb.from('drills').update(row).eq('id', f.dataset.id));
+    toast('ドリルを保存しました'); render();
+  },
   'drill-new': async (f) => {
     await createDrill(drillFromForm(f, 'nd_'), drillProgress('nd_'));
     toast('ドリルを登録しました'); render();
@@ -2657,11 +2762,7 @@ document.addEventListener('input', (ev) => {
   }
   const rmRowEl = ev.target.closest('form[data-form="roadmap"] [data-row]');
   if (rmRowEl) { rmDirty(); rmRefresh(rmRowEl); } else if (ev.target.closest('form[data-form="roadmap"]')) rmDirty();
-  if (ev.target.dataset.action === 'filter-drills') {
-    const q = ev.target.value.trim().toLowerCase();
-    document.querySelectorAll('.drill-opt').forEach((o) => o.classList.toggle('hidden', q && !o.textContent.toLowerCase().includes(q)));
-    return;
-  }
+  if (ev.target.dataset.action === 'filter-drills') { applyDrillFilter(); return; }
   if (ev.target.dataset.action !== 'filter-members') return;
   const q = ev.target.value.trim().toLowerCase();
   document.querySelectorAll('#member-list [data-search]').forEach((a) => a.classList.toggle('hidden', q && !a.dataset.search.includes(q)));
