@@ -364,11 +364,11 @@ a.hbtn{text-decoration:none;color:inherit;box-sizing:border-box}
       <h1>SwingFrame</h1>
       <p>スイング撮影・スイング分析</p>
       <!-- 表示用の版数。sw.js の CACHE と必ずそろえること（片方だけ上げると更新に気づけません） -->
-      <div id="hVer">v37</div>
+      <div id="hVer">v38</div>
     </div>
     <button class="hbtn pri" id="hShoot"><i>●</i><span>スイングを撮影<em>ガイドに合わせて自動で録画</em></span></button>
     <button class="hbtn" id="hLib"><i>▤</i><span>ライブラリ<em id="hLibSub">保存した動画と画像</em></span></button>
-    <a class="hbtn lesson" id="hLesson" href="../#/home"><i>⛳</i><span>オンラインレッスン<em>PGAプロのレッスン・ドリル・動画の提出</em></span></a>
+    <a class="hbtn lesson" id="hLesson" href="../#/continue"><i>⛳</i><span>オンラインレッスン<em>PGAプロのレッスン・ドリル・動画の提出</em></span></a>
   </div>
 </div>
 
@@ -1579,6 +1579,11 @@ function showCam(){
   },60);
 }
 $('#hLib').onclick=function(){openReview(null,'home')};
+/* 会員ページの「SwingFrame で撮影する」から来たときは、トップ画面を通らずにカメラを開く */
+if(location.hash==='#shoot'){
+  history.replaceState(null,'',location.pathname+location.search);
+  setTimeout(function(){$('#hShoot').click()},0);
+}
 $('#bHome').onclick=function(){
   hideScreens();$('#homeScreen').classList.add('on');refreshHome();
 };

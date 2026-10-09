@@ -170,7 +170,7 @@ body.on-auth .app{background:transparent;max-width:none}
 .plan .price{font-family:var(--serif);font-size:18px;margin:14px 0 4px;padding:12px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
 details{margin:12px 0}
 summary{cursor:pointer;font-weight:700;font-size:14px}
-.toast{position:fixed;left:50%;bottom:84px;transform:translateX(-50%);background:var(--ink);border:1px solid var(--gold-line);color:#fff;padding:12px 18px;border-radius:12px;font-size:14px;z-index:10;max-width:90vw;box-shadow:0 6px 20px #0003}
+.toast{position:fixed;left:50%;bottom:96px;transform:translateX(-50%);background:var(--ink);border:1px solid var(--gold-line);color:#fff;padding:12px 18px;border-radius:12px;font-size:14px;z-index:10;max-width:90vw;box-shadow:0 6px 20px #0003}
 .toast.bad{background:#a12626}
 .hidden{display:none!important}
 .empty{color:var(--muted);text-align:center;padding:26px 10px;font-size:14px}
@@ -536,7 +536,7 @@ details.rm-edit[open] .rm-no::before{content:"▾ "}
   .history-list .month{grid-column:1/-1;margin:14px 0 0}
   .history-list .pair{margin:0}
   .drill-list .drill-card,#member-list .card{margin:0}
-  .nav a span{font-size:11.5px}
+  .nav a span{font-size:11.5px;letter-spacing:.01em;white-space:nowrap}
   .hero h1{font-size:26px}
 }
 
@@ -837,7 +837,7 @@ button:not(.btn-gold):not(.btn-sub):not(.btn-danger):not(.btn-line):not(.link):n
 
 /* 下のメニュー：選んでいる項目に金の線 */
 .nav{background:linear-gradient(180deg,#121d17,var(--ink));border-top-color:rgba(200,169,106,.28)}
-.nav a.active::before{content:"";position:absolute;top:-6px;left:50%;width:22px;height:2px;margin-left:-11px;border-radius:2px;background:var(--gold)}
+.nav a.active::before{content:"";position:absolute;top:-8px;left:50%;width:22px;height:2px;margin-left:-11px;border-radius:2px;background:var(--gold)}
 @media (min-width:1100px){
   .nav{background:linear-gradient(180deg,#13201a 0%,var(--ink) 60%)}
   .nav a.active::before{top:10px;bottom:10px;left:0;width:3px;height:auto;margin:0}
@@ -850,3 +850,19 @@ button:not(.btn-gold):not(.btn-sub):not(.btn-danger):not(.btn-line):not(.link):n
 
 /* 空のとき */
 .empty{border-radius:18px}
+
+/* スマホ・タブレット：下のメニューを押しやすい高さに */
+@media (max-width:1099px){
+  .nav{padding:8px 6px calc(8px + env(safe-area-inset-bottom))}
+  .nav a{padding:8px 4px 6px;gap:5px;min-height:58px;justify-content:center}
+  .nav a svg{width:25px;height:25px}
+  .nav a span{font-size:11.5px;letter-spacing:.01em;white-space:nowrap}
+  .nav-badge{top:3px}
+}
+
+/* 撮影画面から「オンラインレッスン」で来たときのログイン確認 */
+.continue-card{display:flex;align-items:center;gap:14px;margin:6px 0 4px;padding:14px 16px;border-radius:16px;background:#faf7f0;border:1px solid var(--hair)}
+.continue-ava{flex:none;width:46px;height:46px;border-radius:50%;display:grid;place-items:center;font-family:var(--serif);font-weight:600;font-size:20px;color:var(--gold-2);background:linear-gradient(160deg,var(--ink-2),var(--ink));box-shadow:inset 0 0 0 1px rgba(200,169,106,.5)}
+.continue-card b{display:block;font-size:16px}
+.continue-card small{display:block;font-size:12.5px;color:var(--muted);word-break:break-all}
+.continue-switch{display:block;margin:14px auto 0}

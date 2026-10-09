@@ -3,7 +3,8 @@ import { Upload as TusUpload } from 'https://cdn.jsdelivr.net/npm/tus-js-client@
 import { SUPABASE_URL, SUPABASE_ANON_KEY, SCHOOL_NAME, PLANS, CONTACT } from './config.js';
 
 // 撮影アプリ SwingFrame（会員ページの中の swing/ に入っている。ログインなしでだれでも使える）
-const SWINGFRAME_URL = './swing/';
+// 撮影画面（SwingFrame）。#shoot を付けると、トップ画面を通らずにカメラが開く
+const SWINGFRAME_URL = './swing/#shoot';
 
 // SwingFrame の「コーチに送る」で渡された動画（同じサイトの IndexedDB に一時保存されている）
 function handoffDb() {
@@ -466,6 +467,24 @@ function authShell(inner) {
   </div></div>`;
 }
 
+// この端末で最後にログインしたメールアドレス（次回のログイン欄に入れておく。パスワードは保存しない）
+const LAST_EMAIL_KEY = 'atg-last-email';
+const rememberEmail = () => { const e = state.session?.user?.email; if (e) local.set(LAST_EMAIL_KEY, e); };
+
+// 撮影画面の「オンラインレッスン」から来たとき：ログイン済みならボタン1つでマイページへ
+function viewContinue() {
+  const p = state.profile;
+  const email = state.session?.user?.email || '';
+  return authShell(`
+    <h1>オンラインレッスン</h1>
+    <div class="continue-card">
+      <span class="continue-ava" aria-hidden="true">${esc((p?.name || email || '?').slice(0, 1))}</span>
+      <div><b>${esc(p?.name || '会員')} さん</b><small>${esc(email)}</small></div>
+    </div>
+    <button type="button" class="btn-block btn-gold" data-action="continue-go">ログインする</button>
+    <button type="button" class="link continue-switch" data-action="switch-account">別のアカウントでログイン</button>`);
+}
+
 function viewAuth() {
   const t = state.authTab;
   const notice = !configured
@@ -474,7 +493,7 @@ function viewAuth() {
     : state.handoff && t !== 'reset' ? '<div class="notice">📹 SwingFrame で撮った動画をコーチに送るには、ログインしてください（初めての方は「新規登録」から）。ログインすると、そのまま送れます。</div>' : '';
   const forms = {
     login: `<form class="form" data-form="login">
-        <label for="email">メールアドレス</label><input id="email" name="email" type="email" autocomplete="email" inputmode="email" required>
+        <label for="email">メールアドレス</label><input id="email" name="email" type="email" autocomplete="username" inputmode="email" value="${esc(local.get(LAST_EMAIL_KEY) || '')}" required>
         <label for="password">パスワード</label>
         <div class="pw"><input id="password" name="password" type="password" autocomplete="current-password" required>
           <button type="button" class="pw-toggle" data-action="toggle-password" aria-label="パスワードを表示">表示</button></div>
@@ -2124,9 +2143,11 @@ async function render() {
     if (state.recovery) return paint(viewRecovery());
     if (!state.session) { state.handoff = await getHandoff(); return paint(viewAuth()); }
     if (!state.profile) await loadProfile();
+    rememberEmail();
 
     const p = state.profile;
     const r = getRoute();
+    if (r[0] === 'continue') return paint(viewContinue());
     if (r[0] === 'account') {
       paint(viewAccount());
       if (r[1] === 'clubs') document.getElementById('clubs')?.scrollIntoView({ block: 'start' });
@@ -2198,6 +2219,13 @@ async function render() {
 // ---------- 操作 ----------
 
 const actions = {
+  'continue-go': () => go(state.profile?.role === 'admin' ? 'admin/dashboard' : 'home'),
+  'switch-account': async () => {
+    await sb.auth.signOut();
+    state.authTab = 'login'; state.authMessage = '';
+    history.replaceState(null, '', `${location.pathname}#/home`);
+    render();
+  },
   'auth-tab': (el) => { state.authTab = el.dataset.tab; state.authMessage = ''; render(); },
   'history-filter': (el) => { state.historyClub = el.dataset.club; render(); },
   'toggle-practice': async (el) => {
@@ -2531,6 +2559,9 @@ const forms = {
   login: async (f) => {
     const { error } = await sb.auth.signInWithPassword({ email: f.email.value.trim(), password: f.password.value });
     if (error) throw new Error('メールアドレスまたはパスワードが正しくありません');
+    local.set(LAST_EMAIL_KEY, f.email.value.trim());
+    // 撮影画面から来てログインした場合は、そのままマイページへ
+    if (getRoute()[0] === 'continue') history.replaceState(null, '', `${location.pathname}#/home`);
   },
   signup: async (f) => {
     const { data, error } = await sb.auth.signUp({
