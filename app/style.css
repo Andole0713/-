@@ -859,3 +859,10 @@ button:not(.btn-gold):not(.btn-sub):not(.btn-danger):not(.btn-line):not(.link):n
   .nav a span{font-size:11.5px;letter-spacing:.01em;white-space:nowrap}
   .nav-badge{top:3px}
 }
+
+/* 撮影画面から「オンラインレッスン」で来たときのログイン確認 */
+.continue-card{display:flex;align-items:center;gap:14px;margin:6px 0 4px;padding:14px 16px;border-radius:16px;background:#faf7f0;border:1px solid var(--hair)}
+.continue-ava{flex:none;width:46px;height:46px;border-radius:50%;display:grid;place-items:center;font-family:var(--serif);font-weight:600;font-size:20px;color:var(--gold-2);background:linear-gradient(160deg,var(--ink-2),var(--ink));box-shadow:inset 0 0 0 1px rgba(200,169,106,.5)}
+.continue-card b{display:block;font-size:16px}
+.continue-card small{display:block;font-size:12.5px;color:var(--muted);word-break:break-all}
+.continue-switch{display:block;margin:14px auto 0}
