@@ -118,67 +118,53 @@ function applyFontSize(size = local.get('atg-font-size') || 'm') {
 }
 applyFontSize();
 
-// 効果音（カップイン）。sounds/cupin.mp3 を鳴らす（読み込めないときは合成した音）。アカウント画面で消せる
-const CUPIN_URL = './sounds/cupin.mp3';
+// 効果音（カップイン）。音源ファイルは使わず、その場で合成する。アカウント画面で消せる
+//   参考にした音：パターで打つ「コン」→ 約1秒あいて → カップの中で「コン、コンコンコンコン」と跳ねる
 let audioCtx = null;
-let cupBuffer = null; let cupLoading = null;
-function loadCupIn() {
-  if (cupBuffer || cupLoading || !audioCtx) return cupLoading;
-  cupLoading = fetch(CUPIN_URL).then((r) => r.arrayBuffer())
-    .then((data) => new Promise((ok, ng) => audioCtx.decodeAudioData(data, ok, ng)))
-    .then((buf) => { cupBuffer = buf; })
-    .catch(() => {}).finally(() => { cupLoading = null; });
-  return cupLoading;
-}
 const soundOn = () => local.get('atg-sound') !== 'off';
 function unlockAudio() {
   if (!soundOn()) return;
   try {
     audioCtx ||= new (window.AudioContext || window.webkitAudioContext)();
     if (audioCtx.state === 'suspended') audioCtx.resume();
-    loadCupIn();
   } catch { audioCtx = null; }
 }
-// 音の高さ（1＝元の高さ。大きくするほど高い音）
-const CUP_PITCH = 2.2;
-// 硬いカップの底にボールが当たったような、短く乾いた音を1つ鳴らす
-function cupKnock(ctx, out, t, vol, pitch) {
-  pitch *= CUP_PITCH;
-  [[1180, 0.07, 'triangle', 0.5], [1990, 0.045, 'triangle', 0.22], [620, 0.09, 'sine', 0.3]].forEach(([f, d, type, g0]) => {
+// 音の高さ（1＝参考の音と同じ高さ。大きくするほど高い音）
+const CUP_PITCH = 1;
+// 打音を1つ鳴らす：partials＝[周波数, 強さ]、decay＝余韻の長さ（秒）、noise＝当たった瞬間の「カツッ」の高さ
+function knockTone(ctx, out, t, { partials, decay, vol, attack = 0.002, noise = 3000 }) {
+  partials.forEach(([f, g0], k) => {
     const o = ctx.createOscillator(); const g = ctx.createGain();
-    o.type = type;
-    o.frequency.setValueAtTime(f * pitch, t);
-    o.frequency.exponentialRampToValueAtTime(f * pitch * 0.92, t + d);
+    const f0 = f * CUP_PITCH; const d = decay * (k ? 0.6 : 1); // 高い成分ほど早く消える
+    o.type = 'sine';
+    o.frequency.setValueAtTime(f0, t);
+    o.frequency.exponentialRampToValueAtTime(f0 * 0.985, t + d);
     g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(vol * g0, t + 0.003);
+    g.gain.exponentialRampToValueAtTime(vol * g0, t + attack);
     g.gain.exponentialRampToValueAtTime(0.0001, t + d);
     o.connect(g).connect(out); o.start(t); o.stop(t + d + 0.02);
   });
-  const len = Math.floor(ctx.sampleRate * 0.02);
+  const len = Math.floor(ctx.sampleRate * 0.015);
   const buf = ctx.createBuffer(1, len, ctx.sampleRate); const ch = buf.getChannelData(0);
   for (let i = 0; i < len; i++) ch[i] = (Math.random() * 2 - 1) * (1 - i / len) ** 3;
   const n = ctx.createBufferSource(); n.buffer = buf;
-  const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 2600 * pitch; bp.Q.value = 1.2;
-  const ng = ctx.createGain(); ng.gain.value = vol * 0.35;
+  const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = noise * CUP_PITCH; bp.Q.value = 1.4;
+  const ng = ctx.createGain(); ng.gain.value = vol * 0.25;
   n.connect(bp).connect(ng).connect(out); n.start(t);
 }
-// カップイン：「コン、コン、コンコンコンコン」（2回ゆっくり跳ねて、最後は細かく。音量はだんだん小さく）
 function cupInSound(ctx, t0) {
-  const master = ctx.createGain(); master.gain.value = 0.9; master.connect(ctx.destination);
-  [[0, 1], [0.34, 0.72], [0.64, 0.5], [0.77, 0.38], [0.89, 0.28], [1.0, 0.2]]
-    .forEach(([dt, v], i) => cupKnock(ctx, master, t0 + dt, v, 1 - i * 0.03));
+  const master = ctx.createGain(); master.gain.value = 0.8; master.connect(ctx.destination);
+  // パターで打つ「コン」（低めで丸い音）
+  knockTone(ctx, master, t0, { partials: [[800, 0.55], [540, 0.3], [2920, 0.14], [3340, 0.12]], decay: 0.45, vol: 0.9, attack: 0.012, noise: 2200 });
+  // 約1秒後、カップの中で跳ねる「コン、コンコンコンコン」（硬いカップの響き）
+  const cup = [[840, 0.5], [1680, 0.1], [3060, 0.16], [3560, 0.18], [4120, 0.2]];
+  [[0.99, 0.18, 0.9], [1.13, 0.8, 0.55], [1.205, 0.9, 0.4], [1.275, 1, 0.26], [1.32, 0.42, 0.28], [1.38, 0.24, 0.2]]
+    .forEach(([dt, v, d]) => knockTone(ctx, master, t0 + dt, { partials: cup, decay: d, vol: v, noise: 3800 }));
 }
-async function playCupIn() {
+function playCupIn() {
   if (!soundOn()) return;
   unlockAudio();
-  if (!audioCtx) return;
-  try {
-    if (!cupBuffer) await loadCupIn();
-    if (cupBuffer) {
-      const src = audioCtx.createBufferSource(); src.buffer = cupBuffer;
-      src.connect(audioCtx.destination); src.start();
-    } else cupInSound(audioCtx, audioCtx.currentTime + 0.05);
-  } catch { /* 音が鳴らなくても続ける */ }
+  if (audioCtx) try { cupInSound(audioCtx, audioCtx.currentTime + 0.05); } catch { /* 音が鳴らなくても続ける */ }
 }
 
 // ホーム画面に追加（Android の Chrome などはボタンから追加できる。iPhone は共有メニューから）
@@ -1073,7 +1059,7 @@ function viewAccount() {
     ${admin ? '' : `<div class="card">
       <b>効果音</b> <span class="muted small">（この端末だけに反映）</span>
       <label class="switch"><input type="checkbox" name="sound_toggle"${soundOn() ? ' checked' : ''}>
-        <span>動画を送ったときにカップインの音を鳴らす</span></label>
+        <span>ログインしたとき・動画を送ったときにカップインの音を鳴らす</span></label>
       <button type="button" class="btn-sm btn-sub" data-action="sound-test" style="margin-top:8px">♪ 試しに鳴らす</button>
     </div>`}
     ${admin ? '' : `<div class="card links">
@@ -2304,7 +2290,7 @@ async function render() {
 // ---------- 操作 ----------
 
 const actions = {
-  'continue-go': () => go(state.profile?.role === 'admin' ? 'admin/dashboard' : 'home'),
+  'continue-go': () => playCupIn() || go(state.profile?.role === 'admin' ? 'admin/dashboard' : 'home'),
   'switch-account': async () => {
     await sb.auth.signOut();
     state.authTab = 'login'; state.authMessage = '';
@@ -2648,9 +2634,11 @@ const actions = {
 
 const forms = {
   login: async (f) => {
+    unlockAudio();
     const { error } = await sb.auth.signInWithPassword({ email: f.email.value.trim(), password: f.password.value });
     if (error) throw new Error('メールアドレスまたはパスワードが正しくありません');
     local.set(LAST_EMAIL_KEY, f.email.value.trim());
+    playCupIn();
     // 撮影画面から来てログインした場合は、そのままマイページへ
     if (getRoute()[0] === 'continue') history.replaceState(null, '', `${location.pathname}#/home`);
   },
