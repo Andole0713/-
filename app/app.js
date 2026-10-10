@@ -118,6 +118,48 @@ function applyFontSize(size = local.get('atg-font-size') || 'm') {
 }
 applyFontSize();
 
+// 効果音（カップインの「コン、コン、コロコロ」）。音源ファイルは使わず、その場で合成する。アカウント画面で消せる
+let audioCtx = null;
+const soundOn = () => local.get('atg-sound') !== 'off';
+function unlockAudio() {
+  if (!soundOn()) return;
+  try {
+    audioCtx ||= new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+  } catch { audioCtx = null; }
+}
+// 硬いカップの底にボールが当たったような、短く乾いた音を1つ鳴らす
+function cupKnock(ctx, out, t, vol, pitch) {
+  [[1180, 0.07, 'triangle', 0.5], [1990, 0.045, 'triangle', 0.22], [620, 0.09, 'sine', 0.3]].forEach(([f, d, type, g0]) => {
+    const o = ctx.createOscillator(); const g = ctx.createGain();
+    o.type = type;
+    o.frequency.setValueAtTime(f * pitch, t);
+    o.frequency.exponentialRampToValueAtTime(f * pitch * 0.92, t + d);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(vol * g0, t + 0.003);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + d);
+    o.connect(g).connect(out); o.start(t); o.stop(t + d + 0.02);
+  });
+  const len = Math.floor(ctx.sampleRate * 0.02);
+  const buf = ctx.createBuffer(1, len, ctx.sampleRate); const ch = buf.getChannelData(0);
+  for (let i = 0; i < len; i++) ch[i] = (Math.random() * 2 - 1) * (1 - i / len) ** 3;
+  const n = ctx.createBufferSource(); n.buffer = buf;
+  const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 2600 * pitch; bp.Q.value = 1.2;
+  const ng = ctx.createGain(); ng.gain.value = vol * 0.35;
+  n.connect(bp).connect(ng).connect(out); n.start(t);
+}
+// カップイン：跳ねる間隔と音量がだんだん小さくなる
+function cupInSound(ctx, t0) {
+  const master = ctx.createGain(); master.gain.value = 0.9; master.connect(ctx.destination);
+  [[0, 1], [0.2, 0.62], [0.33, 0.42], [0.42, 0.28], [0.48, 0.18], [0.525, 0.12]]
+    .forEach(([dt, v], i) => cupKnock(ctx, master, t0 + dt, v, 1 - i * 0.03));
+}
+function playCupIn() {
+  if (!soundOn()) return;
+  unlockAudio();
+  if (audioCtx) try { cupInSound(audioCtx, audioCtx.currentTime + 0.05); } catch { /* 音が鳴らなくても続ける */ }
+}
+
 // ホーム画面に追加（Android の Chrome などはボタンから追加できる。iPhone は共有メニューから）
 let installPrompt = null;
 window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); installPrompt = e; });
@@ -1007,6 +1049,12 @@ function viewAccount() {
       <b>文字の大きさ</b> <span class="muted small">（この端末だけに反映）</span>
       <div class="fs-seg" role="group" aria-label="文字の大きさ">${FONT_SIZES.map(([k, label]) => `<button type="button" data-action="font-size" data-size="${k}" aria-pressed="${document.documentElement.dataset.fs === k}" class="${document.documentElement.dataset.fs === k ? 'on' : ''}">${label}</button>`).join('')}</div>
     </div>
+    ${admin ? '' : `<div class="card">
+      <b>効果音</b> <span class="muted small">（この端末だけに反映）</span>
+      <label class="switch"><input type="checkbox" name="sound_toggle"${soundOn() ? ' checked' : ''}>
+        <span>動画を送ったときにカップインの音を鳴らす</span></label>
+      <button type="button" class="btn-sm btn-sub" data-action="sound-test" style="margin-top:8px">♪ 試しに鳴らす</button>
+    </div>`}
     ${admin ? '' : `<div class="card links">
       <a class="list-item" href="#/guide"><span>使い方ガイド（動画の撮り方・送り方）</span><span aria-hidden="true">›</span></a>
       <a class="list-item" href="#/install"><span>ホーム画面に追加する方法</span><span aria-hidden="true">›</span></a>
@@ -2257,6 +2305,10 @@ const actions = {
     } catch (e) { toast('更新できませんでした', true); }
     el.disabled = false;
   },
+  'sound-test': () => {
+    if (!soundOn()) { toast('効果音をオンにすると鳴らせます'); return; }
+    playCupIn();
+  },
   'font-size': (el) => {
     local.set('atg-font-size', el.dataset.size);
     applyFontSize(el.dataset.size);
@@ -2648,6 +2700,7 @@ const forms = {
     await loadProfile(); toast('お名前を変更しました');
   },
   submit: async (f) => {
+    unlockAudio(); // スマホでは、押した瞬間に音の準備をしておかないと後で鳴らせない
     const h = state.handoff;
     const file = f.video.files[0] || (h ? new File([h.blob], h.name || 'swingframe.mp4', { type: h.type || h.blob.type || 'video/mp4' }) : null);
     if (!file) throw new Error('送る動画を選んでください');
@@ -2676,7 +2729,8 @@ const forms = {
       window.removeEventListener('beforeunload', leaveGuard);
     }
     if (h && !f.video.files[0]) await clearHandoff();
-    toast('動画を送信しました。コーチからの解説をお待ちください。');
+    playCupIn();
+    toast('⛳ 動画を送信しました。コーチからの解説をお待ちください。');
     go('home');
   },
   'admin-profile': async (f) => {
@@ -2881,6 +2935,12 @@ document.addEventListener('submit', async (ev) => {
 // 動画を選んだら、ファイル名と容量を表示してプレビューする
 let previewUrl = null;
 document.addEventListener('change', (ev) => {
+  if (ev.target.name === 'sound_toggle') {
+    local.set('atg-sound', ev.target.checked ? 'on' : 'off');
+    if (ev.target.checked) playCupIn();
+    toast(ev.target.checked ? '効果音をオンにしました' : '効果音をオフにしました');
+    return;
+  }
   if (ev.target.dataset.tplFor) {
     const t = lessonTemplates.find((x) => x.id === ev.target.value);
     const box = document.getElementById(ev.target.dataset.tplFor);
