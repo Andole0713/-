@@ -119,7 +119,7 @@ function applyFontSize(size = local.get('atg-font-size') || 'm') {
 applyFontSize();
 
 // 効果音（カップイン）。音源ファイルは使わず、その場で合成する。アカウント画面で消せる
-//   参考にした音：パターで打つ「コン」→ 約1秒あいて → カップの中で「コン、コンコンコンコン」と跳ねる
+//   参考にした音：アイアンショットの「バシッ」→ 約1秒あいて → カップの中で「コン、コンコンコンコン」と跳ねる
 let audioCtx = null;
 const soundOn = () => local.get('atg-sound') !== 'off';
 function unlockAudio() {
@@ -152,10 +152,45 @@ function knockTone(ctx, out, t, { partials, decay, vol, attack = 0.002, noise = 
   const ng = ctx.createGain(); ng.gain.value = vol * 0.25;
   n.connect(bp).connect(ng).connect(out); n.start(t);
 }
+// アイアンショット：芯で当たった低い「ドン」＋金属の響き＋打った瞬間の「パシッ」＋ボールが飛ぶ「シュッ」
+function ironShot(ctx, out, t) {
+  const tone = (f, g0, d, type = 'sine', drop = 0.9) => {
+    const o = ctx.createOscillator(); const g = ctx.createGain();
+    o.type = type;
+    o.frequency.setValueAtTime(f, t);
+    o.frequency.exponentialRampToValueAtTime(f * drop, t + d);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(g0, t + 0.004);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + d);
+    o.connect(g).connect(out); o.start(t); o.stop(t + d + 0.02);
+  };
+  tone(110, 0.55, 0.55, 'sine', 0.75);  // 低い胴鳴り
+  tone(190, 0.5, 0.5, 'sine', 0.8);
+  tone(320, 0.28, 0.4, 'triangle', 0.85);
+  tone(760, 0.16, 0.45, 'sine', 0.97);  // ヘッドの金属の響き
+  tone(1230, 0.1, 0.35, 'sine', 0.97);
+  tone(2480, 0.05, 0.25, 'sine', 0.98);
+  const noise = (dur, shape) => {
+    const len = Math.floor(ctx.sampleRate * dur);
+    const buf = ctx.createBuffer(1, len, ctx.sampleRate); const ch = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) ch[i] = (Math.random() * 2 - 1) * shape(i / len);
+    const n = ctx.createBufferSource(); n.buffer = buf; return n;
+  };
+  // 打った瞬間の「パシッ」
+  const hit = noise(0.05, (x) => (1 - x) ** 2);
+  const hf = ctx.createBiquadFilter(); hf.type = 'bandpass'; hf.frequency.value = 1600; hf.Q.value = 0.7;
+  const hg = ctx.createGain(); hg.gain.value = 0.9;
+  hit.connect(hf).connect(hg).connect(out); hit.start(t);
+  // ボールが飛んでいく「シュッ」
+  const air = noise(0.45, (x) => Math.min(1, x * 12) * (1 - x) ** 2);
+  const af = ctx.createBiquadFilter(); af.type = 'bandpass'; af.frequency.setValueAtTime(2600, t); af.frequency.exponentialRampToValueAtTime(900, t + 0.45); af.Q.value = 0.8;
+  const ag = ctx.createGain(); ag.gain.value = 0.12;
+  air.connect(af).connect(ag).connect(out); air.start(t + 0.01);
+}
 function cupInSound(ctx, t0) {
   const master = ctx.createGain(); master.gain.value = 0.8; master.connect(ctx.destination);
-  // パターで打つ「コン」（低めで丸い音）
-  knockTone(ctx, master, t0, { partials: [[800, 0.55], [540, 0.3], [2920, 0.14], [3340, 0.12]], decay: 0.45, vol: 0.9, attack: 0.012, noise: 2200 });
+  // アイアンショットの「バシッ」（低く長く、分厚い音）
+  ironShot(ctx, master, t0);
   // 約1秒後、カップの中で跳ねる「コン、コンコンコンコン」（硬いカップの響き）
   const cup = [[840, 0.5], [1680, 0.1], [3060, 0.16], [3560, 0.18], [4120, 0.2]];
   [[0.99, 0.18, 0.9], [1.13, 0.8, 0.55], [1.205, 0.9, 0.4], [1.275, 1, 0.26], [1.32, 0.42, 0.28], [1.38, 0.24, 0.2]]
