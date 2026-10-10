@@ -183,7 +183,7 @@ function ironShot(ctx, out, t) {
   layer(0.012, 0.11, (x) => Math.min(1, x * 20) * (1 - x) ** 3, 'bandpass', 4200, 1.1, 0.35); // 「シッ」
 }
 function cupInSound(ctx, t0) {
-  const master = ctx.createGain(); master.gain.value = 0.8; master.connect(ctx.destination);
+  const master = ctx.createGain(); master.gain.value = 0.7; master.connect(ctx.destination);
   // アイアンショットの「バシッ」（キレのある音）
   ironShot(ctx, master, t0);
   // 約1秒後、カップの中で跳ねる「コン、コンコンコンコン」（硬いカップの響き）
