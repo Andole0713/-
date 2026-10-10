@@ -742,7 +742,7 @@ async function viewMemberHome() {
     must(sb.from('tasks').select('*').eq('member_id', p.id).order('sort_order').order('created_at')),
     must(sb.from('lessons').select('id, lesson_date, title, point, practice, practice_done, read_at').eq('member_id', p.id).order('lesson_date', { ascending: false }).order('created_at', { ascending: false }).limit(1)),
     must(sb.from('submissions').select('id, created_at, club, status').eq('member_id', p.id).eq('status', 'pending').order('created_at', { ascending: false })),
-    must(sb.from('submissions').select('id').eq('member_id', p.id).gte('created_at', since)),
+    must(sb.from('submissions').select('*').eq('member_id', p.id).gte('created_at', since)).then((a) => a.filter((x) => !x.quota_exempt)),
     must(sb.from('lessons').select('id').eq('member_id', p.id).gte('created_at', since)),
     must(sb.from('roadmap_items').select('id, publish_on, theme, published_at, hidden, seen_at, drills(title)').eq('member_id', p.id).order('publish_on')),
   ]);
@@ -845,7 +845,8 @@ async function viewSubmit() {
   const quota = quotaOf(p);
   const extra = extraThisMonth(p);
   const myClubs = p.clubs || [];
-  const monthSubs = quota ? await must(sb.from('submissions').select('id').eq('member_id', p.id).gte('created_at', monthStart())) : [];
+  // 「回数に数えない」にした動画は本数に入れない
+  const monthSubs = quota ? (await must(sb.from('submissions').select('*').eq('member_id', p.id).gte('created_at', monthStart()))).filter((x) => !x.quota_exempt) : [];
   const usage = quota ? `<div class="card"><div class="between"><span>今月の提出</span><b>${monthSubs.length} / ${quota} 本</b></div>
       <div class="meter"><i style="width:${Math.min(100, (monthSubs.length / quota) * 100)}%"></i></div>
       ${extra ? `<p class="muted small" style="margin:8px 0 0">追加の ${extra} 本を含みます。</p>` : ''}</div>` : '';
@@ -1867,7 +1868,7 @@ async function viewMemberDetail(id) {
     must(sb.from('tasks').select('*').eq('member_id', id).order('sort_order').order('created_at')),
     must(sb.from('lessons').select('id, lesson_date, title, created_at, read_at, submission_id').eq('member_id', id).order('lesson_date', { ascending: false }).order('created_at', { ascending: false })),
     must(sb.from('submissions').select('*').eq('member_id', id).order('created_at', { ascending: false }).limit(20)),
-    must(sb.from('submissions').select('id').eq('member_id', id).gte('created_at', monthStart())),
+    must(sb.from('submissions').select('*').eq('member_id', id).gte('created_at', monthStart())),
     must(sb.from('roadmap_items').select('id, publish_on, theme, published_at, hidden, seen_at, drills(title)').eq('member_id', id).order('publish_on')),
   ]);
   const [rmPractice, rmRefs, rmGoals] = roadmap.length ? await Promise.all([
@@ -1908,7 +1909,12 @@ async function viewMemberDetail(id) {
       <input id="access_until" name="access_until" type="date" value="${esc(m.access_until || '')}">
       <label for="extra_submissions">今月の追加本数 <span class="muted">（LINEで追加の申し込み・お支払いがあった分。来月は自動で0本に戻ります）</span></label>
       <input id="extra_submissions" name="extra_submissions" type="number" min="0" max="20" value="${extraThisMonth(m)}">
-      <p class="muted small" style="margin:4px 0 0">今月の提出：${monthSubs.length}本${quotaOf(m) ? ` ／ 送れる本数：${quotaOf(m)}本` : ''}</p>
+      ${(() => {
+        const counted = monthSubs.filter((x) => !x.quota_exempt).length;
+        const exempt = monthSubs.length - counted;
+        return `<div class="quota-line"><p class="muted small" style="margin:4px 0 0">今月の提出：${counted}本${exempt ? `（回数に数えない ${exempt}本は別）` : ''}${quotaOf(m) ? ` ／ 送れる本数：${quotaOf(m)}本` : ''}</p>
+          ${counted ? `<button type="button" class="btn-sm btn-sub" data-action="quota-reset" data-member="${m.id}" data-count="${counted}">今月の提出回数を0に戻す</button>` : ''}</div>`;
+      })()}
       ${self ? '' : `<label for="role">権限</label><select id="role" name="role">
         <option value="member" ${m.role === 'member' ? 'selected' : ''}>会員</option>
         <option value="admin" ${m.role === 'admin' ? 'selected' : ''}>管理者（コーチ）</option></select>`}
@@ -1983,17 +1989,19 @@ async function viewMemberDetail(id) {
     <div class="section-title"><h2>レッスン</h2><a class="btn btn-sm" href="#/admin/lesson/new/m/${m.id}">＋ 追加</a></div>
     <div class="card">${lessons.map((l) => `<div class="list-item"><div class="grow">${fmtDate(l.lesson_date)}　<b>${esc(l.title)}</b>
           ${l.read_at ? `<span class="pill ok">既読 ${fmtMD(l.read_at.slice(0, 10))}</span>` : `<span class="pill ${daysAgo(l.created_at) >= UNREAD_DAYS ? 'warn' : 'mute'}">未読${daysAgo(l.created_at) >= 1 ? `（${daysAgo(l.created_at)}日）` : ''}</span>`}</div>
-        <a class="btn btn-sm btn-sub" href="#/admin/lesson/${l.id}">編集</a></div>`).join('') || '<div class="muted">レッスンはまだありません</div>'}</div>
+        <span class="row" style="gap:6px"><a class="btn btn-sm btn-sub" href="#/admin/lesson/${l.id}">編集</a>
+          <button type="button" class="btn-sm btn-danger" data-action="delete-lesson" data-id="${l.id}" data-member="${m.id}" data-title="${esc(l.title)}" data-stay="1">取り消し</button></span></div>`).join('') || '<div class="muted">レッスンはまだありません</div>'}</div>
 
     <div class="section-title"><h2>提出動画</h2><span class="muted small">押すと動画が見られます</span></div>
     <div class="card">${subs.map((s) => {
       const sl = lessons.filter((l) => l.submission_id === s.id);
-      return `<details class="sub-item"><summary class="list-item"><div><span class="sub-open" aria-hidden="true">▶</span>${fmtDate(s.created_at)}　${esc(s.club)} / ${esc(s.angle)}</div>
+      return `<details class="sub-item"><summary class="list-item"><div><span class="sub-open" aria-hidden="true">▶</span>${fmtDate(s.created_at)}　${esc(s.club)} / ${esc(s.angle)}${s.quota_exempt ? ' <span class="pill mute">回数外</span>' : ''}</div>
         ${s.status === 'pending' ? `<span class="row" style="gap:6px">${s.cancel_requested_at ? '<span class="pill bad">取り消し依頼</span>' : ''}<a class="btn btn-sm" href="#/admin/lesson/new/s/${s.id}">レッスンを書く</a>
           <button type="button" class="btn-sm btn-danger" data-action="sub-delete" data-id="${s.id}" data-path="${esc(s.video_deleted_at ? '' : s.video_path)}" data-label="${esc(`${fmtDate(s.created_at)} ${s.club} / ${s.angle}`)}">削除</button></span>` : '<span class="pill ok">対応済み</span>'}</summary>
         <div class="sub-body">${swingVideo(s, subUrls, { tools: true, preload: 'none' })}
           ${s.question ? `<p class="pre"><span class="muted small">お悩み・質問</span><br>${esc(s.question)}</p>` : ''}
-          ${sl.length ? `<p class="small">この動画のレッスン：${sl.map((l) => `<a href="#/admin/lesson/${l.id}">${fmtDate(l.lesson_date)}「${esc(l.title)}」</a>`).join('、')}</p>` : ''}</div>
+          ${sl.length ? `<p class="small">この動画のレッスン：${sl.map((l) => `<a href="#/admin/lesson/${l.id}">${fmtDate(l.lesson_date)}「${esc(l.title)}」</a>`).join('、')}</p>` : ''}
+          <button type="button" class="btn-sm btn-sub" data-action="sub-exempt" data-id="${s.id}" data-on="${s.quota_exempt ? 0 : 1}">${s.quota_exempt ? '提出回数に数えるように戻す' : 'この動画を提出回数に数えない（1本戻す）'}</button></div>
       </details>`;
     }).join('') || '<div class="muted">提出はまだありません</div>'}</div>
   </div></div>
@@ -2364,7 +2372,7 @@ async function viewLessonForm(route) {
       <p class="muted small draft-status" id="draft-status" aria-live="polite">入力した内容は、この端末に自動で保存されます</p>
       <button class="btn-block" type="submit">${lesson.id ? '更新する' : '保存して会員に公開する'}</button>
     </form>
-    ${lesson.id ? `<button class="btn-block btn-danger" data-action="delete-lesson" data-id="${lesson.id}" data-member="${esc(memberId)}">このレッスンを削除</button>` : ''}
+    ${lesson.id ? `<button class="btn-block btn-danger" data-action="delete-lesson" data-id="${lesson.id}" data-member="${esc(memberId)}" data-title="${esc(lesson.title)}">このレッスンを取り消す（削除）</button>` : ''}
     </div>
   </div><div class="col-side"><div class="blk" style="--o:1">${brief}</div></div></div></div>` + adminNav('admin/inbox');
 }
@@ -2866,9 +2874,38 @@ const actions = {
   },
   'draft-discard': (el) => { local.del(el.dataset.key); toast('書きかけを捨てました'); render(); },
   'delete-lesson': async (el) => {
-    if (!confirm('このレッスンを削除します。よろしいですか？')) return;
+    const ok = await confirmDialog({
+      title: 'このレッスンを取り消しますか？',
+      body: `<p>${el.dataset.title ? `<b>「${esc(el.dataset.title)}」</b><br>` : ''}会員のページから見えなくなります。元に戻せません。</p>
+        <p class="muted small">提出動画への返信だった場合は、その動画が「確認待ち」に戻るので、あらためてレッスンを書けます。</p>`,
+      ok: '取り消す',
+    });
+    if (!ok) return;
+    const l = await must(sb.from('lessons').select('id, submission_id').eq('id', el.dataset.id).maybeSingle());
     await must(sb.from('lessons').delete().eq('id', el.dataset.id));
-    toast('削除しました'); go(`admin/member/${el.dataset.member}`);
+    let back = false;
+    if (l?.submission_id) {
+      const rest = await must(sb.from('lessons').select('id').eq('submission_id', l.submission_id));
+      if (!rest.length) { await must(sb.from('submissions').update({ status: 'pending' }).eq('id', l.submission_id)); back = true; }
+    }
+    toast(back ? 'レッスンを取り消しました。提出動画は確認待ちに戻りました' : 'レッスンを取り消しました');
+    if (el.dataset.stay) render(); else go(`admin/member/${el.dataset.member}`);
+  },
+  'quota-reset': async (el) => {
+    const ok = await confirmDialog({
+      title: '今月の提出回数を0に戻しますか？',
+      body: `<p>今月送られた動画 <b>${esc(el.dataset.count)}本</b> を、提出回数に数えないようにします。動画とレッスンはそのまま残ります。</p>
+        <p class="muted small">1本だけ戻したいときは、下の「提出動画」から動画を開いて「この動画を提出回数に数えない」を押してください。</p>`,
+      ok: '0に戻す',
+    });
+    if (!ok) return;
+    await must(sb.from('submissions').update({ quota_exempt: true }).eq('member_id', el.dataset.member).gte('created_at', monthStart()));
+    toast('今月の提出回数を0に戻しました'); render();
+  },
+  'sub-exempt': async (el) => {
+    const on = el.dataset.on === '1';
+    await must(sb.from('submissions').update({ quota_exempt: on }).eq('id', el.dataset.id));
+    toast(on ? 'この動画を提出回数に数えないようにしました（1本戻りました）' : '提出回数に数えるように戻しました'); render();
   },
 };
 
