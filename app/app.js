@@ -118,6 +118,98 @@ function applyFontSize(size = local.get('atg-font-size') || 'm') {
 }
 applyFontSize();
 
+// 効果音（カップイン）。音源ファイルは使わず、その場で合成する。アカウント画面で消せる
+//   参考にした音：アイアンショットの「バシッ」→ 約1秒あいて → カップの中で「コン、コンコンコンコン」と跳ねる
+let audioCtx = null;
+const soundOn = () => local.get('atg-sound') !== 'off';
+function unlockAudio() {
+  if (!soundOn()) return;
+  try {
+    audioCtx ||= new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+  } catch { audioCtx = null; }
+}
+// 音の高さ（1＝参考の音と同じ高さ。大きくするほど高い音）
+const CUP_PITCH = 1;
+// 打音を1つ鳴らす：partials＝[周波数, 強さ]、decay＝余韻の長さ（秒）、noise＝当たった瞬間の「カツッ」の高さ
+function knockTone(ctx, out, t, { partials, decay, vol, attack = 0.002, noise = 3000 }) {
+  partials.forEach(([f, g0], k) => {
+    const o = ctx.createOscillator(); const g = ctx.createGain();
+    const f0 = f * CUP_PITCH; const d = decay * (k ? 0.6 : 1); // 高い成分ほど早く消える
+    o.type = 'sine';
+    o.frequency.setValueAtTime(f0, t);
+    o.frequency.exponentialRampToValueAtTime(f0 * 0.985, t + d);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(vol * g0, t + attack);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + d);
+    o.connect(g).connect(out); o.start(t); o.stop(t + d + 0.02);
+  });
+  const len = Math.floor(ctx.sampleRate * 0.015);
+  const buf = ctx.createBuffer(1, len, ctx.sampleRate); const ch = buf.getChannelData(0);
+  for (let i = 0; i < len; i++) ch[i] = (Math.random() * 2 - 1) * (1 - i / len) ** 3;
+  const n = ctx.createBufferSource(); n.buffer = buf;
+  const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = noise * CUP_PITCH; bp.Q.value = 1.4;
+  const ng = ctx.createGain(); ng.gain.value = vol * 0.25;
+  n.connect(bp).connect(ng).connect(out); n.start(t);
+}
+// アイアンショット「バシッ」（参考の音を測って再現）
+//   ① 振り下ろしの「シュッ」（500〜1000Hz が約60ミリ秒で大きくなる）
+//   ② 当たった瞬間の高く鋭い「バシッ」（3000〜4000Hz 中心の明るい音・約40ミリ秒）
+//   ③ 小さく短い余韻（200〜500Hz）
+function ironShot(ctx, dest, t) {
+  const hit = t + 0.065;
+  const out = ctx.createBiquadFilter(); out.type = 'lowpass'; out.frequency.value = 4600; out.Q.value = 0.7; out.connect(dest);
+  const noise = (dur, shape) => {
+    const len = Math.floor(ctx.sampleRate * dur);
+    const buf = ctx.createBuffer(1, len, ctx.sampleRate); const ch = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) ch[i] = (Math.random() * 2 - 1) * shape(i / len);
+    const n = ctx.createBufferSource(); n.buffer = buf; return n;
+  };
+  const band = (start, dur, shape, freq, q, gain) => {
+    const n = noise(dur, shape); const f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = freq; f.Q.value = q;
+    const g = ctx.createGain(); g.gain.value = gain; n.connect(f).connect(g).connect(out); n.start(start);
+  };
+  const tone = (start, f, g0, d, attack = 0.001) => {
+    const o = ctx.createOscillator(); const g = ctx.createGain();
+    o.frequency.setValueAtTime(f, start);
+    g.gain.setValueAtTime(0.0001, start);
+    g.gain.exponentialRampToValueAtTime(g0, start + attack);
+    g.gain.exponentialRampToValueAtTime(0.0001, start + d);
+    o.connect(g).connect(out); o.start(start); o.stop(start + d + 0.02);
+  };
+  // ① シュッ
+  band(t, 0.065, (x) => 0.03 + x ** 2.5, 700, 2.2, 1.4);
+  tone(t, 760, 0.12, 0.07, 0.06);
+  // ② バシッ（高い音を中心に、いくつかの帯域を重ねる）
+  const crack = (x) => (1 - x) ** 2.2;
+  band(hit, 0.04, crack, 3500, 1.9, 2.4);
+  band(hit, 0.04, crack, 2600, 2.2, 0.8);
+  band(hit, 0.035, crack, 1250, 1.4, 1.5);
+  band(hit, 0.035, crack, 620, 1.6, 1.7);
+  tone(hit, 3340, 0.12, 0.06); tone(hit, 2920, 0.1, 0.07);
+  tone(hit, 800, 0.12, 0.08); tone(hit, 540, 0.1, 0.09);
+  // ③ 余韻
+  band(hit + 0.03, 0.16, (x) => (1 - x) ** 3, 330, 0.9, 0.8);
+}
+function cupInSound(ctx, t0) {
+  const master = ctx.createGain(); master.gain.value = 0.7;
+  // 音が大きくなりすぎて割れないように、最後に軽く抑える
+  const limiter = ctx.createDynamicsCompressor();
+  limiter.threshold.value = -6; limiter.knee.value = 4; limiter.ratio.value = 12; limiter.attack.value = 0.001; limiter.release.value = 0.12;
+  master.connect(limiter).connect(ctx.destination);
+  // アイアンショットの「バシッ」（キレのある音）
+  ironShot(ctx, master, t0);
+  // 約1秒後、カップの中で跳ねる「コン、コンコンコンコン」（硬いカップの響き）
+  const cup = [[840, 0.5], [1680, 0.1], [3060, 0.16], [3560, 0.18], [4120, 0.2]];
+  [[0.99, 0.18, 0.9], [1.13, 0.8, 0.55], [1.205, 0.9, 0.4], [1.275, 1, 0.26], [1.32, 0.42, 0.28], [1.38, 0.24, 0.2]]
+    .forEach(([dt, v, d]) => knockTone(ctx, master, t0 + dt, { partials: cup, decay: d, vol: v, noise: 3800 }));
+}
+function playCupIn() {
+  if (!soundOn()) return;
+  unlockAudio();
+  if (audioCtx) try { cupInSound(audioCtx, audioCtx.currentTime + 0.05); } catch { /* 音が鳴らなくても続ける */ }
+}
+
 // ホーム画面に追加（Android の Chrome などはボタンから追加できる。iPhone は共有メニューから）
 let installPrompt = null;
 window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); installPrompt = e; });
@@ -1007,6 +1099,12 @@ function viewAccount() {
       <b>文字の大きさ</b> <span class="muted small">（この端末だけに反映）</span>
       <div class="fs-seg" role="group" aria-label="文字の大きさ">${FONT_SIZES.map(([k, label]) => `<button type="button" data-action="font-size" data-size="${k}" aria-pressed="${document.documentElement.dataset.fs === k}" class="${document.documentElement.dataset.fs === k ? 'on' : ''}">${label}</button>`).join('')}</div>
     </div>
+    ${admin ? '' : `<div class="card">
+      <b>効果音</b> <span class="muted small">（この端末だけに反映）</span>
+      <label class="switch"><input type="checkbox" name="sound_toggle"${soundOn() ? ' checked' : ''}>
+        <span>ログインしたとき・動画を送ったときにカップインの音を鳴らす</span></label>
+      <button type="button" class="btn-sm btn-sub" data-action="sound-test" style="margin-top:8px">♪ 試しに鳴らす</button>
+    </div>`}
     ${admin ? '' : `<div class="card links">
       <a class="list-item" href="#/guide"><span>使い方ガイド（動画の撮り方・送り方）</span><span aria-hidden="true">›</span></a>
       <a class="list-item" href="#/install"><span>ホーム画面に追加する方法</span><span aria-hidden="true">›</span></a>
@@ -2235,7 +2333,7 @@ async function render() {
 // ---------- 操作 ----------
 
 const actions = {
-  'continue-go': () => go(state.profile?.role === 'admin' ? 'admin/dashboard' : 'home'),
+  'continue-go': () => playCupIn() || go(state.profile?.role === 'admin' ? 'admin/dashboard' : 'home'),
   'switch-account': async () => {
     await sb.auth.signOut();
     state.authTab = 'login'; state.authMessage = '';
@@ -2256,6 +2354,10 @@ const actions = {
       if (on && list.querySelectorAll('li.done').length === list.children.length) toast('すべての練習が完了しました！ナイスです⛳');
     } catch (e) { toast('更新できませんでした', true); }
     el.disabled = false;
+  },
+  'sound-test': () => {
+    if (!soundOn()) { toast('効果音をオンにすると鳴らせます'); return; }
+    playCupIn();
   },
   'font-size': (el) => {
     local.set('atg-font-size', el.dataset.size);
@@ -2575,9 +2677,11 @@ const actions = {
 
 const forms = {
   login: async (f) => {
+    unlockAudio();
     const { error } = await sb.auth.signInWithPassword({ email: f.email.value.trim(), password: f.password.value });
     if (error) throw new Error('メールアドレスまたはパスワードが正しくありません');
     local.set(LAST_EMAIL_KEY, f.email.value.trim());
+    playCupIn();
     // 撮影画面から来てログインした場合は、そのままマイページへ
     if (getRoute()[0] === 'continue') history.replaceState(null, '', `${location.pathname}#/home`);
   },
@@ -2648,6 +2752,7 @@ const forms = {
     await loadProfile(); toast('お名前を変更しました');
   },
   submit: async (f) => {
+    unlockAudio(); // スマホでは、押した瞬間に音の準備をしておかないと後で鳴らせない
     const h = state.handoff;
     const file = f.video.files[0] || (h ? new File([h.blob], h.name || 'swingframe.mp4', { type: h.type || h.blob.type || 'video/mp4' }) : null);
     if (!file) throw new Error('送る動画を選んでください');
@@ -2676,7 +2781,8 @@ const forms = {
       window.removeEventListener('beforeunload', leaveGuard);
     }
     if (h && !f.video.files[0]) await clearHandoff();
-    toast('動画を送信しました。コーチからの解説をお待ちください。');
+    playCupIn();
+    toast('⛳ 動画を送信しました。コーチからの解説をお待ちください。');
     go('home');
   },
   'admin-profile': async (f) => {
@@ -2881,6 +2987,12 @@ document.addEventListener('submit', async (ev) => {
 // 動画を選んだら、ファイル名と容量を表示してプレビューする
 let previewUrl = null;
 document.addEventListener('change', (ev) => {
+  if (ev.target.name === 'sound_toggle') {
+    local.set('atg-sound', ev.target.checked ? 'on' : 'off');
+    if (ev.target.checked) playCupIn();
+    toast(ev.target.checked ? '効果音をオンにしました' : '効果音をオフにしました');
+    return;
+  }
   if (ev.target.dataset.tplFor) {
     const t = lessonTemplates.find((x) => x.id === ev.target.value);
     const box = document.getElementById(ev.target.dataset.tplFor);
