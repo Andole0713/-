@@ -410,8 +410,14 @@ function header(title, back) {
   return `<div class="top">
     <div class="row">${back ? `<a class="back" href="#/${back}" aria-label="戻る">‹</a>` : ''}
       <div><div class="brand">${esc(title)}</div><div class="muted">Members</div></div></div>
-    <a href="../" aria-label="${esc(SCHOOL_NAME)} トップページへ"><img class="top-logo" src="../assets/logo-mark.png" width="200" height="170" alt="${esc(SCHOOL_NAME)}"></a>
+    <div class="top-right">${shootButton()}
+      <a href="../" aria-label="${esc(SCHOOL_NAME)} トップページへ"><img class="top-logo" src="../assets/logo-mark.png" width="200" height="170" alt="${esc(SCHOOL_NAME)}"></a></div>
   </div>`;
+}
+// どの画面からでも、すぐにスイング撮影へ（動画を送らず撮影だけでもOK）。会員の画面だけに出す
+function shootButton() {
+  if (!state.profile || state.profile.role === 'admin') return '';
+  return `<a class="top-shoot" href="${SWINGFRAME_URL}" aria-label="スイングを撮影する（撮影だけでもOK）">${icon('video')}<span>撮影</span></a>`;
 }
 const ICON = {
   calendar: '<rect x="3.5" y="5" width="17" height="15.5" rx="2"/><path d="M3.5 9.5h17"/><path d="M8 3v4M16 3v4"/><path d="M8 13.5h3v3H8z"/>',

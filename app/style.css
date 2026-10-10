@@ -866,3 +866,10 @@ button:not(.btn-gold):not(.btn-sub):not(.btn-danger):not(.btn-line):not(.link):n
 .continue-card b{display:block;font-size:16px}
 .continue-card small{display:block;font-size:12.5px;color:var(--muted);word-break:break-all}
 .continue-switch{display:block;margin:14px auto 0}
+
+/* 上部バーの「撮影」ボタン（どの画面からでもすぐ撮影） */
+.top-right{display:flex;align-items:center;gap:12px;flex:none}
+.top-shoot{display:inline-flex;align-items:center;gap:6px;padding:7px 13px 7px 11px;border-radius:999px;border:1px solid rgba(200,169,106,.6);background:rgba(200,169,106,.12);color:var(--gold-2);text-decoration:none;font-size:13px;font-weight:700;letter-spacing:.06em;white-space:nowrap}
+.top-shoot svg{width:18px;height:18px}
+.top-shoot:hover{background:rgba(200,169,106,.22)}
+@media print{.top-shoot{display:none!important}}
