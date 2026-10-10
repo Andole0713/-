@@ -129,7 +129,7 @@ function unlockAudio() {
   } catch { audioCtx = null; }
 }
 // 音の高さ（1＝元の高さ。大きくするほど高い音）
-const CUP_PITCH = 1.6;
+const CUP_PITCH = 2.2;
 // 硬いカップの底にボールが当たったような、短く乾いた音を1つ鳴らす
 function cupKnock(ctx, out, t, vol, pitch) {
   pitch *= CUP_PITCH;
@@ -151,10 +151,10 @@ function cupKnock(ctx, out, t, vol, pitch) {
   const ng = ctx.createGain(); ng.gain.value = vol * 0.35;
   n.connect(bp).connect(ng).connect(out); n.start(t);
 }
-// カップイン：跳ねる間隔と音量がだんだん小さくなる
+// カップイン：「コン、コン、コンコンコンコン」（2回ゆっくり跳ねて、最後は細かく。音量はだんだん小さく）
 function cupInSound(ctx, t0) {
   const master = ctx.createGain(); master.gain.value = 0.9; master.connect(ctx.destination);
-  [[0, 1], [0.2, 0.62], [0.33, 0.42], [0.42, 0.28], [0.48, 0.18], [0.525, 0.12]]
+  [[0, 1], [0.34, 0.72], [0.64, 0.5], [0.77, 0.38], [0.89, 0.28], [1.0, 0.2]]
     .forEach(([dt, v], i) => cupKnock(ctx, master, t0 + dt, v, 1 - i * 0.03));
 }
 function playCupIn() {
