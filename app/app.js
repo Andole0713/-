@@ -118,14 +118,25 @@ function applyFontSize(size = local.get('atg-font-size') || 'm') {
 }
 applyFontSize();
 
-// 効果音（カップインの「コン、コン、コロコロ」）。音源ファイルは使わず、その場で合成する。アカウント画面で消せる
+// 効果音（カップイン）。sounds/cupin.mp3 を鳴らす（読み込めないときは合成した音）。アカウント画面で消せる
+const CUPIN_URL = './sounds/cupin.mp3';
 let audioCtx = null;
+let cupBuffer = null; let cupLoading = null;
+function loadCupIn() {
+  if (cupBuffer || cupLoading || !audioCtx) return cupLoading;
+  cupLoading = fetch(CUPIN_URL).then((r) => r.arrayBuffer())
+    .then((data) => new Promise((ok, ng) => audioCtx.decodeAudioData(data, ok, ng)))
+    .then((buf) => { cupBuffer = buf; })
+    .catch(() => {}).finally(() => { cupLoading = null; });
+  return cupLoading;
+}
 const soundOn = () => local.get('atg-sound') !== 'off';
 function unlockAudio() {
   if (!soundOn()) return;
   try {
     audioCtx ||= new (window.AudioContext || window.webkitAudioContext)();
     if (audioCtx.state === 'suspended') audioCtx.resume();
+    loadCupIn();
   } catch { audioCtx = null; }
 }
 // 音の高さ（1＝元の高さ。大きくするほど高い音）
@@ -157,10 +168,17 @@ function cupInSound(ctx, t0) {
   [[0, 1], [0.34, 0.72], [0.64, 0.5], [0.77, 0.38], [0.89, 0.28], [1.0, 0.2]]
     .forEach(([dt, v], i) => cupKnock(ctx, master, t0 + dt, v, 1 - i * 0.03));
 }
-function playCupIn() {
+async function playCupIn() {
   if (!soundOn()) return;
   unlockAudio();
-  if (audioCtx) try { cupInSound(audioCtx, audioCtx.currentTime + 0.05); } catch { /* 音が鳴らなくても続ける */ }
+  if (!audioCtx) return;
+  try {
+    if (!cupBuffer) await loadCupIn();
+    if (cupBuffer) {
+      const src = audioCtx.createBufferSource(); src.buffer = cupBuffer;
+      src.connect(audioCtx.destination); src.start();
+    } else cupInSound(audioCtx, audioCtx.currentTime + 0.05);
+  } catch { /* 音が鳴らなくても続ける */ }
 }
 
 // ホーム画面に追加（Android の Chrome などはボタンから追加できる。iPhone は共有メニューから）
