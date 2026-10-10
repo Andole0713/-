@@ -2904,6 +2904,10 @@ const actions = {
   },
   'sub-exempt': async (el) => {
     const on = el.dataset.on === '1';
+    const ok = await confirmDialog(on
+      ? { title: 'この動画を提出回数に数えないようにしますか？', body: '<p>会員の今月の提出回数が<b>1本戻り</b>、もう1本送れるようになります。動画とレッスンはそのまま残ります。</p>', ok: '1本戻す' }
+      : { title: 'この動画を提出回数に数えるように戻しますか？', body: '<p>会員の今月の提出回数が<b>1本増えます</b>。</p>', ok: '数えるように戻す' });
+    if (!ok) return;
     await must(sb.from('submissions').update({ quota_exempt: on }).eq('id', el.dataset.id));
     toast(on ? 'この動画を提出回数に数えないようにしました（1本戻りました）' : '提出回数に数えるように戻しました'); render();
   },
