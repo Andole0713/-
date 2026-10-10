@@ -923,3 +923,6 @@ a.next-action:hover{box-shadow:var(--shadow-lg)}
 .sub-item[open] .sub-open{transform:rotate(90deg)}
 .sub-body{padding:4px 0 12px}
 .sub-body .pre{margin:10px 0 0}
+.quota-line{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:6px 10px}
+.quota-line .btn-sm{margin:6px 0 0}
+.sub-body>.btn-sm{margin-top:10px}
