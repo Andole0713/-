@@ -42,7 +42,7 @@ const sb = configured ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
 const $app = document.getElementById('app');
 const $toast = document.getElementById('toast');
 
-const state = { session: null, profile: null, recovery: false, authTab: 'login', authMessage: '', unread: 0, drillUnread: 0, historyClub: '', adminPending: 0, adminMeetingTodo: 0, adminTodo: 0, meetingTab: 'upcoming' };
+const state = { session: null, profile: null, recovery: false, authTab: 'login', authMessage: '', unread: 0, drillUnread: 0, historyClub: '', adminPending: 0, adminMeetingTodo: 0, adminTodo: 0, meetingTab: 'upcoming', memberFilter: 'all' };
 let renderSeq = 0;
 
 // ---------- ユーティリティ ----------
@@ -111,6 +111,7 @@ function confirmDialog({ title, body, ok = '変更する' }) {
 const local = {
   get(key) { try { return localStorage.getItem(key); } catch { return null; } },
   set(key, value) { try { localStorage.setItem(key, value); } catch { /* noop */ } },
+  del(key) { try { localStorage.removeItem(key); } catch { /* noop */ } },
 };
 const FONT_SIZES = [['m', '標準'], ['l', '大きめ'], ['xl', '特大']];
 function applyFontSize(size = local.get('atg-font-size') || 'm') {
@@ -289,14 +290,19 @@ async function signedVideoUrls(subs) {
   return Object.fromEntries((data || []).filter((d) => d.signedUrl).map((d) => [d.path, d.signedUrl]));
 }
 
-function swingVideo(sub, urls) {
+function swingVideo(sub, urls, { tools = false } = {}) {
   if (!sub) return '';
   if (sub.video_deleted_at) return `<p class="muted small">保存期間（${RETENTION_LABEL}）を過ぎたため、動画は削除されました。</p>`;
   const url = urls[sub.video_path];
-  return url
-    ? `<video class="swing-video" src="${esc(url)}" controls playsinline preload="metadata"></video>`
-    : '<p class="muted small">動画を読み込めませんでした。ページを再読み込みしてください。</p>';
+  if (!url) return '<p class="muted small">動画を読み込めませんでした。ページを再読み込みしてください。</p>';
+  const video = `<video class="swing-video" src="${esc(url)}" controls playsinline preload="metadata"></video>`;
+  return tools ? `<div class="vid-wrap">${video}${videoTools()}</div>` : video;
 }
+// スタッフ用：スロー再生とコマ送り（1コマ＝1/30秒）
+const videoTools = () => `<div class="vid-tools" role="group" aria-label="再生の速さとコマ送り">
+    <span class="vt-group">${[[0.25, '¼'], [0.5, '½'], [1, '等速']].map(([r, l]) => `<button type="button" data-action="vid-rate" data-rate="${r}" aria-pressed="${r === 1}" class="${r === 1 ? 'on' : ''}">${l}</button>`).join('')}</span>
+    <span class="vt-group"><button type="button" data-action="vid-step" data-dir="-1" aria-label="1コマ戻す">◀ コマ</button><button type="button" data-action="vid-step" data-dir="1" aria-label="1コマ進める">コマ ▶</button></span>
+  </div>`;
 
 // ---------- ドリル動画（コーチが作る「ドリル集」。契約中はずっと見られる） ----------
 const DRILL_BUCKET = 'drill-videos';
@@ -708,6 +714,27 @@ function viewPlans() {
 
 // ---------- 画面：会員 ----------
 
+// ホームの一番上に出す「次にやること」（そのときいちばん大事なことを1つだけ）
+function nextAction({ latest, rmNow, practicedToday, quota, monthSubs, pending, tasks, done }) {
+  const p = state.profile;
+  const meetSoon = p.next_meeting_at && new Date(p.next_meeting_at).getTime() > Date.now() - 2 * 3600000 && new Date(p.next_meeting_at).getTime() < Date.now() + 36 * 3600000;
+  const left = quota ? quota - monthSubs.length : 0;
+  const card = (icon, title, sub, href, btn) => {
+    const body = `<span class="na-ico" aria-hidden="true">${icon}</span>
+      <span class="na-body"><span class="na-eyebrow">次にやること</span><b>${title}</b>${sub ? `<small>${sub}</small>` : ''}</span>`;
+    return href ? `<a class="next-action" href="${href}">${body}<span class="na-btn">${btn} <i aria-hidden="true">›</i></span></a>`
+      : `<div class="next-action">${body}</div>`;
+  };
+  if (state.handoff) return card('📹', 'SwingFrame で撮った動画を送りましょう', 'このままコーチに送れます', '#/submit/swingframe', '送る');
+  if (latest && !latest.read_at) return card('✉', '新しいレッスンが届いています', `「${esc(latest.title)}」`, `#/lesson/${latest.id}`, '見る');
+  if (rmNow && !rmNow.seen_at) return card('🎯', '今月のドリルが公開されました', esc(rmNow.theme || rmNow.drills?.title || ''), '#/drills', '見る');
+  if (meetSoon) return card('◷', `面談は ${esc(fmtShort(p.next_meeting_at))} からです`, '聞きたいことをメモしておくとスムーズです');
+  if (quota && left > 0 && !pending.length) return card('●', `今月はあと ${left} 本 動画を送れます`, '撮影して、そのままコーチに送れます', SWINGFRAME_URL, '撮影する');
+  if (rmNow && !practicedToday) return card('✓', '今日の練習を記録しましょう', `今月のドリル：${esc(rmNow.drills?.title || rmNow.theme || '')}`, '#/drills', '記録する');
+  if (tasks.length && done < tasks.length) return card('☐', `今月の課題があと ${tasks.length - done} 件あります`, '下の「今月の課題」で、終わったらタップしてチェック');
+  return card('⛳', 'ラウンドしたらスコアを記録しましょう', 'ベスト・平均が自動で計算されます', '#/scores', '記録する');
+}
+
 async function viewMemberHome() {
   const p = state.profile;
   const since = monthStart();
@@ -728,7 +755,9 @@ async function viewMemberHome() {
   const st = scoreStats(rounds, p);
   const rmOpened = roadmap.filter(rmOpen);
   const rmNow = rmOpened[rmOpened.length - 1];
-  const rmDays = rmNow ? (await must(sb.from('roadmap_practice').select('practiced_on').eq('item_id', rmNow.id))).length : 0;
+  const rmPractice = rmNow ? await must(sb.from('roadmap_practice').select('practiced_on').eq('item_id', rmNow.id)) : [];
+  const rmDays = rmPractice.length;
+  const practicedToday = rmPractice.some((x) => x.practiced_on === today());
   const latest = lessons[0];
   const done = tasks.filter((t) => t.done).length;
   const plan = planOf(p.plan);
@@ -737,8 +766,7 @@ async function viewMemberHome() {
   return header('マイページ') + `<div class="content wide"><div class="cols">
   <div class="col-main">
     <div class="blk" style="--o:1">
-    ${state.handoff ? `<a class="handoff-banner" href="#/submit/swingframe"><span class="ico" aria-hidden="true">📹</span>
-        <span><b>SwingFrame で撮った動画があります</b><small>このままコーチに送れます</small></span><i aria-hidden="true">›</i></a>` : ''}
+    ${nextAction({ latest, rmNow, practicedToday, quota, monthSubs, pending: subs, tasks, done })}
     </div>
     <div class="blk" style="--o:2">
     <div class="hero">${plan ? `<span class="pill">${esc(plan.name)}</span>` : ''}
@@ -849,8 +877,8 @@ async function viewSubmit() {
       <video id="video-preview" class="swing-video${state.handoff ? '' : ' hidden'}" controls playsinline muted${state.handoff ? ` src="${URL.createObjectURL(state.handoff.blob)}"` : ''}></video>
       <div class="grid">
         <div><label for="club">クラブ</label><select id="club" name="club">
-          ${(myClubs.length ? [...myClubs, 'その他'] : DEFAULT_CLUB_OPTIONS).map((c) => `<option>${esc(c)}</option>`).join('')}</select></div>
-        <div><label for="angle">撮影方向</label><select id="angle" name="angle"><option>正面</option><option>後方</option><option>その他</option></select></div>
+          ${(myClubs.length ? [...myClubs, 'その他'] : DEFAULT_CLUB_OPTIONS).map((c) => `<option${c === local.get('atg-last-club') ? ' selected' : ''}>${esc(c)}</option>`).join('')}</select></div>
+        <div><label for="angle">撮影方向</label><select id="angle" name="angle">${['正面', '後方', 'その他'].map((a) => `<option${a === local.get('atg-last-angle') ? ' selected' : ''}>${a}</option>`).join('')}</select></div>
       </div>
       ${myClubs.length
         ? '<p class="muted small" style="margin:8px 0 0">クラブはMyクラブセッティングから表示しています。<a href="#/account/clubs">変更する</a></p>'
@@ -1759,7 +1787,7 @@ async function viewInbox() {
         <div class="between"><div><b>${esc(s.profiles?.name || '（名前未設定）')}</b> <span class="pill">${esc(planLabel(s.profiles?.plan))}</span></div>
           <span class="muted">${fmtDate(s.created_at)}</span></div>
         <div class="muted">${esc(s.club)} / ${esc(s.angle)}　<b class="due ${replyDue(s.created_at).cls}">${replyDue(s.created_at).text}</b></div>
-        ${swingVideo(s, urls)}
+        ${swingVideo(s, urls, { tools: true })}
         ${s.question ? `<p class="pre">${esc(s.question)}</p>` : ''}
         <div class="row" style="margin-top:10px">
           <a class="btn grow" href="#/admin/lesson/new/s/${s.id}">レッスンを書く</a>
@@ -1768,6 +1796,18 @@ async function viewInbox() {
         <a class="muted small" href="#/admin/member/${s.member_id}">会員ページを見る</a>
       </div>`).join('') + '</div>' : '<div class="empty">確認待ちの動画はありません 🎉</div>'}
   </div>` + adminNav('admin/inbox');
+}
+
+// 会員一覧の絞り込み（検索の文字＋「契約中」などのボタン）
+function applyMemberFilter() {
+  const q = (document.getElementById('member-search')?.value || '').trim().toLowerCase();
+  const k = state.memberFilter;
+  let n = 0;
+  document.querySelectorAll('#member-list [data-search]').forEach((a) => {
+    const show = (!q || a.dataset.search.includes(q)) && (k === 'all' || (k === 'todo' ? a.dataset.todo === '1' : a.dataset.kind === k));
+    a.classList.toggle('hidden', !show); if (show) n++;
+  });
+  const c = document.getElementById('member-count'); if (c) c.textContent = `${n} 名を表示中`;
 }
 
 async function viewMembers() {
@@ -1789,10 +1829,15 @@ async function viewMembers() {
     if (!isActive(m) && daysAgo(m.created_at) <= 30) f.push('<span class="flag blue">新規登録</span>');
     return f.length ? `<div class="flags">${f.join('')}</div>` : '';
   };
+  const needs = (m) => /flag (red|yellow)/.test(flags(m));
+  const people = members.filter((m) => m.role !== 'admin');
+  const counts = { all: members.length, active: people.filter(isActive).length, inactive: people.filter((m) => !isActive(m)).length, todo: people.filter(needs).length };
+  const chip = (k, label) => `<button type="button" data-action="member-filter" data-filter="${k}" class="${state.memberFilter === k ? 'on' : ''}" aria-pressed="${state.memberFilter === k}">${label}<em>${counts[k]}</em></button>`;
   return header('会員一覧') + `<div class="content wide">
     <div class="form"><input type="search" id="member-search" placeholder="名前・メールで検索" data-action="filter-members"></div>
-    <p class="muted">${members.filter((m) => isActive(m)).length} 名が契約中 / 全 ${members.length} 名</p>
-    <div id="member-list">${members.map((m) => `<a class="card link" href="#/admin/member/${m.id}" data-search="${esc(`${m.name} ${m.email}`.toLowerCase())}">
+    <div class="filter-chips member-chips" role="group" aria-label="会員の絞り込み">${chip('all', '全員')}${chip('active', '契約中')}${chip('inactive', '未契約')}${chip('todo', '対応が必要')}</div>
+    <p class="muted" id="member-count"></p>
+    <div id="member-list">${members.map((m) => `<a class="card link" href="#/admin/member/${m.id}" data-search="${esc(`${m.name} ${m.email}`.toLowerCase())}" data-kind="${m.role === 'admin' ? 'admin' : isActive(m) ? 'active' : 'inactive'}" data-todo="${m.role !== 'admin' && needs(m) ? 1 : 0}">
         <div class="between"><div><b>${esc(m.name || '（名前未設定）')}</b>${m.role === 'admin' ? ' <span class="pill">ADMIN</span>' : ''}
           <div class="muted">${esc(m.email)}</div></div>
           <div style="text-align:right">${m.role === 'admin' ? '' : memberPill(m)}<div class="muted">${esc(planLabel(m.plan))}</div></div></div>
@@ -2187,6 +2232,52 @@ async function viewReport(ym) {
 }
 
 // 新規（提出動画から / 会員から）または既存レッスンの編集
+// レッスンの書きかけ（この端末に自動で保存。公開・更新したら消す）
+const LESSON_FIELDS = ['lesson_date', 'title', 'point', 'feedback', 'practice', 'video_url'];
+const lessonDraftKey = ({ id, submission, member }) => `atg-draft:lesson:${id || (submission ? `s:${submission}` : `m:${member}`)}`;
+const readDraft = (key) => { try { return JSON.parse(local.get(key) || 'null'); } catch { return null; } };
+let draftTimer;
+function saveLessonDraft(f) {
+  clearTimeout(draftTimer);
+  draftTimer = setTimeout(() => {
+    const d = { at: new Date().toISOString() };
+    LESSON_FIELDS.forEach((n) => { d[n] = f.elements[n]?.value ?? ''; });
+    local.set(lessonDraftKey(f.dataset), JSON.stringify(d));
+    const st = document.getElementById('draft-status');
+    if (st) st.textContent = `書きかけを自動保存しました（${new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}）`;
+  }, 500);
+}
+
+// レッスン作成画面の横に出す、その会員の情報（前回までのレッスン・ドリル・カルテ・メモ・スコア・課題）
+async function memberBrief(memberId, name, exceptLesson) {
+  const [past, karte, roadmap, notes, rounds, tasks] = await Promise.all([
+    must(sb.from('lessons').select('id, lesson_date, title, point, practice, read_at').eq('member_id', memberId).order('lesson_date', { ascending: false }).order('created_at', { ascending: false }).limit(4)),
+    sb.from('member_karte').select('*').eq('member_id', memberId).maybeSingle().then((r) => r.data),
+    must(sb.from('roadmap_items').select('publish_on, theme, hidden, drills(title)').eq('member_id', memberId).order('publish_on')),
+    sb.from('staff_notes').select('body, created_at').eq('member_id', memberId).eq('pinned', true).order('created_at', { ascending: false }).then((r) => r.data || []),
+    must(sb.from('rounds').select('played_on, score, holes, course_name').eq('member_id', memberId).order('played_on', { ascending: false })),
+    must(sb.from('tasks').select('title, detail, done').eq('member_id', memberId).order('sort_order')),
+  ]);
+  const lessons = past.filter((l) => l.id !== exceptLesson).slice(0, 3);
+  const nowItem = roadmap.filter((r) => !r.hidden && r.publish_on <= today()).at(-1);
+  const nextItem = roadmap.find((r) => r.publish_on > today());
+  const st = scoreStats(rounds, {});
+  const sec = (title, inner) => (inner ? `<div class="mb-sec"><h4>${title}</h4>${inner}</div>` : '');
+  const karteRows = ['goals', 'issues', 'body_notes'].map((n) => KARTE_FIELDS.find((k) => k[0] === n)).filter(([n]) => karte?.[n])
+    .map(([n, label]) => `<p><span>${label}</span>${esc(karte[n])}</p>`).join('');
+  const open = window.innerWidth >= 960 ? ' open' : '';
+  return `<details class="card member-brief"${open}><summary><b>${esc(name || '')} さんの情報</b><span class="muted small">書くときの参考に</span></summary>
+    ${sec('前回までのレッスン', lessons.map((l) => `<div class="mb-lesson"><div class="between"><b>${fmtDate(l.lesson_date)}　${esc(l.title)}</b><a class="muted small" href="#/admin/lesson/${l.id}">開く</a></div>
+      ${l.point ? `<p>ポイント：${esc(l.point)}</p>` : ''}${l.practice ? `<p class="pre muted">${esc(l.practice.split('\n').slice(0, 3).join('\n'))}</p>` : ''}</div>`).join('') || '<p class="muted">まだありません</p>')}
+    ${sec('ドリル', nowItem || nextItem ? `${nowItem ? `<p><span>今月</span>${esc(nowItem.drills?.title || nowItem.theme || '未定')}</p>` : ''}${nextItem ? `<p><span>次（${fmtMD(nextItem.publish_on)}）</span>${esc(nextItem.drills?.title || nextItem.theme || '未定')}</p>` : ''}` : '')}
+    ${sec('カウンセリングシート', karteRows)}
+    ${sec('担当者メモ（固定）', notes.map((n) => `<p class="pre">📌 ${esc(n.body)}</p>`).join(''))}
+    ${sec('スコア', st.count ? `<p>ベスト <b>${st.best}</b>・平均 <b>${st.avg}</b>（${st.count}R）</p>${rounds.slice(0, 3).map((r) => `<p class="muted">${fmtDate(r.played_on)} ${esc(r.course_name)} ${r.score}${r.holes === 9 ? '（9H）' : ''}</p>`).join('')}` : '')}
+    ${sec('今月の課題', tasks.map((t) => `<p>${t.done ? '✅' : '⬜️'} ${esc(t.title)} <span class="muted">${esc(t.detail)}</span></p>`).join(''))}
+    <a class="muted small" href="#/admin/member/${memberId}">会員ページを開く ›</a>
+  </details>`;
+}
+
 async function viewLessonForm(route) {
   let lesson = { lesson_date: today(), title: '', point: '', feedback: '', practice: '', video_url: '' };
   let memberId; let submission = null;
@@ -2212,10 +2303,21 @@ async function viewLessonForm(route) {
   lessonTemplates = tpls;
   const pickedIds = new Set(picked.map((x) => x.drill_id));
   const back = `admin/member/${memberId}`;
-  return header(lesson.id ? 'レッスン編集' : 'レッスン作成', back) + `<div class="content">
+  // 書きかけがあれば復元する
+  const dKey = lessonDraftKey({ id: lesson.id, submission: submission?.id, member: memberId });
+  const draft = readDraft(dKey);
+  const restored = draft && LESSON_FIELDS.some((n) => (draft[n] ?? '') !== (lesson[n] ?? ''));
+  if (restored) LESSON_FIELDS.forEach((n) => { lesson[n] = draft[n] ?? lesson[n]; });
+  else if (draft) local.del(dKey);
+  const brief = await memberBrief(memberId, member?.name, lesson.id);
+  return header(lesson.id ? 'レッスン編集' : 'レッスン作成', back) + `<div class="content wide"><div class="cols"><div class="col-main">
+    <div class="blk" style="--o:0">
     <div class="between"><div class="muted">会員：<b>${esc(member?.name || '')}</b></div><a class="muted small" href="#/admin/templates">テンプレートを管理 ›</a></div>
-    ${submission ? `<div class="card"><b>提出動画</b>（${esc(submission.club)} / ${esc(submission.angle)}）${swingVideo(submission, urls)}
+    ${restored ? `<div class="notice draft-notice">📝 ${esc(fmtShort(draft.at))} の書きかけを復元しました。<button type="button" class="link" data-action="draft-discard" data-key="${esc(dKey)}">書きかけを捨てて元に戻す</button></div>` : ''}
+    ${submission ? `<div class="card"><b>提出動画</b>（${esc(submission.club)} / ${esc(submission.angle)}）${swingVideo(submission, urls, { tools: true })}
         ${submission.question ? `<p class="pre">${esc(submission.question)}</p>` : ''}</div>` : ''}
+    </div>
+    <div class="blk" style="--o:2">
     <form class="card form" data-form="lesson" data-id="${esc(lesson.id || '')}" data-member="${esc(memberId)}" data-submission="${esc(submission?.id || '')}">
       <label for="lesson_date">日付</label><input id="lesson_date" name="lesson_date" type="date" value="${esc(lesson.lesson_date)}" required>
       <label for="title">タイトル</label><input id="title" name="title" value="${esc(lesson.title)}" maxlength="100" placeholder="例：ドライバーの右プッシュ" required>
@@ -2235,13 +2337,32 @@ async function viewLessonForm(route) {
         <details class="add-drill"><summary>＋ 新しいドリルを登録して付ける</summary>${drillFields('ld_')}</details>
       </fieldset>
       ${lesson.id ? '' : '<label class="switch"><input type="checkbox" name="notify" checked><span>会員にメールでお知らせする</span></label>'}
+      <p class="muted small draft-status" id="draft-status" aria-live="polite">入力した内容は、この端末に自動で保存されます</p>
       <button class="btn-block" type="submit">${lesson.id ? '更新する' : '保存して会員に公開する'}</button>
     </form>
     ${lesson.id ? `<button class="btn-block btn-danger" data-action="delete-lesson" data-id="${lesson.id}" data-member="${esc(memberId)}">このレッスンを削除</button>` : ''}
-  </div>` + adminNav('admin/inbox');
+    </div>
+  </div><div class="col-side"><div class="blk" style="--o:1">${brief}</div></div></div></div>` + adminNav('admin/inbox');
 }
 
 // ---------- ルーティング ----------
+
+// 画面の位置を覚えておく：戻る・進むで来たときは前の位置へ、同じ画面の更新ではそのまま、新しい画面は一番上から
+try { history.scrollRestoration = 'manual'; } catch { /* 何もしない */ }
+let navIdx = -1; let navMax = 0; const scrollMem = {};
+window.addEventListener('scroll', () => { if (navIdx >= 0) scrollMem[navIdx] = window.scrollY; }, { passive: true });
+function navScrollTarget() {
+  const st = history.state;
+  if (st && typeof st.nav === 'number') {
+    navMax = Math.max(navMax, st.nav);
+    if (st.nav === navIdx) return null; // 同じ画面の描き直し
+    navIdx = st.nav;
+    return scrollMem[navIdx] ?? 0; // 戻る・進む
+  }
+  navIdx = ++navMax;
+  try { history.replaceState({ ...(st || {}), nav: navIdx }, ''); } catch { /* 何もしない */ }
+  return 0;
+}
 
 async function render() {
   const seq = ++renderSeq;
@@ -2250,7 +2371,9 @@ async function render() {
     document.body.classList.toggle('on-auth', html.startsWith('<div class="auth-page">'));
     // パソコンでは下部メニューを左側のサイドメニューにするため、メニューがある画面かどうかを付けておく
     document.body.classList.toggle('with-nav', html.includes('<nav class="nav"'));
-    $app.innerHTML = html; window.scrollTo(0, 0);
+    const y = navScrollTarget();
+    $app.innerHTML = html;
+    if (y !== null) window.scrollTo(0, y);
   };
   try {
     if (!configured) return paint(viewAuth());
@@ -2276,7 +2399,7 @@ async function render() {
       if (r[1] === 'prep' && r[2]) return paint(await viewMeetingPrep(r[2]));
       if (r[1] === 'report') return paint(await viewReport(r[2]));
       if (r[1] === 'templates') return paint(await viewTemplates());
-      if (r[1] === 'members') return paint(await viewMembers());
+      if (r[1] === 'members') { paint(await viewMembers()); applyMemberFilter(); return; }
       if (r[1] === 'drills') return paint(await viewDrills());
       if (r[1] === 'drill' && r[2]) return paint(await viewDrillDetail(r[2]));
       if (r[1] === 'roadmap' && r[2]) return paint(await viewRoadmapEdit(r[2]));
@@ -2668,6 +2791,22 @@ const actions = {
     await must(sb.from('drills').delete().eq('id', el.dataset.id));
     toast('ドリルを削除しました'); go('admin/drills');
   },
+  'vid-rate': (el) => {
+    const v = el.closest('.vid-wrap').querySelector('video');
+    v.playbackRate = Number(el.dataset.rate);
+    el.parentElement.querySelectorAll('button').forEach((b) => { const on = b === el; b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on)); });
+  },
+  'vid-step': (el) => {
+    const v = el.closest('.vid-wrap').querySelector('video');
+    v.pause();
+    v.currentTime = Math.max(0, Math.min(v.duration || 0, v.currentTime + Number(el.dataset.dir) / 30));
+  },
+  'member-filter': (el) => {
+    state.memberFilter = el.dataset.filter;
+    document.querySelectorAll('[data-action="member-filter"]').forEach((b) => { const on = b === el; b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on)); });
+    applyMemberFilter();
+  },
+  'draft-discard': (el) => { local.del(el.dataset.key); toast('書きかけを捨てました'); render(); },
   'delete-lesson': async (el) => {
     if (!confirm('このレッスンを削除します。よろしいですか？')) return;
     await must(sb.from('lessons').delete().eq('id', el.dataset.id));
@@ -2781,6 +2920,7 @@ const forms = {
       window.removeEventListener('beforeunload', leaveGuard);
     }
     if (h && !f.video.files[0]) await clearHandoff();
+    local.set('atg-last-club', f.club.value); local.set('atg-last-angle', f.angle.value); // 次回も同じものを最初から選んでおく
     playCupIn();
     toast('⛳ 動画を送信しました。コーチからの解説をお待ちください。');
     go('home');
@@ -2909,6 +3049,7 @@ const forms = {
       await must(sb.from('lesson_drills').delete().eq('lesson_id', lessonId));
       if (drillIds.length) await must(sb.from('lesson_drills').insert(drillIds.map((drill_id, i) => ({ lesson_id: lessonId, drill_id, sort_order: i }))));
     };
+    local.del(lessonDraftKey(f.dataset));
     let notice = 'レッスンを保存しました';
     if (f.dataset.id) {
       await must(sb.from('lessons').update(row).eq('id', f.dataset.id));
@@ -2963,14 +3104,15 @@ document.addEventListener('input', (ev) => {
   const rmRowEl = ev.target.closest('form[data-form="roadmap"] [data-row]');
   if (rmRowEl) { rmDirty(); rmRefresh(rmRowEl); } else if (ev.target.closest('form[data-form="roadmap"]')) rmDirty();
   if (ev.target.dataset.action === 'filter-drills') { applyDrillFilter(); return; }
+  const lessonForm = ev.target.closest('form[data-form="lesson"]');
+  if (lessonForm && LESSON_FIELDS.includes(ev.target.name)) { saveLessonDraft(lessonForm); return; }
   if (ev.target.matches('[data-member-search]')) {
     const sel = ev.target.parentElement.querySelector('select[name="member_id"]');
     sel.innerHTML = memberOptionsHtml(meetingMembers, sel.value, ev.target.value);
     return;
   }
   if (ev.target.dataset.action !== 'filter-members') return;
-  const q = ev.target.value.trim().toLowerCase();
-  document.querySelectorAll('#member-list [data-search]').forEach((a) => a.classList.toggle('hidden', q && !a.dataset.search.includes(q)));
+  applyMemberFilter();
 });
 
 document.addEventListener('submit', async (ev) => {
@@ -3005,6 +3147,7 @@ document.addEventListener('change', (ev) => {
       const pad = before && !before.endsWith('\n') ? '\n' : '';
       box.setRangeText(pad + t.body, at, at, 'end');
     }
+    box.dispatchEvent(new Event('input', { bubbles: true })); // 書きかけとして保存する
     box.focus();
     return;
   }
