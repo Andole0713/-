@@ -290,12 +290,12 @@ async function signedVideoUrls(subs) {
   return Object.fromEntries((data || []).filter((d) => d.signedUrl).map((d) => [d.path, d.signedUrl]));
 }
 
-function swingVideo(sub, urls, { tools = false } = {}) {
+function swingVideo(sub, urls, { tools = false, preload = 'metadata' } = {}) {
   if (!sub) return '';
   if (sub.video_deleted_at) return `<p class="muted small">保存期間（${RETENTION_LABEL}）を過ぎたため、動画は削除されました。</p>`;
   const url = urls[sub.video_path];
   if (!url) return '<p class="muted small">動画を読み込めませんでした。ページを再読み込みしてください。</p>';
-  const video = `<video class="swing-video" src="${esc(url)}" controls playsinline preload="metadata"></video>`;
+  const video = `<video class="swing-video" src="${esc(url)}" controls playsinline preload="${preload}"></video>`;
   return tools ? `<div class="vid-wrap">${video}${videoTools()}</div>` : video;
 }
 // スタッフ用：スロー再生とコマ送り（1コマ＝1/30秒）
@@ -1865,7 +1865,7 @@ async function viewMemberDetail(id) {
   const [m, tasks, lessons, subs, monthSubs, roadmap] = await Promise.all([
     must(sb.from('profiles').select('*').eq('id', id).maybeSingle()),
     must(sb.from('tasks').select('*').eq('member_id', id).order('sort_order').order('created_at')),
-    must(sb.from('lessons').select('id, lesson_date, title, created_at, read_at').eq('member_id', id).order('lesson_date', { ascending: false }).order('created_at', { ascending: false })),
+    must(sb.from('lessons').select('id, lesson_date, title, created_at, read_at, submission_id').eq('member_id', id).order('lesson_date', { ascending: false }).order('created_at', { ascending: false })),
     must(sb.from('submissions').select('*').eq('member_id', id).order('created_at', { ascending: false }).limit(20)),
     must(sb.from('submissions').select('id').eq('member_id', id).gte('created_at', monthStart())),
     must(sb.from('roadmap_items').select('id, publish_on, theme, published_at, hidden, seen_at, drills(title)').eq('member_id', id).order('publish_on')),
@@ -1883,6 +1883,7 @@ async function viewMemberDetail(id) {
     sb.from('member_karte').select('*').eq('member_id', id).maybeSingle().then((r) => r.data),
   ]);
   const mst = scoreStats(mRounds, m || {});
+  const subUrls = await signedVideoUrls(subs.filter((x) => !x.video_deleted_at)).catch(() => ({}));
   if (!m) return header('会員詳細', 'admin/members') + '<div class="content"><div class="empty">会員が見つかりません</div></div>';
   const self = m.id === state.profile.id;
   return header(m.name || '会員詳細', 'admin/members') + `<div class="content wide"><div class="cols"><div class="col-main">
@@ -1984,10 +1985,17 @@ async function viewMemberDetail(id) {
           ${l.read_at ? `<span class="pill ok">既読 ${fmtMD(l.read_at.slice(0, 10))}</span>` : `<span class="pill ${daysAgo(l.created_at) >= UNREAD_DAYS ? 'warn' : 'mute'}">未読${daysAgo(l.created_at) >= 1 ? `（${daysAgo(l.created_at)}日）` : ''}</span>`}</div>
         <a class="btn btn-sm btn-sub" href="#/admin/lesson/${l.id}">編集</a></div>`).join('') || '<div class="muted">レッスンはまだありません</div>'}</div>
 
-    <div class="section-title"><h2>提出動画</h2></div>
-    <div class="card">${subs.map((s) => `<div class="list-item"><div>${fmtDate(s.created_at)}　${esc(s.club)} / ${esc(s.angle)}</div>
+    <div class="section-title"><h2>提出動画</h2><span class="muted small">押すと動画が見られます</span></div>
+    <div class="card">${subs.map((s) => {
+      const sl = lessons.filter((l) => l.submission_id === s.id);
+      return `<details class="sub-item"><summary class="list-item"><div><span class="sub-open" aria-hidden="true">▶</span>${fmtDate(s.created_at)}　${esc(s.club)} / ${esc(s.angle)}</div>
         ${s.status === 'pending' ? `<span class="row" style="gap:6px">${s.cancel_requested_at ? '<span class="pill bad">取り消し依頼</span>' : ''}<a class="btn btn-sm" href="#/admin/lesson/new/s/${s.id}">レッスンを書く</a>
-          <button type="button" class="btn-sm btn-danger" data-action="sub-delete" data-id="${s.id}" data-path="${esc(s.video_deleted_at ? '' : s.video_path)}" data-label="${esc(`${fmtDate(s.created_at)} ${s.club} / ${s.angle}`)}">削除</button></span>` : '<span class="pill ok">対応済み</span>'}</div>`).join('') || '<div class="muted">提出はまだありません</div>'}</div>
+          <button type="button" class="btn-sm btn-danger" data-action="sub-delete" data-id="${s.id}" data-path="${esc(s.video_deleted_at ? '' : s.video_path)}" data-label="${esc(`${fmtDate(s.created_at)} ${s.club} / ${s.angle}`)}">削除</button></span>` : '<span class="pill ok">対応済み</span>'}</summary>
+        <div class="sub-body">${swingVideo(s, subUrls, { tools: true, preload: 'none' })}
+          ${s.question ? `<p class="pre"><span class="muted small">お悩み・質問</span><br>${esc(s.question)}</p>` : ''}
+          ${sl.length ? `<p class="small">この動画のレッスン：${sl.map((l) => `<a href="#/admin/lesson/${l.id}">${fmtDate(l.lesson_date)}「${esc(l.title)}」</a>`).join('、')}</p>` : ''}</div>
+      </details>`;
+    }).join('') || '<div class="muted">提出はまだありません</div>'}</div>
   </div></div>
   </div>` + adminNav('admin/members');
 }

@@ -915,3 +915,11 @@ a.next-action:hover{box-shadow:var(--shadow-lg)}
 .cancel-ask p{margin:6px 0 0}
 .cancel-box .link{display:inline;margin-left:8px;padding:0;width:auto}
 .cancel-box .row .btn{margin:0}
+
+/* 会員詳細：提出動画を開いて見る */
+.sub-item>summary{cursor:pointer;list-style:none}
+.sub-item>summary::-webkit-details-marker{display:none}
+.sub-open{display:inline-block;width:18px;color:var(--gold);font-size:11px;transition:transform .15s}
+.sub-item[open] .sub-open{transform:rotate(90deg)}
+.sub-body{padding:4px 0 12px}
+.sub-body .pre{margin:10px 0 0}
