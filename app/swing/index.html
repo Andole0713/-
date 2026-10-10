@@ -12,6 +12,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600&family=Noto+Sans+JP:wght@400;700&display=swap" rel="stylesheet">
 <!-- 会員ページと同じアプリとしてホーム画面に追加されるよう、マニフェストを共有する -->
 <link rel="manifest" href="../manifest.webmanifest">
+<script>try{sessionStorage.setItem('atg-session','1')}catch(e){}</script>
 <link rel="apple-touch-icon" href="../../assets/apple-touch-icon.png">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="SwingFrame">
@@ -364,7 +365,7 @@ a.hbtn{text-decoration:none;color:inherit;box-sizing:border-box}
       <h1>SwingFrame</h1>
       <p>スイング撮影・スイング分析</p>
       <!-- 表示用の版数。sw.js の CACHE と必ずそろえること（片方だけ上げると更新に気づけません） -->
-      <div id="hVer">v38</div>
+      <div id="hVer">v39</div>
     </div>
     <button class="hbtn pri" id="hShoot"><i>●</i><span>スイングを撮影<em>ガイドに合わせて自動で録画</em></span></button>
     <button class="hbtn" id="hLib"><i>▤</i><span>ライブラリ<em id="hLibSub">保存した動画と画像</em></span></button>
