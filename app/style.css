@@ -908,3 +908,10 @@ a.next-action:hover{box-shadow:var(--shadow-lg)}
 .draft-notice .link{display:inline;margin-left:6px;padding:0;width:auto}
 .draft-status{margin:14px 0 0}
 .member-chips{margin:4px 0 6px}
+
+/* 間違えて送った動画の取り消し依頼 */
+.cancel-ask{margin:14px 0 0;text-align:center}
+.cancel-ask .btn-sm{margin:0}
+.cancel-ask p{margin:6px 0 0}
+.cancel-box .link{display:inline;margin-left:8px;padding:0;width:auto}
+.cancel-box .row .btn{margin:0}

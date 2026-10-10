@@ -799,7 +799,8 @@ async function viewMemberHome() {
         ${practiceProgress(latest)}
         <span class="go">レッスンを見る <i aria-hidden="true">›</i></span></a>`
       : '<div class="empty">まだレッスンはありません。まずは動画を送りましょう。</div>'}
-    ${subs.length ? `<div class="notice">確認待ちの動画が ${subs.length} 件あります。コーチからのレッスンをお待ちください。</div>` : ''}
+    ${subs.length ? `<div class="notice">確認待ちの動画が ${subs.length} 件あります。コーチからのレッスンをお待ちください。
+        <a href="#/submission/${subs[0].id}">間違えて送った場合はこちら</a></div>` : ''}
     <a class="btn btn-block btn-gold" href="#/submit">スイング動画を送る</a>
     </div>
   </div>
@@ -1079,6 +1080,11 @@ async function viewSubmission(id) {
       <div class="list-item"><span class="muted">保存期限</span><span>${deleted ? '終了' : `${fmtDate(expiry.toISOString())}（あと${daysLeft(expiry)}日）`}</span></div>
     </div>
     ${sub.question ? `<div class="card"><b>送ったお悩み・質問</b><p class="pre" style="margin:6px 0 0">${esc(sub.question)}</p></div>` : ''}
+    ${sub.status !== 'pending' ? '' : sub.cancel_requested_at
+      ? `<div class="notice cancel-box"><b>取り消しを依頼中です</b>（${esc(fmtShort(sub.cancel_requested_at))}）<br>コーチが確認して削除すると、今月送れる本数が1本戻ります。
+          <button type="button" class="link" data-action="sub-cancel-withdraw" data-id="${sub.id}">依頼をやめる</button></div>`
+      : `<div class="cancel-ask"><button type="button" class="btn-sm btn-sub" data-action="sub-cancel-request" data-id="${sub.id}">間違えて送った場合（取り消しを依頼）</button>
+          <p class="muted small">コーチが確認する前なら取り消せます。削除されると、今月送れる本数が1本戻ります。</p></div>`}
     <div class="section-title"><div><div class="eyebrow">Coach</div><h2>この動画への解説</h2></div></div>
     ${lessons.length ? lessons.map(lessonCard).join('')
       : '<div class="pair-wait"><span class="dot" aria-hidden="true"></span>コーチが確認中です。解説が届くと、ここと「履歴」に表示され、メールでもお知らせします。</div>'}
@@ -1463,6 +1469,9 @@ function findCelebrations(rounds, people, acked = new Set(), days = 14) {
   }
   return out.sort((a, b) => (a.r.created_at < b.r.created_at ? 1 : -1));
 }
+// 取り消し依頼への対応ボタン（削除する／断る）
+const subCancelButtons = (x) => `<button type="button" class="btn btn-sm btn-danger" data-action="sub-delete" data-id="${x.id}" data-path="${esc(x.video_deleted_at ? '' : x.video_path)}" data-label="${esc(`${x.profiles?.name || ''}さん ${fmtDate(x.created_at)} ${x.club} / ${x.angle}`)}">削除する</button>
+  <button type="button" class="btn btn-sm btn-sub" data-action="sub-cancel-reject" data-id="${x.id}">削除しない</button>`;
 const memberLink = (id, name) => `<a href="#/admin/member/${id}">${esc(name || '（名前未設定）')}</a>`;
 
 // メニューの件数（確認待ちの動画・結果未入力の面談）
@@ -1480,7 +1489,7 @@ async function viewDashboard() {
   const today0 = new Date(); today0.setHours(0, 0, 0, 0);
   const [members, pending, meetings, rmSoon, rmAll, subs30, practice30, rounds30, refs7, rounds18, acks, unread] = await Promise.all([
     must(sb.from('profiles').select('id, name, email, role, plan, subscription_status, access_until, current_period_end, created_at, best_score, avg_score').order('created_at', { ascending: false })),
-    must(sb.from('submissions').select('id, created_at, club, angle, member_id, profiles(name)').eq('status', 'pending').order('created_at')),
+    must(sb.from('submissions').select('*, profiles(name)').eq('status', 'pending').order('created_at')),
     must(sb.from('meetings').select('id, member_id, scheduled_at, duration_min, status, profiles(name)').gte('scheduled_at', isoDaysFrom(-45)).order('scheduled_at')),
     must(sb.from('roadmap_items').select('id, member_id, publish_on, theme, profiles(name)').is('drill_id', null).eq('hidden', false).gte('publish_on', today()).lte('publish_on', isoDaysFrom(14).slice(0, 10)).order('publish_on')),
     must(sb.from('roadmap_items').select('member_id')),
@@ -1512,7 +1521,8 @@ async function viewDashboard() {
   const oldestWait = pending.length ? daysAgo(pending[0].created_at) : 0;
   const overdue = pending.filter((x) => replyDue(x.created_at).over);
   const celebrations = findCelebrations(rounds18, people, new Set(acks.map((a) => a.ref_id)));
-  const todo = pending.length + lateMeetings.length + needMeeting.length + rmSoon.length + pastDue.length + soonExpire.length;
+  const cancelReq = pending.filter((x) => x.cancel_requested_at);
+  const todo = cancelReq.length + pending.length + lateMeetings.length + needMeeting.length + rmSoon.length + pastDue.length + soonExpire.length;
   state.adminTodo = todo;
 
   // kind: todo=対応が必要（赤・「対応が必要」の数に含む） / watch=様子を見る（黄） / info=お知らせ（青）
@@ -1522,6 +1532,9 @@ async function viewDashboard() {
     </section>`;
   const row = (main, sub = '', right = '') => `<div class="dash-row"><div class="grow">${main}${sub ? `<small>${sub}</small>` : ''}</div>${right}</div>`;
   const left = [
+    ...(cancelReq.length ? [section('動画の取り消し依頼', '×', cancelReq.map((x) => row(`${memberLink(x.member_id, x.profiles?.name)}　${esc(x.club)} / ${esc(x.angle)}`,
+      `${fmtDate(x.created_at)} 提出・${fmtShort(x.cancel_requested_at)} 依頼${x.cancel_reason ? `<br>理由：${esc(x.cancel_reason)}` : ''}`,
+      subCancelButtons(x))), '')] : []),
     section('確認待ちの提出動画', '▶', pending.map((x) => row(`${memberLink(x.member_id, x.profiles?.name)}　${esc(x.club)} / ${esc(x.angle)}`,
       `${fmtDate(x.created_at)} 提出・<b class="${replyDue(x.created_at).cls}">${replyDue(x.created_at).text}</b>`,
       `<a class="btn btn-sm" href="#/admin/lesson/new/s/${x.id}">レッスンを書く</a>`)), '確認待ちの動画はありません', '<a class="dash-more" href="#/admin/inbox">一覧 ›</a>'),
@@ -1789,6 +1802,8 @@ async function viewInbox() {
         <div class="muted">${esc(s.club)} / ${esc(s.angle)}　<b class="due ${replyDue(s.created_at).cls}">${replyDue(s.created_at).text}</b></div>
         ${swingVideo(s, urls, { tools: true })}
         ${s.question ? `<p class="pre">${esc(s.question)}</p>` : ''}
+        ${s.cancel_requested_at ? `<div class="notice cancel-box"><b>会員から取り消しの依頼があります</b>（${esc(fmtShort(s.cancel_requested_at))}）${s.cancel_reason ? `<br>理由：${esc(s.cancel_reason)}` : ''}
+            <div class="row" style="margin-top:8px">${subCancelButtons(s)}</div></div>` : ''}
         <div class="row" style="margin-top:10px">
           <a class="btn grow" href="#/admin/lesson/new/s/${s.id}">レッスンを書く</a>
           <button class="btn-sub" data-action="mark-reviewed" data-id="${s.id}">対応済みにする</button>
@@ -1851,7 +1866,7 @@ async function viewMemberDetail(id) {
     must(sb.from('profiles').select('*').eq('id', id).maybeSingle()),
     must(sb.from('tasks').select('*').eq('member_id', id).order('sort_order').order('created_at')),
     must(sb.from('lessons').select('id, lesson_date, title, created_at, read_at').eq('member_id', id).order('lesson_date', { ascending: false }).order('created_at', { ascending: false })),
-    must(sb.from('submissions').select('id, created_at, club, angle, status').eq('member_id', id).order('created_at', { ascending: false }).limit(20)),
+    must(sb.from('submissions').select('*').eq('member_id', id).order('created_at', { ascending: false }).limit(20)),
     must(sb.from('submissions').select('id').eq('member_id', id).gte('created_at', monthStart())),
     must(sb.from('roadmap_items').select('id, publish_on, theme, published_at, hidden, seen_at, drills(title)').eq('member_id', id).order('publish_on')),
   ]);
@@ -1971,7 +1986,8 @@ async function viewMemberDetail(id) {
 
     <div class="section-title"><h2>提出動画</h2></div>
     <div class="card">${subs.map((s) => `<div class="list-item"><div>${fmtDate(s.created_at)}　${esc(s.club)} / ${esc(s.angle)}</div>
-        ${s.status === 'pending' ? `<a class="btn btn-sm" href="#/admin/lesson/new/s/${s.id}">レッスンを書く</a>` : '<span class="pill ok">対応済み</span>'}</div>`).join('') || '<div class="muted">提出はまだありません</div>'}</div>
+        ${s.status === 'pending' ? `<span class="row" style="gap:6px">${s.cancel_requested_at ? '<span class="pill bad">取り消し依頼</span>' : ''}<a class="btn btn-sm" href="#/admin/lesson/new/s/${s.id}">レッスンを書く</a>
+          <button type="button" class="btn-sm btn-danger" data-action="sub-delete" data-id="${s.id}" data-path="${esc(s.video_deleted_at ? '' : s.video_path)}" data-label="${esc(`${fmtDate(s.created_at)} ${s.club} / ${s.angle}`)}">削除</button></span>` : '<span class="pill ok">対応済み</span>'}</div>`).join('') || '<div class="muted">提出はまだありません</div>'}</div>
   </div></div>
   </div>` + adminNav('admin/members');
 }
@@ -2549,6 +2565,40 @@ const actions = {
       await must(sb.from('tasks').update({ done }).eq('id', el.dataset.id));
       render();
     } catch (e) { toast('更新できませんでした', true); el.disabled = false; }
+  },
+  'sub-cancel-request': async (el) => {
+    const v = await confirmDialog({
+      title: 'この動画の取り消しを依頼しますか？',
+      body: `<p>コーチが確認して削除すると、今月送れる本数が1本戻ります。正しい動画は、削除されたあとに送り直してください。</p>
+        <div class="form modal-form"><label>理由（任意）</label><textarea name="reason" rows="2" maxlength="300" placeholder="例：別の日の動画を送ってしまった"></textarea></div>`,
+      ok: '取り消しを依頼する',
+    });
+    if (!v) return;
+    await must(sb.rpc('request_submission_cancel', { p_id: el.dataset.id, p_reason: v.reason.trim() }));
+    toast('取り消しを依頼しました。コーチが確認して削除します'); render();
+  },
+  'sub-cancel-withdraw': async (el) => {
+    await must(sb.rpc('withdraw_submission_cancel', { p_id: el.dataset.id }));
+    toast('取り消しの依頼をやめました'); render();
+  },
+  'sub-delete': async (el) => {
+    const ok = await confirmDialog({
+      title: 'この提出動画を削除しますか？',
+      body: `<p><b>${esc(el.dataset.label)}</b></p><p>動画とお悩みの文章が削除され、会員の今月の提出本数が1本戻ります。元に戻せません。</p>`,
+      ok: '削除する',
+    });
+    if (!ok) return;
+    if (el.dataset.path) {
+      const { error } = await sb.storage.from(VIDEO_BUCKET).remove([el.dataset.path]);
+      if (error) throw error;
+    }
+    await must(sb.from('submissions').delete().eq('id', el.dataset.id));
+    toast('削除しました。会員の提出本数が1本戻りました'); render();
+  },
+  'sub-cancel-reject': async (el) => {
+    if (!(await confirmDialog({ title: '取り消しの依頼を断りますか？', body: '<p>動画はそのまま残ります。必要に応じて、LINEなどで会員に理由を伝えてください。</p>', ok: '断る' }))) return;
+    await must(sb.from('submissions').update({ cancel_requested_at: null, cancel_reason: '' }).eq('id', el.dataset.id));
+    toast('依頼を断りました'); render();
   },
   'mark-reviewed': async (el) => {
     if (!confirm('レッスンを作らずに対応済みにしますか？')) return;
