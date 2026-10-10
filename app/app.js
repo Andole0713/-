@@ -128,8 +128,11 @@ function unlockAudio() {
     if (audioCtx.state === 'suspended') audioCtx.resume();
   } catch { audioCtx = null; }
 }
+// 音の高さ（1＝元の高さ。大きくするほど高い音）
+const CUP_PITCH = 1.6;
 // 硬いカップの底にボールが当たったような、短く乾いた音を1つ鳴らす
 function cupKnock(ctx, out, t, vol, pitch) {
+  pitch *= CUP_PITCH;
   [[1180, 0.07, 'triangle', 0.5], [1990, 0.045, 'triangle', 0.22], [620, 0.09, 'sine', 0.3]].forEach(([f, d, type, g0]) => {
     const o = ctx.createOscillator(); const g = ctx.createGain();
     o.type = type;
