@@ -152,35 +152,44 @@ function knockTone(ctx, out, t, { partials, decay, vol, attack = 0.002, noise = 
   const ng = ctx.createGain(); ng.gain.value = vol * 0.25;
   n.connect(bp).connect(ng).connect(out); n.start(t);
 }
-// アイアンショット「バシッ」：鋭い打撃音（バ）＋短く締まった胴鳴り＋抜ける高い音（シッ）。キレを出すため余韻は短め
-function ironShot(ctx, out, t) {
-  const tone = (f, g0, d, type = 'sine', drop = 0.9) => {
-    const o = ctx.createOscillator(); const g = ctx.createGain();
-    o.type = type;
-    o.frequency.setValueAtTime(f, t);
-    o.frequency.exponentialRampToValueAtTime(f * drop, t + d);
-    g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(g0, t + 0.001);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + d);
-    o.connect(g).connect(out); o.start(t); o.stop(t + d + 0.02);
-  };
-  tone(150, 0.45, 0.22, 'sine', 0.7);   // 締まった低い胴鳴り
-  tone(260, 0.3, 0.16, 'triangle', 0.8);
-  tone(1150, 0.12, 0.12, 'sine', 0.97); // 金属の響き（短く）
-  tone(2900, 0.06, 0.08, 'sine', 0.98);
+// アイアンショット「バシッ」（参考の音を測って再現）
+//   ① 振り下ろしの「シュッ」（500〜1000Hz が約60ミリ秒で大きくなる）
+//   ② 当たった瞬間の高く鋭い「バシッ」（3000〜4000Hz 中心の明るい音・約40ミリ秒）
+//   ③ 小さく短い余韻（200〜500Hz）
+function ironShot(ctx, dest, t) {
+  const hit = t + 0.065;
+  const out = ctx.createBiquadFilter(); out.type = 'lowpass'; out.frequency.value = 4600; out.Q.value = 0.7; out.connect(dest);
   const noise = (dur, shape) => {
     const len = Math.floor(ctx.sampleRate * dur);
     const buf = ctx.createBuffer(1, len, ctx.sampleRate); const ch = buf.getChannelData(0);
     for (let i = 0; i < len; i++) ch[i] = (Math.random() * 2 - 1) * shape(i / len);
     const n = ctx.createBufferSource(); n.buffer = buf; return n;
   };
-  const layer = (start, dur, shape, type, freq, q, gain) => {
-    const n = noise(dur, shape); const f = ctx.createBiquadFilter(); f.type = type; f.frequency.value = freq; f.Q.value = q;
-    const g = ctx.createGain(); g.gain.value = gain; n.connect(f).connect(g).connect(out); n.start(t + start);
+  const band = (start, dur, shape, freq, q, gain) => {
+    const n = noise(dur, shape); const f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = freq; f.Q.value = q;
+    const g = ctx.createGain(); g.gain.value = gain; n.connect(f).connect(g).connect(out); n.start(start);
   };
-  layer(0, 0.012, (x) => (1 - x) ** 4, 'highpass', 2500, 0.7, 1.2);      // 「バ」の鋭い立ち上がり
-  layer(0, 0.035, (x) => (1 - x) ** 3, 'bandpass', 1300, 0.9, 1.0);      // 「バ」の厚み
-  layer(0.012, 0.11, (x) => Math.min(1, x * 20) * (1 - x) ** 3, 'bandpass', 4200, 1.1, 0.35); // 「シッ」
+  const tone = (start, f, g0, d, attack = 0.001) => {
+    const o = ctx.createOscillator(); const g = ctx.createGain();
+    o.frequency.setValueAtTime(f, start);
+    g.gain.setValueAtTime(0.0001, start);
+    g.gain.exponentialRampToValueAtTime(g0, start + attack);
+    g.gain.exponentialRampToValueAtTime(0.0001, start + d);
+    o.connect(g).connect(out); o.start(start); o.stop(start + d + 0.02);
+  };
+  // ① シュッ
+  band(t, 0.065, (x) => 0.03 + x ** 2.5, 700, 2.2, 1.4);
+  tone(t, 760, 0.12, 0.07, 0.06);
+  // ② バシッ（高い音を中心に、いくつかの帯域を重ねる）
+  const crack = (x) => (1 - x) ** 2.2;
+  band(hit, 0.04, crack, 3500, 1.9, 2.4);
+  band(hit, 0.04, crack, 2600, 2.2, 0.8);
+  band(hit, 0.035, crack, 1250, 1.4, 1.5);
+  band(hit, 0.035, crack, 620, 1.6, 1.7);
+  tone(hit, 3340, 0.12, 0.06); tone(hit, 2920, 0.1, 0.07);
+  tone(hit, 800, 0.12, 0.08); tone(hit, 540, 0.1, 0.09);
+  // ③ 余韻
+  band(hit + 0.03, 0.16, (x) => (1 - x) ** 3, 330, 0.9, 0.8);
 }
 function cupInSound(ctx, t0) {
   const master = ctx.createGain(); master.gain.value = 0.7;
