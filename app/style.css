@@ -926,3 +926,8 @@ a.next-action:hover{box-shadow:var(--shadow-lg)}
 .quota-line{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:6px 10px}
 .quota-line .btn-sm{margin:6px 0 0}
 .sub-body>.btn-sm{margin-top:10px}
+
+/* 提出回数に数えない動画（回数外）の表示 */
+.pill.quota-free{background:#e7eef8;color:#24598f}
+.quota-free-note{margin:8px 0 0;color:#24598f}
+.quota-note{margin-top:10px}

@@ -738,11 +738,11 @@ function nextAction({ latest, rmNow, practicedToday, quota, monthSubs, pending, 
 async function viewMemberHome() {
   const p = state.profile;
   const since = monthStart();
-  const [tasks, lessons, subs, monthSubs, monthLessons, roadmap] = await Promise.all([
+  let [tasks, lessons, subs, monthSubs, monthLessons, roadmap] = await Promise.all([
     must(sb.from('tasks').select('*').eq('member_id', p.id).order('sort_order').order('created_at')),
     must(sb.from('lessons').select('id, lesson_date, title, point, practice, practice_done, read_at').eq('member_id', p.id).order('lesson_date', { ascending: false }).order('created_at', { ascending: false }).limit(1)),
     must(sb.from('submissions').select('id, created_at, club, status').eq('member_id', p.id).eq('status', 'pending').order('created_at', { ascending: false })),
-    must(sb.from('submissions').select('*').eq('member_id', p.id).gte('created_at', since)).then((a) => a.filter((x) => !x.quota_exempt)),
+    must(sb.from('submissions').select('*').eq('member_id', p.id).gte('created_at', since)),
     must(sb.from('lessons').select('id').eq('member_id', p.id).gte('created_at', since)),
     must(sb.from('roadmap_items').select('id, publish_on, theme, published_at, hidden, seen_at, drills(title)').eq('member_id', p.id).order('publish_on')),
   ]);
@@ -752,6 +752,9 @@ async function viewMemberHome() {
       .then((r) => r.data || []),
   ]);
   const lastMeeting = myMeetings[0];
+  // 「回数外」（コーチ側で戻した動画）は本数に数えない
+  const exemptN = monthSubs.filter((x) => x.quota_exempt).length;
+  monthSubs = monthSubs.filter((x) => !x.quota_exempt);
   const st = scoreStats(rounds, p);
   const rmOpened = roadmap.filter(rmOpen);
   const rmNow = rmOpened[rmOpened.length - 1];
@@ -828,6 +831,7 @@ async function viewMemberHome() {
         <div><span class="label">次回の面談</span>${p.next_meeting_at && new Date(p.next_meeting_at).getTime() > Date.now() - 2 * 3600000 ? meetingWhen(p.next_meeting_at) : '<b class="none">未定</b>'}</div>
       </div>
       ${extra ? `<p class="muted small" style="margin:10px 0 0">今月は追加の ${extra} 本を含みます。</p>` : ''}
+      ${exemptN ? `<p class="small quota-free-note">回数外の動画 ${exemptN}本（コーチ側で戻した分）は数えていません。</p>` : ''}
       ${plan?.monthly ? '<p class="muted small" style="margin:10px 0 0">毎月、動画2本の提出と25分のオンライン面談1回が受けられます。</p>' : ''}
       ${lastMeeting ? `<details class="last-meeting"><summary>前回の面談（${fmtShort(lastMeeting.scheduled_at)}）のまとめ</summary><p class="pre">${esc(lastMeeting.summary)}</p></details>` : ''}
       <div class="meeting-book">
@@ -846,10 +850,13 @@ async function viewSubmit() {
   const extra = extraThisMonth(p);
   const myClubs = p.clubs || [];
   // 「回数に数えない」にした動画は本数に入れない
-  const monthSubs = quota ? (await must(sb.from('submissions').select('*').eq('member_id', p.id).gte('created_at', monthStart()))).filter((x) => !x.quota_exempt) : [];
+  const monthAll = quota ? await must(sb.from('submissions').select('*').eq('member_id', p.id).gte('created_at', monthStart())) : [];
+  const monthSubs = monthAll.filter((x) => !x.quota_exempt);
+  const exemptN = monthAll.length - monthSubs.length;
   const usage = quota ? `<div class="card"><div class="between"><span>今月の提出</span><b>${monthSubs.length} / ${quota} 本</b></div>
       <div class="meter"><i style="width:${Math.min(100, (monthSubs.length / quota) * 100)}%"></i></div>
-      ${extra ? `<p class="muted small" style="margin:8px 0 0">追加の ${extra} 本を含みます。</p>` : ''}</div>` : '';
+      ${extra ? `<p class="muted small" style="margin:8px 0 0">追加の ${extra} 本を含みます。</p>` : ''}
+      ${exemptN ? `<p class="small quota-free-note">回数外の動画 ${exemptN}本（コーチ側で戻した分）は数えていません。</p>` : ''}</div>` : '';
   if (quota && monthSubs.length >= quota) {
     return header('スイング動画を送る') + `<div class="content">${usage}
       <div class="card limit">
@@ -921,7 +928,7 @@ function swingPair(s, lessons) {
   return `<div class="pair">
     <a class="pair-sub" href="#/submission/${s.id}">
       <span class="pair-icon" aria-hidden="true">▶</span>
-      <span class="grow"><b>送った動画</b>　${fmtDate(s.created_at)}<br>
+      <span class="grow"><b>送った動画</b>　${fmtDate(s.created_at)}${s.quota_exempt ? ' <span class="pill quota-free">回数外</span>' : ''}<br>
         <span class="muted small">${esc(s.club)} / ${esc(s.angle)}・${keepLabel(s)}</span></span>
       <span class="pair-go" aria-hidden="true">›</span>
     </a>
@@ -936,7 +943,7 @@ async function viewHistory() {
   const p = state.profile;
   const [lessons, subs] = await Promise.all([
     must(sb.from('lessons').select('id, submission_id, lesson_date, created_at, title, point, practice, practice_done, read_at, video_url').eq('member_id', p.id).order('lesson_date', { ascending: false }).order('created_at', { ascending: false })),
-    must(sb.from('submissions').select('id, created_at, club, angle, status, video_deleted_at').eq('member_id', p.id).order('created_at', { ascending: false }).limit(200)),
+    must(sb.from('submissions').select('*').eq('member_id', p.id).order('created_at', { ascending: false }).limit(200)),
   ]);
   // 送った動画ごとにレッスンをまとめ、動画のないレッスン（コーチから直接届いたもの）も並べる
   const bySub = new Map(subs.map((s) => [s.id, []]));
@@ -1074,7 +1081,8 @@ async function viewSubmission(id) {
   const deleted = sub.video_deleted_at || daysLeft(expiry) === 0;
   return header('送った動画', 'history') + `<div class="content">
     <div class="between"><div><div class="muted">送信日</div><b style="font-size:18px">${fmtDate(sub.created_at)}</b></div>
-      ${sub.status === 'pending' ? '<span class="pill warn">確認待ち</span>' : '<span class="pill ok">解説済み</span>'}</div>
+      <span>${sub.quota_exempt ? '<span class="pill quota-free">回数外</span> ' : ''}${sub.status === 'pending' ? '<span class="pill warn">確認待ち</span>' : '<span class="pill ok">解説済み</span>'}</span></div>
+    ${sub.quota_exempt ? '<div class="notice quota-note">この動画は<b>提出回数に数えていません</b>（コーチ側で1本分を戻しました）。今月の送れる本数は減っていません。</div>' : ''}
     <div class="card">
       ${deleted ? `<p class="muted">保存期間（${RETENTION_LABEL}）を過ぎたため、動画は削除されました。</p>` : swingVideo(sub, urls)}
       <div class="list-item"><span class="muted">クラブ・撮影方向</span><span>${esc(sub.club)} / ${esc(sub.angle)}</span></div>
