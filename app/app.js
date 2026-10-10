@@ -1407,9 +1407,6 @@ async function viewDashboard() {
       `<button type="button" class="btn btn-sm btn-sub" data-action="meeting-add" data-member="${m.id}">予約を入れる</button>`)), '全員、今月の面談が入っています'),
   ];
   const right = [
-    section('お祝い（ベスト更新・好スコア）', '★', celebrations.map((c) => row(`${memberLink(c.r.member_id, c.name)}　<b class="score-big">${c.r.score}</b>`,
-      `${c.tags.map(([k, t]) => `<span class="cele ${k}">${esc(t)}</span>`).join('')}<br>${fmtDate(c.r.played_on)} ${esc(c.r.course_name)}`,
-      `<button type="button" class="btn btn-sm btn-gold" data-action="celebrate-done" data-id="${c.r.id}" data-member="${c.r.member_id}" data-label="${esc(`${c.name || ''}さん ${c.r.score}（${c.tags.map((t) => t[1]).join('・')}）`)}">お祝い済み</button>`)), '新しいお祝いはありません', '', 'celebrate'),
     section('ロードマップ：ドリル未定（2週間以内に公開）', '◎', rmSoon.map((r) => row(memberLink(r.member_id, r.profiles?.name), `${fmtDate(r.publish_on)} 公開・${esc(r.theme || 'テーマ未定')}`,
       `<a class="btn btn-sm btn-sub" href="#/admin/roadmap/${r.member_id}">編集</a>`)), 'ドリル未定の月はありません'),
     section('ロードマップ未作成の契約中会員', '+', noRoadmap.map((m) => row(memberLink(m.id, m.name), `${esc(planLabel(m.plan))}・登録 ${fmtDate(m.created_at)}`)), '全員作成済みです', '', 'watch'),
@@ -1421,6 +1418,10 @@ async function viewDashboard() {
     section(`レッスンを見ていない会員（${UNREAD_DAYS}日以上）`, '✉', unread.map((l) => row(memberLink(l.member_id, l.profiles?.name), `「${esc(l.title)}」${fmtDate(l.created_at)} 送付・${daysAgo(l.created_at)}日未読`)), '送ったレッスンはすべて見られています', '', 'watch'),
     section('30日間動きがない契約中会員', '…', quiet.map((m) => row(memberLink(m.id, m.name), '動画提出・練習記録・スコア記録がありません')), '全員、何かしら動きがあります', '', 'watch'),
   ];
+  // お祝いは一番下に表示する
+  const celebrateSec = section('お祝い（ベスト更新・好スコア）', '★', celebrations.map((c) => row(`${memberLink(c.r.member_id, c.name)}　<b class="score-big">${c.r.score}</b>`,
+      `${c.tags.map(([k, t]) => `<span class="cele ${k}">${esc(t)}</span>`).join('')}<br>${fmtDate(c.r.played_on)} ${esc(c.r.course_name)}`,
+      `<button type="button" class="btn btn-sm btn-gold" data-action="celebrate-done" data-id="${c.r.id}" data-member="${c.r.member_id}" data-label="${esc(`${c.name || ''}さん ${c.r.score}（${c.tags.map((t) => t[1]).join('・')}）`)}">お祝い済み</button>`)), '新しいお祝いはありません', '', 'celebrate');
   const feed = [
     ...refs7.map((x) => ({ t: x.updated_at, html: `💬 ${memberLink(x.member_id, x.profiles?.name)} がふり返りを書きました<small>${esc(x.body.slice(0, 60))}</small>` })),
     ...rounds30.filter((x) => daysAgo(x.created_at) <= 7).map((x) => ({ t: x.created_at, html: `⛳ ${memberLink(x.member_id, x.profiles?.name)} がスコアを記録：<b>${x.score}</b><small>${fmtDate(x.played_on)} ${esc(x.course_name)}</small>` })),
@@ -1441,6 +1442,7 @@ async function viewDashboard() {
       <div class="col-side">${right.map((h, i) => `<div class="blk" style="--o:${10 + i}">${h}</div>`).join('')}
         <div class="blk" style="--o:20"><section class="card dash-sec"><div class="dash-h"><span class="dash-i" aria-hidden="true">↻</span><b>最近の動き（7日）</b></div>
           ${feed.length ? `<div class="dash-list">${feed.map((f) => `<div class="dash-row feed"><div class="grow">${f.html}</div><span class="muted small">${fmtShort(f.t)}</span></div>`).join('')}</div>` : '<p class="dash-ok">まだ動きはありません</p>'}</section></div>
+        <div class="blk" style="--o:30">${celebrateSec}</div>
       </div>
     </div>
   </div>` + adminNav('admin/dashboard');
@@ -1491,11 +1493,19 @@ async function viewMeetings() {
 }
 let meetingMembers = [];
 async function meetingMemberOptions(selected) {
-  if (!meetingMembers.length) meetingMembers = await must(sb.from('profiles').select('id, name, role, plan, subscription_status, access_until').neq('role', 'admin').order('name'));
-  const act = meetingMembers.filter(isActive);
-  const rest = meetingMembers.filter((m) => !isActive(m));
-  const opt = (m) => `<option value="${m.id}"${m.id === selected ? ' selected' : ''}>${esc(m.name || '（名前未設定）')}</option>`;
-  return `<option value="">会員を選ぶ</option><optgroup label="契約中">${act.map(opt).join('')}</optgroup>${rest.length ? `<optgroup label="未契約">${rest.map(opt).join('')}</optgroup>` : ''}`;
+  if (!meetingMembers.length || !('email' in meetingMembers[0])) meetingMembers = await must(sb.from('profiles').select('id, name, email, role, plan, subscription_status, access_until').neq('role', 'admin').order('name'));
+  return memberOptionsHtml(meetingMembers, selected);
+}
+// 会員の選択肢（契約中／未契約に分ける）。q を渡すと名前・メールで絞り込む
+function memberOptionsHtml(list, selected, q = '') {
+  const key = q.trim().toLowerCase();
+  const hit = key ? list.filter((m) => `${m.name || ''} ${m.email || ''}`.toLowerCase().includes(key)) : list;
+  if (key && !hit.length) return '<option value="">見つかりません</option>';
+  const act = hit.filter(isActive);
+  const rest = hit.filter((m) => !isActive(m));
+  const sel = selected && hit.some((m) => m.id === selected) ? selected : key && hit.length === 1 ? hit[0].id : '';
+  const opt = (m) => `<option value="${m.id}"${m.id === sel ? ' selected' : ''}>${esc(m.name || '（名前未設定）')}</option>`;
+  return `<option value="">${key ? `会員を選ぶ（${hit.length}件）` : '会員を選ぶ'}</option>${act.length ? `<optgroup label="契約中">${act.map(opt).join('')}</optgroup>` : ''}${rest.length ? `<optgroup label="未契約">${rest.map(opt).join('')}</optgroup>` : ''}`;
 }
 const splitLocal = (iso) => { const v = toLocalInput(iso); return [v.slice(0, 10), v.slice(11, 16)]; };
 
@@ -2338,7 +2348,9 @@ const actions = {
     const v = await confirmDialog({
       title: '面談を予約',
       body: `<div class="form modal-form">
-        <label>会員</label><select name="member_id" required>${await meetingMemberOptions(el.dataset.member)}</select>
+        <label>会員</label>
+        <input type="search" class="member-search" data-member-search placeholder="名前・メールで検索" aria-label="会員を名前・メールで検索" autocomplete="off">
+        <select name="member_id" required>${await meetingMemberOptions(el.dataset.member)}</select>
         <div class="grid"><div><label>日付</label><input name="date" type="date" value="${d}" required></div>
           <div><label>時刻</label><input name="time" type="time" value="19:00" step="300" required></div></div>
         <label>時間（分）</label><input name="duration_min" type="number" min="5" max="180" value="25" required>
@@ -2845,6 +2857,11 @@ document.addEventListener('input', (ev) => {
   const rmRowEl = ev.target.closest('form[data-form="roadmap"] [data-row]');
   if (rmRowEl) { rmDirty(); rmRefresh(rmRowEl); } else if (ev.target.closest('form[data-form="roadmap"]')) rmDirty();
   if (ev.target.dataset.action === 'filter-drills') { applyDrillFilter(); return; }
+  if (ev.target.matches('[data-member-search]')) {
+    const sel = ev.target.parentElement.querySelector('select[name="member_id"]');
+    sel.innerHTML = memberOptionsHtml(meetingMembers, sel.value, ev.target.value);
+    return;
+  }
   if (ev.target.dataset.action !== 'filter-members') return;
   const q = ev.target.value.trim().toLowerCase();
   document.querySelectorAll('#member-list [data-search]').forEach((a) => a.classList.toggle('hidden', q && !a.dataset.search.includes(q)));
