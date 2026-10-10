@@ -16,6 +16,19 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="All Time Golf">
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
+<script>
+// ホーム画面のアイコンから開いたときは、まず撮影画面（SwingFrame）のトップを開く。
+// 端末によってはアイコン追加時の URL（マイページ）を覚えているため、ここで切り替える。
+(function () {
+  try {
+    var standalone = (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true;
+    var first = !sessionStorage.getItem('atg-session');
+    sessionStorage.setItem('atg-session', '1');
+    var h = location.hash;
+    if (standalone && first && !location.search && (h === '' || h === '#' || h === '#/' || h === '#/home')) location.replace('./swing/');
+  } catch (e) { /* 何もしない */ }
+})();
+</script>
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
