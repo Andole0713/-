@@ -873,3 +873,4 @@ button:not(.btn-gold):not(.btn-sub):not(.btn-danger):not(.btn-line):not(.link):n
 .top-shoot svg{width:18px;height:18px}
 .top-shoot:hover{background:rgba(200,169,106,.22)}
 @media print{.top-shoot{display:none!important}}
+.modal-form .member-search{margin-bottom:8px}
