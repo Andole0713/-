@@ -950,3 +950,9 @@ a.next-action:hover{box-shadow:var(--shadow-lg)}
 .credit-list li small{display:block;color:#6b726c}
 .cr-kind{font-size:11px;font-weight:700;border-radius:6px;padding:2px 6px;background:#e7eef8;color:#24598f;flex:none}
 .cr-kind.meeting{background:#f3ead2;color:#7a5a00}
+
+/* アカウント削除・解約のお知らせ */
+.account-delete{margin-top:18px;border-style:dashed}
+.account-delete p{margin:6px 0 10px}
+.warn-text{color:#9b2c21;font-weight:700}
+.notice.warn-box{background:#f6e6e3;border-color:#e7c4be;color:#5c1d16}

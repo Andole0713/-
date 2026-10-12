@@ -15,30 +15,69 @@ async function syncSubscription(subscription: Stripe.Subscription) {
   const periodEnd = (item as unknown as { current_period_end?: number })?.current_period_end ??
     (subscription as unknown as { current_period_end?: number }).current_period_end;
 
+  // Web（カスタマーポータル）で解約すると、期間の終わりに終了する予約が入る
+  const cancelAtSec = subscription.cancel_at ?? (subscription.cancel_at_period_end ? periodEnd : null);
+  const cancelAt = subscription.status === "canceled" || !cancelAtSec ? null : new Date(cancelAtSec * 1000).toISOString();
+
   const update: Record<string, unknown> = {
     stripe_customer_id: customerId,
     subscription_id: subscription.id,
     subscription_status: subscription.status,
     current_period_end: periodEnd ? new Date(periodEnd * 1000).toISOString() : null,
+    cancel_at: cancelAt,
   };
   const plan = planForPriceId(item?.price?.id);
   if (plan) update.plan = plan;
 
   const db = adminClient();
-  const { data, error } = await db
-    .from("profiles")
-    .update(update)
-    .eq("stripe_customer_id", customerId)
-    .select("id");
-  if (error) throw error;
-
-  // 顧客 ID がまだ保存されていない場合は metadata の user_id で紐づける
-  if (!data?.length) {
+  let { data: before } = await db.from("profiles").select("id, subscription_id, subscription_status, cancel_at")
+    .eq("stripe_customer_id", customerId).maybeSingle();
+  if (!before) {
+    // 顧客 ID がまだ保存されていない場合は metadata の user_id で紐づける
     const userId = subscription.metadata?.user_id;
     if (!userId) throw new Error(`会員が見つかりません: ${customerId}`);
-    const { error: e2 } = await db.from("profiles").update(update).eq("id", userId);
-    if (e2) throw e2;
+    ({ data: before } = await db.from("profiles").select("id, subscription_id, subscription_status, cancel_at").eq("id", userId).maybeSingle());
+    if (!before) throw new Error(`会員が見つかりません: ${userId}`);
   }
+  // 以前の契約の通知（解約済みの古い契約など）で、今の契約の情報を上書きしない
+  if (before.subscription_id && before.subscription_id !== subscription.id && subscription.status === "canceled") return;
+
+  const { error } = await db.from("profiles").update(update).eq("id", before.id);
+  if (error) throw error;
+
+  await noticeCancel(db, before, subscription, cancelAt);
+}
+
+// 解約・解約の取り消しがあったら、管理画面にお知らせを出す
+const fmt = (iso: string) => new Date(iso).toLocaleDateString("ja-JP", { timeZone: "Asia/Tokyo" });
+const REASONS: Record<string, string> = {
+  too_expensive: "料金が高い", missing_features: "欲しい機能がない", switched_service: "ほかのサービスに変えた",
+  unused: "あまり使っていない", customer_service: "対応への不満", too_complex: "使い方が難しい",
+  low_quality: "品質への不満", other: "その他",
+};
+async function noticeCancel(
+  db: ReturnType<typeof adminClient>,
+  before: { id: string; subscription_status: string | null; cancel_at: string | null },
+  subscription: Stripe.Subscription,
+  cancelAt: string | null,
+) {
+  const d = subscription.cancellation_details;
+  const why = [d?.feedback ? REASONS[d.feedback] ?? d.feedback : "", d?.comment ?? ""].filter(Boolean).join("／");
+  let kind = "";
+  let detail = "";
+  if (subscription.status === "canceled" && before.subscription_status !== "canceled") {
+    kind = "canceled";
+    detail = "契約が終了しました" + (why ? `（理由：${why}）` : "");
+  } else if (cancelAt && !before.cancel_at) {
+    kind = "cancel_scheduled";
+    detail = `Webで解約しました。${fmt(cancelAt)} まで利用できます` + (why ? `（理由：${why}）` : "");
+  } else if (!cancelAt && before.cancel_at && subscription.status !== "canceled") {
+    kind = "cancel_withdrawn";
+    detail = "解約を取り消し、契約を続けることになりました";
+  }
+  if (!kind) return;
+  const { error } = await db.rpc("add_member_notice", { p_member: before.id, p_kind: kind, p_detail: detail });
+  if (error) console.error("お知らせを保存できませんでした", error);
 }
 
 Deno.serve(async (req) => {

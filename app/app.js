@@ -447,6 +447,9 @@ function statusPill(status) {
 // 利用できる会員：Stripe で契約中、または管理者が設定した利用期限内（LINE・電話で申し込んだ会員）
 const isActive = (p) => ['active', 'trialing'].includes(p?.subscription_status)
   || (!!p?.access_until && p.access_until >= new Date().toLocaleDateString('sv-SE'));
+// アカウント削除：申し込みから30日後に完全に削除（それまではログインして元に戻せる）
+const DELETE_GRACE_DAYS = 30;
+const deleteOn = (p) => new Date(new Date(p.deletion_requested_at).getTime() + DELETE_GRACE_DAYS * 86400000).toISOString();
 function memberPill(p) {
   if (!['active', 'trialing'].includes(p.subscription_status) && isActive(p)) return '<span class="pill ok">利用中</span>';
   return statusPill(p.subscription_status);
@@ -1127,6 +1130,18 @@ async function viewSubmission(id) {
   </div>` + memberNav('history');
 }
 
+// 削除の手続き中：元に戻すか、ログアウトするだけの画面
+function viewDeletionPending() {
+  const p = state.profile;
+  return `<div class="auth-page"><div class="auth-card card">
+    <h1 style="font-size:20px;margin:0 0 10px">アカウントの削除手続き中です</h1>
+    <p><b>${fmtDate(deleteOn(p))}</b> に、アカウントと動画・レッスン・スコアなどの記録がすべて削除されます。</p>
+    <p class="muted small">それまでは、下のボタンで元に戻せます（記録もそのまま残っています）。</p>
+    <button class="btn-block btn-gold" data-action="account-restore">元に戻す（削除を取り消す）</button>
+    <button class="btn-block btn-sub" data-action="logout" style="margin-top:10px">ログアウト</button>
+  </div></div>`;
+}
+
 function viewAccount() {
   const p = state.profile;
   const admin = p.role === 'admin';
@@ -1153,9 +1168,11 @@ function viewAccount() {
     ${admin ? '<div class="card"><span class="pill">ADMIN</span> 管理者アカウントです</div>' : `<div class="card">
       <div class="between"><b>ご契約</b>${memberPill(p)}</div>
       <div class="list-item"><span>プラン</span><b>${esc(planLabel(p.plan) || '—')}</b></div>
-      ${p.current_period_end ? `<div class="list-item"><span>${p.subscription_status === 'canceled' ? '利用期限' : '次回更新日'}</span><b>${fmtDate(p.current_period_end)}</b></div>` : ''}
+      ${p.cancel_at ? `<div class="list-item"><span>解約済み・利用期限</span><b>${fmtDate(p.cancel_at)}</b></div>`
+        : p.current_period_end ? `<div class="list-item"><span>${p.subscription_status === 'canceled' ? '利用期限' : '次回更新日'}</span><b>${fmtDate(p.current_period_end)}</b></div>` : ''}
       ${p.access_until ? `<div class="list-item"><span>利用期限</span><b>${fmtDate(p.access_until)}</b></div>` : ''}
-      ${p.stripe_customer_id ? '<button class="btn-block" data-action="portal">契約・お支払い（プラン変更・解約）</button>'
+      ${p.stripe_customer_id ? `<button class="btn-block" data-action="portal">契約・お支払い（プラン変更・解約）</button>
+        <p class="muted small" style="margin:8px 0 0">${p.cancel_at ? '解約の取り消しも、上のボタンからできます。' : '解約はいつでもこのボタンから、ご自身で手続きできます。解約しても、お支払い済みの期間の終わりまでご利用いただけます。'}</p>`
         : isActive(p) ? `<p class="muted small" style="margin:10px 0 0">ご契約内容の変更は、LINE またはお電話（${esc(CONTACT.telDisplay)}）でお問い合わせください。</p>`
         : '<a class="btn btn-block" href="#/plans">プランを選ぶ</a>'}
     </div>`}
@@ -1186,6 +1203,11 @@ function viewAccount() {
       <button class="btn-block btn-sub" type="submit">パスワードを変更</button>
     </form>
     <button class="btn-block btn-danger" data-action="logout">ログアウト</button>
+    ${admin ? '' : `<div class="card account-delete">
+      <b>アカウントの削除</b>
+      <p class="muted small">アカウントと、これまでの動画・レッスン・スコアなどの記録をすべて削除します。削除を申し込んでから${DELETE_GRACE_DAYS}日間は、ログインすると元に戻せます。</p>
+      <button type="button" class="btn-sm btn-sub" data-action="account-delete">アカウントを削除する</button>
+    </div>`}
   </div>` + navHtml;
 }
 
@@ -1469,6 +1491,12 @@ const meetingPill = (m) => {
 // 面談の支払い方法（権利を使う／都度払い）
 const PAY_TYPE = { credit: ['権利', 'ok'], unpaid: ['都度払い・未払い', 'warn'], paid: ['都度払い・支払済', ''], free: ['無料', 'mute'] };
 const payPill = (m) => (PAY_TYPE[m.pay_type] ? `<span class="pill ${PAY_TYPE[m.pay_type][1]}">${PAY_TYPE[m.pay_type][0]}</span>` : '');
+// 管理画面のお知らせの種類
+const NOTICE_KIND = {
+  cancel_scheduled: ['Webで解約', 'warn'], cancel_withdrawn: ['解約を取り消し', 'ok'], canceled: ['契約終了', 'bad'],
+  delete_requested: ['アカウント削除の申し込み', 'bad'], delete_restored: ['削除を取り消し', 'ok'], deleted: ['アカウント削除済み', 'mute'],
+  rejoined: ['再登録', 'ok'],
+};
 // 動画の返信目標（提出から何時間以内に返すか）
 const REPLY_TARGET_H = 48;
 // 平均スコアより何打以上良ければ「好スコア」としてお知らせするか
@@ -1528,7 +1556,7 @@ async function viewDashboard() {
   // 今月の権利をまだ受け取っていない会員に付与する（自動付与の予備。1回のログインにつき1回だけ）
   if (!state.creditsGranted) { state.creditsGranted = true; await sb.rpc('grant_monthly_credits').then(() => {}, () => {}); }
   const today0 = new Date(); today0.setHours(0, 0, 0, 0);
-  const [members, pending, meetings, rmSoon, rmAll, subs30, practice30, rounds30, refs7, rounds18, acks, unread] = await Promise.all([
+  const [members, pending, meetings, rmSoon, rmAll, subs30, practice30, rounds30, refs7, rounds18, acks, notices, unread] = await Promise.all([
     must(sb.from('profiles').select('id, name, email, role, plan, subscription_status, access_until, current_period_end, created_at, best_score, avg_score').order('created_at', { ascending: false })),
     must(sb.from('submissions').select('*, profiles(name)').eq('status', 'pending').order('created_at')),
     must(sb.from('meetings').select('*, profiles(name)').gte('scheduled_at', isoDaysFrom(-45)).order('scheduled_at')),
@@ -1540,6 +1568,7 @@ async function viewDashboard() {
     must(sb.from('roadmap_reflections').select('member_id, body, updated_at, profiles(name)').gte('updated_at', isoDaysFrom(-7)).order('updated_at', { ascending: false })),
     must(sb.from('rounds').select('id, member_id, played_on, created_at, score, holes, course_name').eq('holes', 18)),
     sb.from('admin_acks').select('ref_id').eq('kind', 'celebration').then((r) => r.data || []), // 設定前でも動くように
+    sb.from('member_notices').select('*').is('acked_at', null).order('created_at', { ascending: false }).limit(50).then((r) => r.data || []),
     must(sb.from('lessons').select('id, member_id, title, created_at, profiles(name)').is('read_at', null).lte('created_at', isoDaysFrom(-UNREAD_DAYS)).gte('created_at', isoDaysFrom(-60)).order('created_at')),
   ]);
   const people = members.filter((m) => m.role !== 'admin');
@@ -1564,7 +1593,7 @@ async function viewDashboard() {
   const overdue = pending.filter((x) => replyDue(x.created_at).over);
   const celebrations = findCelebrations(rounds18, people, new Set(acks.map((a) => a.ref_id)));
   const cancelReq = pending.filter((x) => x.cancel_requested_at);
-  const todo = cancelReq.length + pending.length + lateMeetings.length + needMeeting.length + unpaid.length + rmSoon.length + pastDue.length + soonExpire.length;
+  const todo = notices.length + cancelReq.length + pending.length + lateMeetings.length + needMeeting.length + unpaid.length + rmSoon.length + pastDue.length + soonExpire.length;
   state.adminTodo = todo;
 
   // kind: todo=対応が必要（赤・「対応が必要」の数に含む） / watch=様子を見る（黄） / info=お知らせ（青）
@@ -1574,6 +1603,9 @@ async function viewDashboard() {
     </section>`;
   const row = (main, sub = '', right = '') => `<div class="dash-row"><div class="grow">${main}${sub ? `<small>${sub}</small>` : ''}</div>${right}</div>`;
   const left = [
+    ...(notices.length ? [section('解約・退会のお知らせ', '!', notices.map((n) => row(`${n.member_id ? memberLink(n.member_id, n.member_name) : esc(n.member_name || '（削除済みの会員）')}　<span class="pill ${NOTICE_KIND[n.kind]?.[1] || ''}">${NOTICE_KIND[n.kind]?.[0] || ''}</span>`,
+      `${esc(n.detail)}<br>${fmtShort(n.created_at)}`,
+      `<button type="button" class="btn btn-sm btn-sub" data-action="notice-ack" data-id="${n.id}">確認済み</button>`)), '')] : []),
     ...(cancelReq.length ? [section('動画の取り消し依頼', '×', cancelReq.map((x) => row(`${memberLink(x.member_id, x.profiles?.name)}　${esc(x.club)} / ${esc(x.angle)}`,
       `${fmtDate(x.created_at)} 提出・${fmtShort(x.cancel_requested_at)} 依頼${x.cancel_reason ? `<br>理由：${esc(x.cancel_reason)}` : ''}`,
       subCancelButtons(x))), '')] : []),
@@ -1889,7 +1921,7 @@ function applyMemberFilter() {
 
 async function viewMembers() {
   const [members, pend, mtgs] = await Promise.all([
-    must(sb.from('profiles').select('id, name, email, plan, role, subscription_status, access_until, next_meeting_at').order('created_at', { ascending: false })),
+    must(sb.from('profiles').select('*').order('created_at', { ascending: false })),
     must(sb.from('submissions').select('member_id').eq('status', 'pending')),
     must(sb.from('meetings').select('member_id, status').gte('scheduled_at', monthStart()).in('status', ['scheduled', 'done'])),
   ]);
@@ -1903,6 +1935,8 @@ async function viewMembers() {
     if (m.next_meeting_at && new Date(m.next_meeting_at).getTime() > Date.now()) f.push(`<span class="flag">面談 ${fmtShort(m.next_meeting_at)}</span>`);
     if (m.access_until && m.access_until >= today() && m.access_until <= isoDaysFrom(14).slice(0, 10)) f.push(`<span class="flag yellow">期限 ${fmtDate(m.access_until)}</span>`);
     if (m.subscription_status === 'past_due') f.push('<span class="flag red">支払い遅延</span>');
+    if (m.deletion_requested_at) f.push(`<span class="flag red">削除予定 ${fmtDate(deleteOn(m))}</span>`);
+    else if (m.cancel_at) f.push(`<span class="flag yellow">解約予定 ${fmtDate(m.cancel_at)}</span>`);
     if (!isActive(m) && daysAgo(m.created_at) <= 30) f.push('<span class="flag blue">新規登録</span>');
     return f.length ? `<div class="flags">${f.join('')}</div>` : '';
   };
@@ -1971,6 +2005,8 @@ async function viewMemberDetail(id) {
   if (!m) return header('会員詳細', 'admin/members') + '<div class="content"><div class="empty">会員が見つかりません</div></div>';
   const self = m.id === state.profile.id;
   return header(m.name || '会員詳細', 'admin/members') + `<div class="content wide"><div class="cols"><div class="col-main">
+    ${m.deletion_requested_at ? `<div class="notice warn-box">この会員はアカウントの削除を申し込んでいます。<b>${fmtDate(deleteOn(m))}</b> にすべての記録が削除されます（それまでに会員がログインすると元に戻せます）。</div>`
+      : m.cancel_at ? `<div class="notice">Webで解約済みです。<b>${fmtDate(m.cancel_at)}</b> まで利用できます。</div>` : ''}
     <div class="card"><div class="between"><div><b>${esc(m.email)}</b><div class="muted">登録日 ${fmtDate(m.created_at)}</div></div>${memberPill(m)}</div>
       ${m.current_period_end ? `<div class="muted">次回更新日 ${fmtDate(m.current_period_end)}</div>` : ''}</div>
 
@@ -2500,6 +2536,7 @@ async function render() {
 
     const p = state.profile;
     const r = getRoute();
+    if (p.deletion_requested_at && p.role !== 'admin') return paint(viewDeletionPending());
     if (r[0] === 'continue') return paint(viewContinue());
     if (r[0] === 'account') {
       paint(viewAccount());
@@ -2810,6 +2847,51 @@ const actions = {
     await must(sb.from('meetings').update({ status: v.status, summary: v.summary.trim() }).eq('id', m.id));
     if (v.note.trim()) await must(sb.from('staff_notes').insert({ member_id: m.member_id, body: `【面談 ${fmtShort(m.scheduled_at)}】${v.note.trim()}` }));
     toast('面談の結果を保存しました'); render();
+  },
+  'account-delete': async () => {
+    const p = state.profile;
+    const paying = ['active', 'trialing', 'past_due', 'unpaid', 'paused'].includes(p.subscription_status) && !p.cancel_at;
+    if (paying) {
+      const go2 = await confirmDialog({
+        title: '先に解約の手続きが必要です',
+        body: '<p>月額のお支払いが続いているため、このままではアカウントを削除できません。</p><p>「契約・お支払い」から解約したあと、もう一度「アカウントを削除する」を押してください。</p>',
+        ok: '解約の手続きへ',
+      });
+      if (go2) actions.portal(document.createElement('button'));
+      return;
+    }
+    const cs = planCredits(p.plan) ? creditSummary(await loadCredits(p.id)) : null;
+    const lost = [
+      cs && (cs.video.length || cs.meeting.length) ? `残っている権利（動画${cs.video.length}回・面談${cs.meeting.length}回）` : '',
+      p.access_until && p.access_until >= today() ? `利用期限（${fmtDate(p.access_until)}）までの残りの期間` : '',
+      p.cancel_at ? `${fmtDate(p.cancel_at)} までの残りの利用期間` : '',
+    ].filter(Boolean);
+    const v = await confirmDialog({
+      title: 'アカウントを削除しますか？',
+      body: `<p>送った動画・届いたレッスン・スコア・ドリル・練習記録など、<b>すべての記録が削除されます</b>。</p>
+        ${lost.length ? `<p class="small warn-text">次のものも使えなくなります：${lost.map(esc).join('、')}</p>` : ''}
+        <p class="muted small">申し込みから${DELETE_GRACE_DAYS}日間は、ログインすると元に戻せます。${DELETE_GRACE_DAYS}日を過ぎると元に戻せません。</p>
+        <div class="form modal-form"><label>確認のため、パスワードを入力してください</label>
+        <input name="password" type="password" autocomplete="current-password" required></div>`,
+      ok: '削除を申し込む',
+    });
+    if (!v) return;
+    const { error: authError } = await sb.auth.signInWithPassword({ email: p.email || state.session.user.email, password: v.password });
+    if (authError) { toast('パスワードが違います', true); return; }
+    const until = await must(sb.rpc('request_account_deletion'));
+    await sb.auth.signOut();
+    toast(`削除を受け付けました。${fmtDate(until)} に完全に削除されます`);
+    location.hash = '';
+  },
+  'account-restore': async () => {
+    await must(sb.rpc('cancel_account_deletion'));
+    await loadProfile();
+    toast('アカウントを元に戻しました');
+    go('home');
+  },
+  'notice-ack': async (el) => {
+    await must(sb.from('member_notices').update({ acked_at: new Date().toISOString(), acked_by: state.profile.id }).eq('id', el.dataset.id));
+    toast('確認済みにしました'); render();
   },
   'celebrate-done': async (el) => {
     const v = await confirmDialog({
