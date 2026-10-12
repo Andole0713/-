@@ -1092,7 +1092,7 @@ a.btn-block.btn-cat{min-height:52px;display:flex;align-items:center;justify-cont
 
 /* はじめての方へ・図解・用語集 */
 .help{--cat:var(--c-help);--cat-soft:color-mix(in srgb,var(--c-help) 10%,#fff)}
-.help-tabs{display:flex;gap:6px;margin:0 0 14px;overflow-x:auto}
+.help-tabs{display:flex;gap:6px;margin:-8px 0 14px;padding:8px 0;overflow-x:auto;position:sticky;top:var(--top-h,67px);z-index:4;background:var(--paper)}
 .help-tabs a{flex:1;text-align:center;white-space:nowrap;text-decoration:none;font-weight:700;font-size:13.5px;padding:9px 12px;border-radius:999px;background:#fff;border:1px solid var(--line);color:var(--text)}
 .help-tabs a.on{background:var(--c-help);border-color:var(--c-help);color:#fff}
 .help-lead{margin:0;font-size:15px;line-height:1.85}
@@ -1156,7 +1156,7 @@ a.btn-block.btn-cat{min-height:52px;display:flex;align-items:center;justify-cont
 .zt span{display:block;font-size:20px;font-weight:800;color:var(--muted)}
 .zt small{display:block;font-size:11px;color:var(--muted);line-height:1.4}
 .zt.good span{color:var(--c-lesson)} .zt.great span{color:var(--c-celebrate)}
-.gl-search{position:sticky;top:64px;z-index:3}
+.gl-search{position:static}
 .gl-search input{width:100%;min-height:46px;border:1px solid var(--line);border-radius:12px;padding:0 14px;font-size:16px;background:#fff}
 .gl-cats{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
 .gl-cat{background:#fff;color:var(--text);border:1px solid var(--line);font-size:12.5px;padding:5px 12px;font-weight:700}
@@ -1241,3 +1241,10 @@ body.wiz-open{overflow:hidden}
 .wiz-sum dt{font-size:12.5px;color:var(--muted);font-weight:700}
 .wiz-sum dd{margin:0;font-size:14.5px;font-weight:700;overflow-wrap:anywhere}
 .wiz-sum .link{margin:0;padding:0;font-size:12.5px;display:inline}
+
+/* ホームの「今月のドリル」：芝の緑とライム（ロゴの色）で、ほかのカードと見分けやすく */
+.rm-home.cat-drill{background:radial-gradient(420px 220px at 100% 0%,rgba(201,226,101,.28),transparent 60%),linear-gradient(150deg,#235c3a,#123222 75%);border-color:#b9d65a;box-shadow:0 0 0 4px rgba(185,214,90,.22),0 14px 30px rgba(18,50,34,.25)}
+.rm-home.cat-drill .rm-badge,.rm-home.cat-drill .rm-home-btn{background:#c9e265;color:#17331f}
+.rm-home.cat-drill .rm-home-drill,.rm-home.cat-drill .rm-home-step{color:#dcef9a}
+.rm-home.cat-drill .rm-home-meter i{background:#c9e265}
+.rm-home.cat-drill::after{border-color:rgba(201,226,101,.14)}

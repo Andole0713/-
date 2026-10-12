@@ -1268,6 +1268,17 @@ function viewAccount() {
       <label>メールアドレス</label><div>${esc(p.email || state.session.user.email)}</div>
       <button class="btn-block btn-sub" type="submit">名前を保存</button>
     </form>
+    ${admin ? '<div class="card"><span class="pill">ADMIN</span> 管理者アカウントです</div>' : `<div class="card">
+      <div class="between"><b>ご契約</b>${memberPill(p)}</div>
+      <div class="list-item"><span>プラン</span><b>${esc(planLabel(p.plan) || '—')}</b></div>
+      ${p.cancel_at ? `<div class="list-item"><span>解約済み・利用期限</span><b>${fmtDate(p.cancel_at)}</b></div>`
+        : p.current_period_end ? `<div class="list-item"><span>${p.subscription_status === 'canceled' ? '利用期限' : '次回更新日'}</span><b>${fmtDate(p.current_period_end)}</b></div>` : ''}
+      ${p.access_until ? `<div class="list-item"><span>利用期限</span><b>${fmtDate(p.access_until)}</b></div>` : ''}
+      ${p.stripe_customer_id ? `<button class="btn-block" data-action="portal">契約・お支払い（プラン変更・解約）</button>
+        <p class="muted small" style="margin:8px 0 0">${p.cancel_at ? '解約の取り消しも、上のボタンからできます。' : '解約はいつでもこのボタンから、ご自身で手続きできます。解約しても、お支払い済みの期間の終わりまでご利用いただけます。'}</p>`
+        : isActive(p) ? `<p class="muted small" style="margin:10px 0 0">ご契約内容の変更は、LINE またはお電話（${esc(CONTACT.telDisplay)}）でお問い合わせください。</p>`
+        : '<a class="btn btn-block" href="#/plans">プランを選ぶ</a>'}
+    </div>`}
     ${admin ? '' : (() => {
       const mine = p.clubs || [];
       const custom = mine.filter((c) => !CLUB_PRESETS.includes(c));
@@ -1281,17 +1292,6 @@ function viewAccount() {
         <button class="btn-block btn-gold" type="submit">Myクラブセッティングを保存</button>
       </form>`;
     })()}
-    ${admin ? '<div class="card"><span class="pill">ADMIN</span> 管理者アカウントです</div>' : `<div class="card">
-      <div class="between"><b>ご契約</b>${memberPill(p)}</div>
-      <div class="list-item"><span>プラン</span><b>${esc(planLabel(p.plan) || '—')}</b></div>
-      ${p.cancel_at ? `<div class="list-item"><span>解約済み・利用期限</span><b>${fmtDate(p.cancel_at)}</b></div>`
-        : p.current_period_end ? `<div class="list-item"><span>${p.subscription_status === 'canceled' ? '利用期限' : '次回更新日'}</span><b>${fmtDate(p.current_period_end)}</b></div>` : ''}
-      ${p.access_until ? `<div class="list-item"><span>利用期限</span><b>${fmtDate(p.access_until)}</b></div>` : ''}
-      ${p.stripe_customer_id ? `<button class="btn-block" data-action="portal">契約・お支払い（プラン変更・解約）</button>
-        <p class="muted small" style="margin:8px 0 0">${p.cancel_at ? '解約の取り消しも、上のボタンからできます。' : '解約はいつでもこのボタンから、ご自身で手続きできます。解約しても、お支払い済みの期間の終わりまでご利用いただけます。'}</p>`
-        : isActive(p) ? `<p class="muted small" style="margin:10px 0 0">ご契約内容の変更は、LINE またはお電話（${esc(CONTACT.telDisplay)}）でお問い合わせください。</p>`
-        : '<a class="btn btn-block" href="#/plans">プランを選ぶ</a>'}
-    </div>`}
     ${admin ? '' : `<form class="card form" data-form="notify">
       <b>お知らせメール</b>
       <label class="switch"><input type="checkbox" name="email_notify"${p.email_notify !== false ? ' checked' : ''}>
@@ -1606,6 +1606,9 @@ function viewMenu() {
   const group = (title, tiles) => `<section class="menu-group"><h2>${title}</h2><div class="menu-grid">${tiles.join('')}</div></section>`;
   return header('メニュー') + `<div class="content">
     <p class="page-lead">このアプリでできることの一覧です。色ごとに機能が分かれています。</p>
+    ${group('アカウント', [
+      tile('menu', 'user', 'アカウント', 'お名前・ご契約・Myクラブ・通知・文字の大きさ', '#/account'),
+    ])}
     ${group('レッスンを受ける', [
       tile('video', 'video', '撮影する', 'スイングを撮影（SwingFrame）。撮るだけでもOK', SWINGFRAME_URL),
       tile('video', 'inbox', '動画を送る', '撮った動画をコーチに送る', '#/submit'),
@@ -1624,8 +1627,7 @@ function viewMenu() {
       tile('help', 'video', '使い方ガイド', '動画の撮り方・送り方（3ステップ）', '#/guide'),
       tile('help', 'home', 'ホーム画面に追加', 'アプリのようにワンタップで開く', '#/install'),
     ])}
-    ${group('設定・お問い合わせ', [
-      tile('menu', 'user', 'アカウント', 'お名前・Myクラブ・ご契約・通知・文字の大きさ', '#/account'),
+    ${group('お問い合わせ', [
       tile('menu', 'chat', 'LINEで問い合わせる', '分からないこと・ご相談はこちら', CONTACT.lineUrl, 0, true),
     ])}
   </div>` + memberNav('menu');
@@ -2756,6 +2758,9 @@ async function render() {
     document.body.classList.toggle('with-nav', html.includes('<nav class="nav"'));
     const y = navScrollTarget();
     $app.innerHTML = html;
+    // 上部バーの高さ（ページ内で上についてくる部分の位置合わせに使う）
+    const topBar = $app.querySelector('.top');
+    if (topBar) document.documentElement.style.setProperty('--top-h', `${topBar.offsetHeight}px`);
     if (y !== null) window.scrollTo(0, y);
   };
   try {
