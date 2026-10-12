@@ -1092,7 +1092,10 @@ a.btn-block.btn-cat{min-height:52px;display:flex;align-items:center;justify-cont
 
 /* はじめての方へ・図解・用語集 */
 .help{--cat:var(--c-help);--cat-soft:color-mix(in srgb,var(--c-help) 10%,#fff)}
-.help-tabs{display:flex;gap:6px;margin:-8px 0 14px;padding:8px 0;overflow-x:auto;position:sticky;top:var(--top-h,67px);z-index:4;background:var(--paper)}
+.help-sticky{position:sticky;top:var(--top-h,67px);z-index:4;background:var(--paper);margin:-8px 0 14px;padding:8px 0}
+.help-tabs{display:flex;gap:6px;overflow-x:auto}
+.gl-input{display:block;width:100%;min-height:44px;margin-top:8px;border:1px solid var(--line);border-radius:12px;padding:0 14px;font-size:16px;background:#fff}
+.gl-input:focus{outline:none;border-color:var(--c-help);box-shadow:0 0 0 3px color-mix(in srgb,var(--c-help) 20%,transparent)}
 .help-tabs a{flex:1;text-align:center;white-space:nowrap;text-decoration:none;font-weight:700;font-size:13.5px;padding:9px 12px;border-radius:999px;background:#fff;border:1px solid var(--line);color:var(--text)}
 .help-tabs a.on{background:var(--c-help);border-color:var(--c-help);color:#fff}
 .help-lead{margin:0;font-size:15px;line-height:1.85}

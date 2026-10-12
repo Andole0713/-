@@ -1576,7 +1576,10 @@ function viewHelp(tab) {
   const back = state.helpFrom && tab === 'words' ? state.helpFrom : isActive(p) ? 'menu' : '';
   return header(title, back) + `<div class="content help">
     ${back && back !== 'menu' ? `<a class="help-back" href="#/${back}">‹ ${back.startsWith('lesson') ? 'レッスン' : back.startsWith('drills') ? 'ドリル' : '前の画面'}に戻る</a>` : ''}
-    <div class="help-tabs" role="tablist">${HELP_TABS.map(([k, l]) => `<a role="tab" href="#/${k}" class="${k === key ? 'on' : ''}"${k === key ? ' aria-selected="true"' : ''}>${l}</a>`).join('')}</div>
+    <div class="help-sticky">
+      <div class="help-tabs" role="tablist">${HELP_TABS.map(([k, l]) => `<a role="tab" href="#/${k}" class="${k === key ? 'on' : ''}"${k === key ? ' aria-selected="true"' : ''}>${l}</a>`).join('')}</div>
+      ${tab === 'words' ? '<input type="search" class="gl-input" data-glossary-search placeholder="🔍 言葉を入力して探す（例：トップ、バンカー）" aria-label="用語を検索" autocomplete="off">' : ''}
+    </div>
     ${helpPage(tab, icon)}
     <div class="card help-ask"><b>分からないことがあれば</b><p class="muted small">どんな小さなことでも、LINEでコーチに気軽に聞いてください。</p>${lineBtn('LINEで質問する')}</div>
   </div>` + (p.role === 'admin' ? adminNav('') : isActive(p) ? memberNav('menu') : guestNav('help'));
@@ -1596,6 +1599,13 @@ function filterGlossary() {
   });
   const none = document.querySelector('.gl-none');
   if (none) none.hidden = n > 0;
+  // 下までスクロールしてから探したときも、結果の先頭が見えるようにする
+  const list = document.querySelector('.gl-list');
+  const stick = document.querySelector('.help-sticky');
+  if (list && stick) {
+    const top = list.getBoundingClientRect().top + window.scrollY - stick.getBoundingClientRect().bottom - 8;
+    if (window.scrollY > top) window.scrollTo(0, Math.max(0, top));
+  }
 }
 
 // メニュー：すべての機能を、色分けしたグループで一覧にする

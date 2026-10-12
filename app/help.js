@@ -494,7 +494,6 @@ const WORDS = [
 function wordsPage() {
   return `
   <div class="card gl-search">
-    <input type="search" data-glossary-search placeholder="言葉を入力して探す（例：トップ、バンカー）" aria-label="用語を検索" autocomplete="off">
     <div class="gl-cats" role="group" aria-label="分類で絞り込む">
       <button type="button" class="gl-cat on" data-action="glossary-cat" data-cat="">すべて</button>
       ${WORD_CATS.map(([k, l]) => `<button type="button" class="gl-cat c-${k}" data-action="glossary-cat" data-cat="${k}">${l}</button>`).join('')}
