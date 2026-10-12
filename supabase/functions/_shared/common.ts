@@ -1,7 +1,7 @@
 import Stripe from "npm:stripe@17.7.0";
 import { createClient, type SupabaseClient, type User } from "npm:@supabase/supabase-js@2.49.4";
 
-export const PLANS = ["SUBSCRIPTION", "YOUCAN"] as const;
+export const PLANS = ["UME", "TAKE", "MATSU", "SUBSCRIPTION", "YOUCAN"] as const;
 export type Plan = (typeof PLANS)[number];
 // サイト上でカード決済（Stripe の月額課金）ができるプラン
 export const CHECKOUT_PLANS: readonly Plan[] = ["SUBSCRIPTION"];
