@@ -1,6 +1,7 @@
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/+esm';
 import { Upload as TusUpload } from 'https://cdn.jsdelivr.net/npm/tus-js-client@4.3.1/+esm';
 import { SUPABASE_URL, SUPABASE_ANON_KEY, SCHOOL_NAME, PLANS, CONTACT } from './config.js';
+import { helpPage, HELP_TABS } from './help.js';
 
 // 撮影アプリ SwingFrame（会員ページの中の swing/ に入っている。ログインなしでだれでも使える）
 // 撮影画面（SwingFrame）。#shoot を付けると、トップ画面を通らずにカメラが開く
@@ -537,10 +538,24 @@ function go(path) {
   else location.hash = `/${path}`;
 }
 
+// ページの種類（色分け）：今開いているページから決める
+const PAGE_CAT = {
+  home: 'home', submit: 'video', submission: 'video', history: 'lesson', lesson: 'lesson', drills: 'drill', scores: 'score',
+  celebrations: 'celebrate', help: 'help', menu: 'menu', account: 'menu', guide: 'help', install: 'help', plans: 'menu',
+  'admin/dashboard': 'home', 'admin/inbox': 'video', 'admin/lesson': 'video', 'admin/meetings': 'meeting', 'admin/prep': 'meeting',
+  'admin/members': 'member', 'admin/member': 'member', 'admin/roadmap': 'drill', 'admin/drills': 'drill', 'admin/drill': 'drill',
+  'admin/report': 'home', 'admin/templates': 'video',
+};
+const CAT_LABEL = { home: 'Home', video: 'Swing Video', lesson: 'Lesson', drill: 'Drill', score: 'Score', celebrate: 'Celebration', help: 'Guide', menu: 'Menu', meeting: 'Meeting', member: 'Members' };
+function pageCat() {
+  const r = getRoute();
+  return PAGE_CAT[r[0] === 'admin' ? `admin/${r[1]}` : r[0]] || 'home';
+}
 function header(title, back) {
-  return `<div class="top">
+  const cat = pageCat();
+  return `<div class="top cat-${cat}">
     <div class="row">${back ? `<a class="back" href="#/${back}" aria-label="戻る">‹</a>` : ''}
-      <div><div class="brand">${esc(title)}</div><div class="muted">Members</div></div></div>
+      <div><div class="brand">${esc(title)}</div><div class="muted top-cat">${CAT_LABEL[cat]}</div></div></div>
     <div class="top-right">${shootButton()}
       <a href="../" aria-label="${esc(SCHOOL_NAME)} トップページへ"><img class="top-logo" src="../assets/logo-mark.png" width="200" height="170" alt="${esc(SCHOOL_NAME)}"></a></div>
   </div>`;
@@ -561,16 +576,27 @@ const ICON = {
   inbox: '<path d="M3 13l3-8h12l3 8"/><path d="M3 13v6h18v-6h-5l-1 3H9l-1-3z"/>',
   users: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c1-3.5 3.5-5 6.5-5s5.5 1.5 6.5 5"/><circle cx="17" cy="9" r="2.5"/><path d="M16 14.5c2.5 0 4.5 1.5 5.5 4.5"/>',
   card: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18"/><path d="M7 15h4"/>',
+  grid: '<rect x="4" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.5"/>',
+  trophy: '<path d="M8 4h8v5a4 4 0 0 1-8 0z"/><path d="M8 6H5a3 3 0 0 0 3 4M16 6h3a3 3 0 0 1-3 4"/><path d="M12 13v4M9 20h6M10 17h4"/>',
+  help: '<circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.6 2.6 0 1 1 3.6 2.4c-.7.3-1.1.9-1.1 1.6v.5"/><circle cx="12" cy="17" r=".6"/>',
+  flag: '<path d="M6 21V4"/><path d="M6 4l11 4-11 4"/><ellipse cx="9" cy="20.5" rx="5" ry="1.2"/>',
+  club: '<path d="M8 3l7 14"/><path d="M15 17l4-1 1 3-5 1z"/>',
+  chat: '<path d="M4 5h16v11H9l-5 4z"/><path d="M8 9.5h8M8 12.5h5"/>',
+  gear: '<circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/>',
+  pen: '<path d="M4 20l4-1 11-11-3-3L5 16z"/><path d="M14 6l3 3"/>',
 };
 const icon = (name) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[name]}</svg>`;
 function nav(items, active) {
   return `<nav class="nav" style="grid-template-columns:repeat(${items.length},1fr)">${items
-    .map(([path, ic, label, badge]) => `<a href="#/${path}" class="${active === path ? 'active' : ''}"${active === path ? ' aria-current="page"' : ''}>${icon(ic)}<span>${label}</span>${badge ? `<em class="nav-badge" aria-label="未読${badge}件">${badge}</em>` : ''}</a>`)
+    .map(([path, ic, label, badge, cat]) => `<a href="#/${path}" class="${active === path ? 'active' : ''}${cat ? ` cat-${cat}` : ''}"${active === path ? ' aria-current="page"' : ''}>${icon(ic)}<span>${label}</span>${badge ? `<em class="nav-badge" aria-label="未読${badge}件">${badge}</em>` : ''}</a>`)
     .join('')}</nav>`;
 }
-const memberNav = (active) => nav([['home', 'home', 'ホーム'], ['submit', 'video', '撮影・提出'], ['history', 'book', '履歴', state.unread], ['drills', 'target', 'ドリル', state.drillUnread], ['account', 'user', 'アカウント']], active);
+// 画面の色分け：機能ごとに色を決め、メニュー・ページの上部・見出しに使う（style.css の --c-*）
+const memberNav = (active) => nav([['home', 'home', 'ホーム', 0, 'home'], ['submit', 'video', '撮影・提出', 0, 'video'], ['history', 'book', 'レッスン', state.unread, 'lesson'], ['drills', 'target', 'ドリル', state.drillUnread, 'drill'], ['menu', 'grid', 'メニュー', state.celebrateUnread, 'menu']], active);
+// 契約前の会員（プランを選ぶ前）のメニュー
+const guestNav = (active) => nav([['plans', 'card', 'プラン', 0, 'menu'], ['help', 'help', 'はじめての方へ', 0, 'help'], ['account', 'user', 'アカウント', 0, 'menu']], active);
 const newBadge = (l) => (l.read_at ? '' : '<span class="new-badge">NEW</span>');
-const adminNav = (active) => nav([['admin/dashboard', 'gauge', 'やること', state.adminTodo], ['admin/inbox', 'inbox', '提出動画', state.adminPending], ['admin/meetings', 'calendar', '面談', state.adminMeetingTodo], ['admin/members', 'users', '会員一覧'], ['admin/drills', 'target', 'ドリル集'], ['account', 'user', 'アカウント']], active);
+const adminNav = (active) => nav([['admin/dashboard', 'gauge', 'やること', state.adminTodo, 'home'], ['admin/inbox', 'inbox', '提出動画', state.adminPending, 'video'], ['admin/meetings', 'calendar', '面談', state.adminMeetingTodo, 'meeting'], ['admin/members', 'users', '会員一覧', 0, 'member'], ['admin/drills', 'target', 'ドリル集', 0, 'drill'], ['account', 'user', 'アカウント', 0, 'menu']], active);
 
 async function must(promise) {
   const { data, error } = await promise;
@@ -742,7 +768,7 @@ function viewPlans() {
         ${planApply(pl)}
       </div>`).join('')}
     <p class="muted small">カード決済は Stripe の安全な決済ページで行います。解約・プラン変更はいつでも「アカウント」から行えます。</p>
-  </div>` + nav([['plans', 'card', 'プラン'], ['account', 'user', 'アカウント']], 'plans');
+  </div>` + guestNav('plans');
 }
 
 // ---------- 画面：会員 ----------
@@ -753,21 +779,21 @@ function nextAction({ latest, rmNow, practicedToday, cr, pending, tasks, done })
   const meetSoon = p.next_meeting_at && new Date(p.next_meeting_at).getTime() > Date.now() - 2 * 3600000 && new Date(p.next_meeting_at).getTime() < Date.now() + 36 * 3600000;
   const left = cr ? cr.video.length : 0;
   const soon = cr ? cr.live.filter((c) => c.expires_on <= isoDaysFrom(31).slice(0, 10)) : [];
-  const card = (icon, title, sub, href, btn) => {
+  const card = (icon, title, sub, href, btn, cat = 'home') => {
     const body = `<span class="na-ico" aria-hidden="true">${icon}</span>
       <span class="na-body"><span class="na-eyebrow">次にやること</span><b>${title}</b>${sub ? `<small>${sub}</small>` : ''}</span>`;
-    return href ? `<a class="next-action" href="${href}">${body}<span class="na-btn">${btn} <i aria-hidden="true">›</i></span></a>`
-      : `<div class="next-action">${body}</div>`;
+    return href ? `<a class="next-action cat-${cat}" href="${href}">${body}<span class="na-btn">${btn} <i aria-hidden="true">›</i></span></a>`
+      : `<div class="next-action cat-${cat}">${body}</div>`;
   };
-  if (state.handoff) return card('📹', 'SwingFrame で撮った動画を送りましょう', 'このままコーチに送れます', '#/submit/swingframe', '送る');
-  if (latest && !latest.read_at) return card('✉', '新しいレッスンが届いています', `「${esc(latest.title)}」`, `#/lesson/${latest.id}`, '見る');
-  if (rmNow && !rmNow.seen_at) return card('🎯', '今月のドリルが公開されました', esc(rmNow.theme || rmNow.drills?.title || ''), '#/drills', '見る');
-  if (meetSoon) return card('◷', `面談は ${esc(fmtShort(p.next_meeting_at))} からです`, '聞きたいことをメモしておくとスムーズです');
-  if (soon.length) return card('⏳', `期限が近い権利が ${soon.length} 回あります`, `${expiryText(soon)}。期限を過ぎると使えなくなります`, soon.some((c) => c.kind === 'video') ? SWINGFRAME_URL : '#/home', soon.some((c) => c.kind === 'video') ? '撮影する' : '確認');
-  if (cr && left > 0 && !pending.length) return card('●', `動画をあと ${left} 回 送れます`, '撮影して、そのままコーチに送れます', SWINGFRAME_URL, '撮影する');
-  if (rmNow && !practicedToday) return card('✓', '今日の練習を記録しましょう', `今月のドリル：${esc(rmNow.drills?.title || rmNow.theme || '')}`, '#/drills', '記録する');
-  if (tasks.length && done < tasks.length) return card('☐', `今月の課題があと ${tasks.length - done} 件あります`, '下の「今月の課題」で、終わったらタップしてチェック');
-  return card('⛳', 'ラウンドしたらスコアを記録しましょう', 'ベスト・平均が自動で計算されます', '#/scores', '記録する');
+  if (state.handoff) return card('📹', 'SwingFrame で撮った動画を送りましょう', 'このままコーチに送れます', '#/submit/swingframe', '送る', 'video');
+  if (latest && !latest.read_at) return card('✉', '新しいレッスンが届いています', `「${esc(latest.title)}」`, `#/lesson/${latest.id}`, '見る', 'lesson');
+  if (rmNow && !rmNow.seen_at) return card('🎯', '今月のドリルが公開されました', esc(rmNow.theme || rmNow.drills?.title || ''), '#/drills', '見る', 'drill');
+  if (meetSoon) return card('◷', `面談は ${esc(fmtShort(p.next_meeting_at))} からです`, '聞きたいことをメモしておくとスムーズです', '', '', 'meeting');
+  if (soon.length) return card('⏳', `期限が近い権利が ${soon.length} 回あります`, `${expiryText(soon)}。期限を過ぎると使えなくなります`, soon.some((c) => c.kind === 'video') ? SWINGFRAME_URL : '#/home', soon.some((c) => c.kind === 'video') ? '撮影する' : '確認', 'video');
+  if (cr && left > 0 && !pending.length) return card('●', `動画をあと ${left} 回 送れます`, '撮影して、そのままコーチに送れます', SWINGFRAME_URL, '撮影する', 'video');
+  if (rmNow && !practicedToday) return card('✓', '今日の練習を記録しましょう', `今月のドリル：${esc(rmNow.drills?.title || rmNow.theme || '')}`, '#/drills', '記録する', 'drill');
+  if (tasks.length && done < tasks.length) return card('☐', `今月の課題があと ${tasks.length - done} 件あります`, '下の「今月の課題」で、終わったらタップしてチェック', '', '', 'lesson');
+  return card('⛳', 'ラウンドしたらスコアを記録しましょう', 'ベスト・平均が自動で計算されます', '#/scores', '記録する', 'score');
 }
 
 async function viewMemberHome() {
@@ -787,6 +813,8 @@ async function viewMemberHome() {
       .then((r) => r.data || []),
   ]);
   const lastMeeting = myMeetings[0];
+  const celes = await sb.from('celebrations').select('*').eq('member_id', p.id).order('created_at', { ascending: false }).limit(20).then((r) => r.data || []);
+  const newCeles = celes.filter((c) => !c.seen_at);
   // 「回数外」（コーチ側で戻した動画）は本数に数えない
   const exemptN = monthSubs.filter((x) => x.quota_exempt).length;
   monthSubs = monthSubs.filter((x) => !x.quota_exempt);
@@ -802,6 +830,13 @@ async function viewMemberHome() {
   const cr = planCredits(p.plan) ? creditSummary(await loadCredits(p.id, { self: true })) : null;
   return header('マイページ') + `<div class="content wide"><div class="cols">
   <div class="col-main">
+    ${newCeles.length ? `<div class="blk cele-new" style="--o:1">
+      <div class="confetti" aria-hidden="true">${'<i></i>'.repeat(14)}</div>
+      ${celeCard(newCeles[0], true)}
+      ${newCeles.length > 1 ? `<p class="small center" style="margin:6px 0 0">ほかにも ${newCeles.length - 1} 件のお祝いが届いています</p>` : ''}
+      <div class="cele-actions"><button type="button" class="btn btn-cat cat-celebrate" data-action="celebrate-thanks">ありがとう！</button>
+        <a class="btn btn-sub" href="#/celebrations">お祝いをすべて見る</a></div>
+    </div>` : ''}
     <div class="blk" style="--o:1">
     ${nextAction({ latest, rmNow, practicedToday, cr, pending: subs, tasks, done })}
     </div>
@@ -809,10 +844,11 @@ async function viewMemberHome() {
     <div class="hero">${plan ? `<span class="pill">${esc(plan.name)}</span>` : ''}
       <h1>${esc(p.name)}さん、おかえりなさい。</h1>
       <div class="muted">現在の目標</div><h2 style="margin:4px 0 0;font-size:24px">${esc(p.goal || '未設定')}</h2>
-      ${p.theme ? `<div style="margin-top:12px">今月のテーマ：${esc(p.theme)}</div>` : ''}</div>
+      ${p.theme ? `<div style="margin-top:12px">今月のテーマ：${esc(p.theme)}</div>` : ''}
+      ${celes.length ? `<a class="hero-cele" href="#/celebrations">🏆 これまでのお祝い <b>${celes.length}</b>件 ›</a>` : ''}</div>
     </div>
     <div class="blk" style="--o:3">
-    ${rmNow ? `<a class="rm-home" href="#/drills">
+    ${rmNow ? `<a class="rm-home cat-drill" href="#/drills">
         <div class="rm-home-head"><span class="rm-badge">今月のドリル</span>${rmNow.seen_at ? '' : '<span class="new-badge">NEW</span>'}
           <span class="rm-home-step"><b>${rmOpened.length}</b>/${roadmap.length}か月目</span></div>
         <h3>${esc(rmNow.theme || rmNow.drills?.title || 'ドリル')}</h3>
@@ -822,14 +858,14 @@ async function viewMemberHome() {
           <span class="rm-home-btn">ドリルを見る <i aria-hidden="true">›</i></span></div></a>` : ''}
     </div>
     <div class="blk" style="--o:7">
-    <div class="section-title"><div><div class="eyebrow">Practice</div><h2>今月の課題</h2></div><span class="muted">${done}/${tasks.length}</span></div>
+    <div class="section-title cat-lesson"><div><div class="eyebrow">Practice</div><h2>${icon('pen')}今月の課題</h2></div><span class="muted">${done}/${tasks.length}</span></div>
     ${tasks.length ? tasks.map((t) => `<button type="button" class="task${t.done ? ' done' : ''}" data-action="toggle-task" data-id="${t.id}" data-done="${t.done}" aria-pressed="${t.done}">
         <span class="check">${t.done ? '✓' : ''}</span><span><b>${esc(t.title)}</b><div class="muted">${esc(t.detail)}</div></span></button>`).join('')
       : '<div class="empty">コーチから課題が届くとここに表示されます</div>'}
     </div>
     <div class="blk" style="--o:8">
-    <div class="section-title"><div><div class="eyebrow">Lesson</div><h2>最新のレッスン</h2></div>${latest ? '<a href="#/history">すべて見る</a>' : ''}</div>
-    ${latest ? `<a class="lesson-feature" href="#/lesson/${latest.id}">
+    <div class="section-title cat-lesson"><div><div class="eyebrow">Lesson</div><h2>${icon('book')}最新のレッスン</h2></div>${latest ? '<a href="#/history">すべて見る</a>' : ''}</div>
+    ${latest ? `<a class="lesson-feature cat-lesson" href="#/lesson/${latest.id}">
         <span class="date">${fmtDate(latest.lesson_date)}</span>${newBadge(latest)}
         <h3>${esc(latest.title)}</h3>
         ${latest.point ? `<div class="point"><span>今回のポイント</span><p>${esc(latest.point)}</p></div>` : ''}
@@ -838,26 +874,29 @@ async function viewMemberHome() {
       : '<div class="empty">まだレッスンはありません。まずは動画を送りましょう。</div>'}
     ${subs.length ? `<div class="notice">確認待ちの動画が ${subs.length} 件あります。コーチからのレッスンをお待ちください。
         <a href="#/submission/${subs[0].id}">間違えて送った場合はこちら</a></div>` : ''}
-    <a class="btn btn-block btn-gold" href="#/submit">スイング動画を送る</a>
+    <a class="btn btn-block btn-cat cat-video" href="#/submit">${icon('video')} スイング動画を送る</a>
     </div>
   </div>
   <div class="col-side">
     <div class="blk" style="--o:4">
-    <div class="grid">
+    <div class="section-title cat-score" style="margin-top:0"><div><div class="eyebrow">Score</div><h2>${icon('flag')}スコア</h2></div></div>
+    <div class="grid cat-score">
       <a class="stat stat-link" href="#/scores"><div class="label">ベストスコア</div><b>${esc(st.best ?? '—')}</b></a>
       <a class="stat stat-link" href="#/scores"><div class="label">平均スコア${st.count ? `<small>直近${st.recent}R</small>` : ''}</div><b>${esc(st.avg ?? '—')}</b></a>
     </div>
     <a class="score-add" href="#/scores"><span class="sa-txt">⛳ ラウンドのスコアを記録する${st.count ? `<small>${st.count}ラウンド記録済み</small>` : ''}</span><i aria-hidden="true">›</i></a>
     </div>
     <div class="blk" style="--o:5">
+    <a class="beginner-card cat-help" href="#/help"><span class="bc-ic">${icon('help')}</span>
+      <span><b>はじめての方へ・用語集</b><small>アプリの使い方、ゴルフの言葉が分からないときはこちら</small></span><i aria-hidden="true">›</i></a>
     ${!isStandalone() && !local.get('atg-install-dismissed') ? `<div class="install-banner">
         <div><b>ホーム画面に追加しませんか？</b><span>アプリのようにワンタップで開けます</span></div>
         <a class="btn btn-sm btn-gold" href="#/install">やり方</a>
         <button type="button" class="install-close" data-action="dismiss-install" aria-label="閉じる">×</button></div>` : ''}
     </div>
     <div class="blk" style="--o:6">
-    <div class="section-title"><div><div class="eyebrow">This Month</div><h2>今月のサポート</h2></div></div>
-    <div class="card">
+    <div class="section-title cat-meeting"><div><div class="eyebrow">This Month</div><h2>${icon('calendar')}今月のサポート</h2></div></div>
+    <div class="card cat-meeting card-cat">
       <div class="support">
         ${cr ? `<div><span class="label">動画（残り）</span><b>${cr.video.length}<small>回</small></b></div>
         <div><span class="label">面談（残り）</span><b>${cr.meeting.length}<small>回</small></b></div>`
@@ -899,6 +938,7 @@ async function viewSubmit() {
     </div>` + memberNav('submit');
   }
   return header('スイング動画を送る') + `<div class="content">
+    <p class="page-lead">撮影したスイング動画をコーチに送るページです。送ると、コーチが解説（レッスン）を作って返します。</p>
     ${usage}
     <a class="shoot-cta" href="${SWINGFRAME_URL}"><span class="ico" aria-hidden="true">●</span>
       <span><b>SwingFrame で撮影する</b><small>ガイドに合わせて自動で録画。撮ったあと再生画面の「⛳ コーチへ」を押すと、そのままここに届きます</small></span><i aria-hidden="true">›</i></a>
@@ -995,7 +1035,8 @@ async function viewHistory() {
     return head + it.html;
   }).join('');
 
-  return header('レッスン履歴') + `<div class="content wide">
+  return header('レッスン・送った動画') + `<div class="content wide">
+    <p class="page-lead">コーチから届いたレッスンと、これまでに送った動画をまとめて見返せます。</p>
     <p class="muted small" style="margin:0 0 8px">送った動画と、その動画へのコーチの解説をセットで表示しています。動画は送信から${RETENTION_LABEL}見られます。</p>
     ${clubs.length > 1 ? `<div class="filter-chips" role="group" aria-label="クラブで絞り込む">
       ${[['', 'すべて'], ...clubs.map((c) => [c, c])].map(([v, label]) => `<button type="button" data-action="history-filter" data-club="${esc(v)}" class="${filter === v ? 'on' : ''}" aria-pressed="${filter === v}">${esc(label)}</button>`).join('')}
@@ -1145,7 +1186,7 @@ function viewDeletionPending() {
 function viewAccount() {
   const p = state.profile;
   const admin = p.role === 'admin';
-  const navHtml = admin ? adminNav('account') : isActive(p) ? memberNav('account') : nav([['plans', 'card', 'プラン'], ['account', 'user', 'アカウント']], 'account');
+  const navHtml = admin ? adminNav('account') : isActive(p) ? memberNav('menu') : guestNav('account');
   return header('アカウント') + `<div class="content">
     <form class="card form" data-form="profile-name">
       <label for="name">お名前</label><input id="name" name="name" value="${esc(p.name)}" maxlength="50" required>
@@ -1259,7 +1300,8 @@ async function viewScores() {
   const rounds = await must(sb.from('rounds').select('*').eq('member_id', p.id).order('played_on', { ascending: false }).order('created_at', { ascending: false }));
   const st = scoreStats(rounds, p);
   const last = rounds.find((r) => r.holes === 18);
-  return header('スコア記録', 'home') + `<div class="content">
+  return header('スコア記録', 'menu') + `<div class="content">
+    <p class="page-lead">ラウンド（コースを回ったとき）のスコアを記録するページです。ベスト・平均は自動で計算されます。<a href="#/help/zukai#zk-score">スコアの数え方</a></p>
     <div class="grid score-sum">
       <div class="stat"><div class="label">ベストスコア</div><b>${esc(st.best ?? '—')}</b></div>
       <div class="stat"><div class="label">平均スコア${st.count ? `<small>直近${st.recent}R</small>` : ''}</div><b>${esc(st.avg ?? '—')}</b></div>
@@ -1292,7 +1334,7 @@ async function viewScores() {
         <b class="round-score${st.count && r.holes === 18 && r.score === st.best ? ' best' : ''}">${r.score}</b>
         <button type="button" class="btn-sm btn-sub" data-action="delete-round" data-id="${r.id}" data-label="${esc(`${fmtDate(r.played_on)} ${r.course_name}（${r.score}）`)}" aria-label="削除">×</button>
       </div>`).join('')}</div>` : '<div class="empty">まだ記録はありません。ラウンドしたらスコアを記録しましょう。</div>'}
-  </div>` + memberNav('home');
+  </div>` + memberNav('menu');
 }
 
 // 会員：ロードマップ（毎月1本のドリルの定期公開）
@@ -1395,6 +1437,7 @@ async function viewMemberDrills() {
   const list = [...byDrill.values()];
   const urls = await signedDrillUrls([...list.map((r) => r.drills), ...roadmap.filter(rmOpen).map((r) => r.drills)]);
   return header('ドリル') + `<div class="content wide">
+    <p class="page-lead">毎月1つ届く練習メニュー（ドリル）と、1年間の練習計画（ロードマップ）です。練習したら記録しましょう。</p>
     ${roadmapView(roadmap, urls, { practice, reflections, goal: goals[0]?.goal || p.goal })}
     <div class="section-title"><div><div class="eyebrow">From Lessons</div><h2>レッスンで届いたドリル</h2></div></div>
     ${list.length ? `<div class="drill-list">${list.map((r) => drillCard(r.drills, urls,
@@ -1406,7 +1449,7 @@ async function viewMemberDrills() {
 // 使い方ガイド（初回ログイン時に自動で表示。アカウント画面からいつでも見られる）
 function viewGuide() {
   const first = !state.profile.onboarded_at;
-  return header('使い方ガイド', first ? '' : 'account') + `<div class="content guide">
+  return header('使い方ガイド', first ? '' : 'menu') + `<div class="content guide">
     ${first ? `<div class="hero"><div class="eyebrow">Welcome</div><h1>${esc(state.profile.name || '')}さん、ようこそ。</h1>
       <p style="margin:0">レッスンの受け方を3つのステップでご紹介します。</p></div>` : ''}
     <section class="card guide-step">
@@ -1446,13 +1489,88 @@ function viewGuide() {
       <p class="muted small" style="margin:0">月1回のオンライン面談は、マイページの「LINEで面談を予約する」から予約できます。</p>
     </section>
     <button class="btn-block btn-gold" data-action="finish-guide">${first ? 'はじめる' : 'マイページへ'}</button>
-  </div>` + (first ? '' : memberNav('account'));
+  </div>` + (first ? '' : memberNav('menu'));
+}
+
+// はじめての方へ・図解・用語集（契約前でも見られる）
+function viewHelp(tab) {
+  const key = tab ? `help/${tab}` : 'help';
+  const title = HELP_TABS.find(([k]) => k === key)?.[1] || 'はじめての方へ';
+  const p = state.profile;
+  return header(title, isActive(p) ? 'menu' : '') + `<div class="content help">
+    <div class="help-tabs" role="tablist">${HELP_TABS.map(([k, l]) => `<a role="tab" href="#/${k}" class="${k === key ? 'on' : ''}"${k === key ? ' aria-selected="true"' : ''}>${l}</a>`).join('')}</div>
+    ${helpPage(tab, icon)}
+    <div class="card help-ask"><b>分からないことがあれば</b><p class="muted small">どんな小さなことでも、LINEでコーチに気軽に聞いてください。</p>${lineBtn('LINEで質問する')}</div>
+  </div>` + (p.role === 'admin' ? adminNav('') : isActive(p) ? memberNav('menu') : guestNav('help'));
+}
+
+// 用語集の絞り込み（文字・分類）
+function filterGlossary() {
+  const q = (document.querySelector('[data-glossary-search]')?.value || '').trim().toLowerCase();
+  const cat = document.querySelector('.gl-cat.on')?.dataset.cat || '';
+  let n = 0;
+  document.querySelectorAll('.gl-item').forEach((it) => {
+    const show = (!cat || it.dataset.cat === cat) && (!q || it.dataset.key.toLowerCase().includes(q));
+    it.hidden = !show; if (show) n++;
+  });
+  const none = document.querySelector('.gl-none');
+  if (none) none.hidden = n > 0;
+}
+
+// メニュー：すべての機能を、色分けしたグループで一覧にする
+function viewMenu() {
+  const tile = (cat, ic, label, desc, href, badge = 0, ext = false) => `<a class="menu-tile cat-${cat}" href="${href}"${ext ? ' target="_blank" rel="noopener"' : ''}>
+      <span class="mt-ic">${icon(ic)}</span><span class="mt-body"><b>${label}</b><small>${desc}</small></span>
+      ${badge ? `<em class="mt-badge">${badge}</em>` : ''}<i aria-hidden="true">›</i></a>`;
+  const group = (title, tiles) => `<section class="menu-group"><h2>${title}</h2><div class="menu-grid">${tiles.join('')}</div></section>`;
+  return header('メニュー') + `<div class="content">
+    <p class="page-lead">このアプリでできることの一覧です。色ごとに機能が分かれています。</p>
+    ${group('レッスンを受ける', [
+      tile('video', 'video', '撮影する', 'スイングを撮影（SwingFrame）。撮るだけでもOK', SWINGFRAME_URL),
+      tile('video', 'inbox', '動画を送る', '撮った動画をコーチに送る', '#/submit'),
+      tile('lesson', 'book', 'レッスン', '届いたレッスンと、送った動画の一覧', '#/history', state.unread),
+      tile('drill', 'target', 'ドリル', '毎月のドリルと1年間の練習計画', '#/drills', state.drillUnread),
+      tile('meeting', 'calendar', '面談を予約する', 'コーチとオンラインで話す（LINEで予約）', CONTACT.lineUrl, 0, true),
+    ])}
+    ${group('記録・お祝い', [
+      tile('score', 'flag', 'スコア記録', 'ラウンドのスコアを記録。ベスト・平均を自動計算', '#/scores'),
+      tile('celebrate', 'trophy', 'お祝い', 'コーチから届いたお祝いメッセージ', '#/celebrations', state.celebrateUnread),
+    ])}
+    ${group('はじめての方へ・使い方', [
+      tile('help', 'help', 'はじめての方へ', 'アプリの使い方とゴルフの基本', '#/help'),
+      tile('help', 'flag', '図解で見る', '撮影の向き・スイング・コース・クラブ・スコア', '#/help/zukai'),
+      tile('help', 'book', '用語集', 'ゴルフの言葉・アプリの言葉を調べる', '#/help/words'),
+      tile('help', 'video', '使い方ガイド', '動画の撮り方・送り方（3ステップ）', '#/guide'),
+      tile('help', 'home', 'ホーム画面に追加', 'アプリのようにワンタップで開く', '#/install'),
+    ])}
+    ${group('設定・お問い合わせ', [
+      tile('menu', 'user', 'アカウント', 'お名前・Myクラブ・ご契約・通知・文字の大きさ', '#/account'),
+      tile('menu', 'chat', 'LINEで問い合わせる', '分からないこと・ご相談はこちら', CONTACT.lineUrl, 0, true),
+    ])}
+  </div>` + memberNav('menu');
+}
+
+// お祝い：コーチから届いたお祝いを見返す
+const STAMP = { trophy: '🏆', party: '🎉', flag: '⛳', clap: '👏', fire: '🔥', star: '⭐' };
+const celeCard = (c, big = false) => `<article class="cele-card${big ? ' big' : ''}${c.seen_at ? '' : ' unseen'}">
+    <span class="cele-stamp" aria-hidden="true">${STAMP[c.stamp] || '🏆'}</span>
+    <div class="cele-body"><span class="cele-from">コーチからのお祝い・${fmtDate(c.created_at)}${c.seen_at ? '' : ' <span class="new-badge">NEW</span>'}</span>
+      <h3>${esc(c.title)}</h3>${c.message ? `<p class="pre">${esc(c.message)}</p>` : ''}</div></article>`;
+async function viewCelebrations() {
+  const list = await sb.from('celebrations').select('*').eq('member_id', state.profile.id).order('created_at', { ascending: false }).then((r) => r.data || []);
+  const html = header('お祝い', 'menu') + `<div class="content">
+    <p class="page-lead">ベストスコア更新など、コーチから届いたお祝いです。</p>
+    ${list.length ? `<div class="cele-shelf"><b>${list.length}</b><span>これまでのお祝い</span></div>${list.map((c) => celeCard(c)).join('')}`
+      : '<div class="empty">まだお祝いはありません。ラウンドのスコアを記録すると、ベスト更新のときにコーチからお祝いが届きます。</div>'}
+  </div>` + memberNav('menu');
+  if (list.some((c) => !c.seen_at)) { sb.rpc('mark_celebrations_seen').then(() => {}, () => {}); state.celebrateUnread = 0; }
+  return html;
 }
 
 // ホーム画面に追加する方法
 function viewInstall() {
   const done = isStandalone();
-  return header('ホーム画面に追加', 'account') + `<div class="content">
+  return header('ホーム画面に追加', 'menu') + `<div class="content">
     <div class="card"><p style="margin:0">ホーム画面に追加すると、アプリのようにアイコンをタップするだけで会員ページが開けます。</p></div>
     ${done ? '<div class="notice">すでにホーム画面から開いています。</div>' : ''}
     ${installPrompt ? '<button class="btn-block btn-gold" data-action="install-app">ホーム画面に追加する</button>' : ''}
@@ -1472,7 +1590,7 @@ function viewInstall() {
         <li>「<b>ホーム画面に追加</b>」または「<b>アプリをインストール</b>」をタップ</li>
       </ol>
     </section>
-  </div>` + memberNav('account');
+  </div>` + memberNav('menu');
 }
 
 // ---------- 画面：管理者 ----------
@@ -1511,6 +1629,32 @@ const replyDue = (iso) => {
   return { over: false, cls: left <= 12 ? 'soon' : '', text: `返信目標まであと${hoursText(left)}` };
 };
 // ベスト更新・ベストタイ・平均より大きく良いスコアを探す（18ホールのみ）
+// お祝いを送る（ダッシュボードのベスト更新・会員詳細から）。会員のアプリのホームに届く
+const CELE_TEMPLATES = {
+  best: (n, sc) => [`ベストスコア更新！ ${sc}`, `${n}さん、ベストスコア更新おめでとうございます！\n${sc}は、これまでの練習の成果です。この調子で次の目標に向かっていきましょう！`, 'trophy'],
+  tie: (n, sc) => [`ベストスコアタイ！ ${sc}`, `${n}さん、ベストスコアタイ、おめでとうございます！\n安定して良いスコアが出せるようになってきましたね。次は更新を狙いましょう！`, 'flag'],
+  great: (n, sc) => [`ナイスラウンド！ ${sc}`, `${n}さん、ナイスラウンドでした！\n${sc}は平均より大きく良いスコアです。練習の成果がしっかり出ていますね。`, 'fire'],
+  free: (n) => ['', `${n}さん、`, 'party'],
+};
+async function sendCelebration(d) {
+  const [title, message, stamp] = (CELE_TEMPLATES[d.kind] || CELE_TEMPLATES.free)(d.name || '', d.score || '');
+  const v = await confirmDialog({
+    title: 'お祝いを送る',
+    body: `${d.label ? `<p class="small" style="margin:0 0 6px">${esc(d.label)}</p>` : ''}<div class="form modal-form">
+      <label>スタンプ</label><div class="stamp-pick">${Object.entries(STAMP).map(([k, e]) => `<label><input type="radio" name="stamp_r" value="${k}"${k === stamp ? ' checked' : ''} data-stamp-radio><span>${e}</span></label>`).join('')}</div>
+      <input type="hidden" name="stamp" value="${stamp}">
+      <label>タイトル</label><input name="title" maxlength="60" required value="${esc(title)}" placeholder="例：入会1か月おめでとうございます！">
+      <label>メッセージ <span class="muted">（会員のアプリに届きます）</span></label>
+      <textarea name="message" rows="5" maxlength="1000">${esc(message)}</textarea>
+    </div>`,
+    ok: 'アプリに送る',
+  });
+  if (!v) return;
+  await must(sb.from('celebrations').insert({ member_id: d.member, round_id: d.round || null, stamp: v.stamp, title: v.title.trim(), message: v.message.trim() }));
+  if (d.round) await sb.from('admin_acks').upsert({ kind: 'celebration', ref_id: d.round }).then(() => {}, () => {});
+  toast('🏆 お祝いを送りました'); render();
+}
+
 function findCelebrations(rounds, people, acked = new Set(), days = 14) {
   const byMember = new Map();
   rounds.filter((r) => r.holes === 18).forEach((r) => {
@@ -1636,7 +1780,7 @@ async function viewDashboard() {
   // お祝いは一番下に表示する
   const celebrateSec = section('お祝い（ベスト更新・好スコア）', '★', celebrations.map((c) => row(`${memberLink(c.r.member_id, c.name)}　<b class="score-big">${c.r.score}</b>`,
       `${c.tags.map(([k, t]) => `<span class="cele ${k}">${esc(t)}</span>`).join('')}<br>${fmtDate(c.r.played_on)} ${esc(c.r.course_name)}`,
-      `<button type="button" class="btn btn-sm btn-gold" data-action="celebrate-done" data-id="${c.r.id}" data-member="${c.r.member_id}" data-label="${esc(`${c.name || ''}さん ${c.r.score}（${c.tags.map((t) => t[1]).join('・')}）`)}">お祝い済み</button>`)), '新しいお祝いはありません', '', 'celebrate');
+      `<button type="button" class="btn btn-sm btn-cat cat-celebrate" data-action="cele-send" data-round="${c.r.id}" data-member="${c.r.member_id}" data-name="${esc(c.name || '')}" data-score="${c.r.score}" data-kind="${c.tags[0][0]}" data-label="${esc(`${c.name || ''}さん ${c.r.score}（${c.tags.map((t) => t[1]).join('・')}）`)}">お祝いを送る</button>`)), '新しいお祝いはありません', '', 'celebrate');
   const feed = [
     ...refs7.map((x) => ({ t: x.updated_at, html: `💬 ${memberLink(x.member_id, x.profiles?.name)} がふり返りを書きました<small>${esc(x.body.slice(0, 60))}</small>` })),
     ...rounds30.filter((x) => daysAgo(x.created_at) <= 7).map((x) => ({ t: x.created_at, html: `⛳ ${memberLink(x.member_id, x.profiles?.name)} がスコアを記録：<b>${x.score}</b><small>${fmtDate(x.played_on)} ${esc(x.course_name)}</small>` })),
@@ -2000,6 +2144,7 @@ async function viewMemberDetail(id) {
     sb.from('member_karte').select('*').eq('member_id', id).maybeSingle().then((r) => r.data),
   ]);
   const mCredits = await loadCredits(id);
+  const mCeles = await sb.from('celebrations').select('id, stamp, title, created_at, seen_at').eq('member_id', id).order('created_at', { ascending: false }).limit(5).then((r) => r.data || []);
   const mst = scoreStats(mRounds, m || {});
   const subUrls = await signedVideoUrls(subs.filter((x) => !x.video_deleted_at)).catch(() => ({}));
   if (!m) return header('会員詳細', 'admin/members') + '<div class="content"><div class="empty">会員が見つかりません</div></div>';
@@ -2064,6 +2209,10 @@ async function viewMemberDetail(id) {
       ${recent.length ? `<div class="mt-history">${recent.map((x) => `<div class="list-item small"><div class="grow">${fmtShort(x.scheduled_at)} ${meetingPill(x)} ${payPill(x)}${x.pay_type === 'unpaid' && x.status !== 'canceled' ? ` <button type="button" class="link inline" data-action="meeting-paid" data-id="${x.id}">支払い済みにする</button>` : ''}${x.summary ? `<div class="muted">${esc(x.summary.slice(0, 60))}</div>` : ''}</div>
           <button type="button" class="btn btn-sm btn-sub" data-action="meeting-done" data-id="${x.id}">${x.status === 'scheduled' ? '結果' : '編集'}</button></div>`).join('')}</div>` : ''}
     </div>
+
+    <div class="section-title cat-celebrate"><h2>お祝い</h2><button type="button" class="btn btn-sm btn-cat cat-celebrate" data-action="cele-send" data-member="${m.id}" data-name="${esc(m.name || '')}">＋ お祝いを送る</button></div>
+    <div class="card">${mCeles.length ? mCeles.map((c) => `<div class="list-item small"><span>${STAMP[c.stamp] || '🏆'} ${esc(c.title)}</span><span class="muted">${fmtDate(c.created_at)} ${c.seen_at ? '<span class="pill ok">見ました</span>' : '<span class="pill mute">未読</span>'}</span></div>`).join('')
+      : '<p class="muted small" style="margin:0">入会1か月・練習の継続・目標達成など、いつでもアプリにお祝いを送れます。</p>'}</div>
 
     <div class="section-title"><h2>担当者メモ</h2><span class="muted small">会員には見えません</span></div>
     <div class="card">
@@ -2545,6 +2694,7 @@ async function render() {
     }
 
     if (p.role === 'admin') {
+      if (r[0] === 'help') return paint(viewHelp(r[1]));
       if (r[0] !== 'admin') return go('admin/dashboard');
       await loadAdminBadges();
       if (r[1] === 'dashboard') return paint(await viewDashboard());
@@ -2562,6 +2712,7 @@ async function render() {
       return go('admin/dashboard');
     }
 
+    if (r[0] === 'help') { paint(viewHelp(r[1])); return; }
     if (!isActive(p)) {
       if (r[0] !== 'plans') return go('plans');
       return paint(viewPlans());
@@ -2571,13 +2722,17 @@ async function render() {
     if (r[0] === 'scores' && isActive(p)) return paint(await viewScores());
     if (r[0] === 'install') return paint(viewInstall());
     if (!p.onboarded_at) return go('guide');
-    const [unreadLessons, unreadDrills] = await Promise.all([
+    const [unreadLessons, unreadDrills, unseenCele] = await Promise.all([
       sb.from('lessons').select('id', { count: 'exact', head: true }).eq('member_id', p.id).is('read_at', null),
       sb.from('roadmap_items').select('id', { count: 'exact', head: true }).eq('member_id', p.id).is('seen_at', null).eq('hidden', false)
         .or(`published_at.not.is.null,publish_on.lte.${today()}`),
+      sb.from('celebrations').select('id', { count: 'exact', head: true }).eq('member_id', p.id).is('seen_at', null),
     ]);
+    state.celebrateUnread = unseenCele.count || 0;
     state.unread = unreadLessons.count || 0;
     state.drillUnread = unreadDrills.count || 0;
+    if (r[0] === 'menu') return paint(viewMenu());
+    if (r[0] === 'celebrations') return paint(await viewCelebrations());
     if (r[0] === 'submit') return paint(await viewSubmit());
     if (r[0] === 'history') return paint(await viewHistory());
     if (r[0] === 'drills') {
@@ -2848,6 +3003,18 @@ const actions = {
     if (v.note.trim()) await must(sb.from('staff_notes').insert({ member_id: m.member_id, body: `【面談 ${fmtShort(m.scheduled_at)}】${v.note.trim()}` }));
     toast('面談の結果を保存しました'); render();
   },
+  'celebrate-thanks': async () => {
+    await sb.rpc('mark_celebrations_seen').then(() => {}, () => {});
+    state.celebrateUnread = 0;
+    playCupIn();
+    toast('🏆 これからも一緒にがんばりましょう！');
+    render();
+  },
+  'glossary-cat': (el) => {
+    document.querySelectorAll('.gl-cat').forEach((b) => b.classList.toggle('on', b === el));
+    filterGlossary();
+  },
+  'cele-send': async (el) => { await sendCelebration(el.dataset); },
   'account-delete': async () => {
     const p = state.profile;
     const paying = ['active', 'trialing', 'past_due', 'unpaid', 'paused'].includes(p.subscription_status) && !p.cancel_at;
@@ -2892,18 +3059,6 @@ const actions = {
   'notice-ack': async (el) => {
     await must(sb.from('member_notices').update({ acked_at: new Date().toISOString(), acked_by: state.profile.id }).eq('id', el.dataset.id));
     toast('確認済みにしました'); render();
-  },
-  'celebrate-done': async (el) => {
-    const v = await confirmDialog({
-      title: 'お祝い済みにしますか？',
-      body: `<p>${esc(el.dataset.label)}</p><div class="form modal-form"><label>送った内容のメモ <span class="muted">（任意・担当者メモに残ります）</span></label>
-        <textarea name="note" rows="2" maxlength="500" placeholder="例：LINEでお祝いメッセージを送った"></textarea></div>`,
-      ok: 'お祝い済みにする',
-    });
-    if (!v) return;
-    await must(sb.from('admin_acks').upsert({ kind: 'celebration', ref_id: el.dataset.id }));
-    if (v.note.trim()) await must(sb.from('staff_notes').insert({ member_id: el.dataset.member, body: `【お祝い】${el.dataset.label}：${v.note.trim()}` }));
-    toast('お祝い済みにしました'); render();
   },
   print: () => window.print(),
   'tpl-save': async (el) => {
@@ -3402,6 +3557,7 @@ document.addEventListener('input', (ev) => {
   if (ev.target.dataset.action === 'filter-drills') { applyDrillFilter(); return; }
   const lessonForm = ev.target.closest('form[data-form="lesson"]');
   if (lessonForm && LESSON_FIELDS.includes(ev.target.name)) { saveLessonDraft(lessonForm); return; }
+  if (ev.target.matches('[data-glossary-search]')) { filterGlossary(); return; }
   if (ev.target.matches('[data-member-search]')) {
     const sel = ev.target.parentElement.querySelector('select[name="member_id"]');
     sel.innerHTML = memberOptionsHtml(meetingMembers, sel.value, ev.target.value);
@@ -3448,6 +3604,10 @@ document.addEventListener('change', (ev) => {
     }
     box.dispatchEvent(new Event('input', { bubbles: true })); // 書きかけとして保存する
     box.focus();
+    return;
+  }
+  if (ev.target.matches('[data-stamp-radio]')) {
+    ev.target.closest('.modal-form').querySelector('input[name="stamp"]').value = ev.target.value;
     return;
   }
   if (ev.target.matches('[data-status-radio]')) {
