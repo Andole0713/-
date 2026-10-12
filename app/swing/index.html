@@ -369,7 +369,7 @@ a.hbtn{text-decoration:none;color:inherit;box-sizing:border-box}
       <h1>SwingFrame</h1>
       <p>スイング撮影・スイング分析</p>
       <!-- 表示用の版数。sw.js の CACHE と必ずそろえること（片方だけ上げると更新に気づけません） -->
-      <div id="hVer">v40</div>
+      <div id="hVer">v41</div>
     </div>
     <button class="hbtn pri" id="hShoot"><i>●</i><span>スイングを撮影<em>ガイドに合わせて自動で録画</em></span></button>
     <button class="hbtn" id="hLib"><i>▤</i><span>ライブラリ<em id="hLibSub">保存した動画と画像</em></span></button>
@@ -456,6 +456,10 @@ a.hbtn{text-decoration:none;color:inherit;box-sizing:border-box}
     <div class="hd">録画</div>
     <div class="row"><div class="lb">最長</div><input type="range" id="rDur" min="30" max="300" step="10"><div class="val" id="vDur"></div></div>
     <div class="note" style="margin-top:-2px">撮影ボタンで撮るときは、<b style="color:var(--fg)">もう一度押すまで録画します</b>。ここは念のための上限で、この時間になったら自動で止まります。長さは撮ったあとに「長さ」から調節できます。</div>
+    <div class="row"><div class="lb">画質</div><div class="seg" id="segQ">
+      <button data-v="std">標準</button><button data-v="hi">高画質</button><button data-v="max">最高</button>
+    </div></div>
+    <div class="note" style="margin-top:-2px">画質を上げるほど動画のサイズが大きくなります（高画質で10秒あたり約20MB）。</div>
     <div class="row"><div class="lb">自動録画</div><div class="seg" id="segAuto">
       <button data-v="off">オフ</button><button data-v="one">自動</button>
     </div></div>
@@ -633,7 +637,7 @@ var $=function(s){return document.querySelector(s)};
 
 /* ============ state ============ */
 var DEF={guide:'dtl',mirror:false,scale:.44,cx:.5,cy:.62,op:.6,zoom:1,face:'environment',
-         dur:120,cd:0,
+         dur:120,cd:0,q:'hi',
          img:null,cut:true,auto:'off',sens:5,post:5,trig:'sound',asens:5};
 var gAR=0.5,gAX=0.5;
 /* where the body sits inside each guide image, as a fraction of its width.
@@ -798,7 +802,8 @@ var mr=null,chunks=[],recording=false,recT0=0,recTimer=null,recRaf=0,cdTimer=nul
    with one still picture. Two independent signs catch it: the preview stops
    getting new frames, or the recorder's 1-second pieces shrink to sound only.
    The take is then stopped and trimmed to the part that really moved. */
-var lowFps=false,freezeN=0,frozenAt=0,lastFrameAt=0,frameN=0,vfcOn=false,chunkSz=[],smallN=0;
+var IOS=/iP(hone|ad|od)/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
+var lowFps=false,qCap=null,freezeN=0,frozenAt=0,lastFrameAt=0,frameN=0,vfcOn=false,chunkSz=[],smallN=0;
 function watchFrames(){
   if(vfcOn||!video.requestVideoFrameCallback)return;
   vfcOn=true;
@@ -807,9 +812,9 @@ function watchFrames(){
 }
 function median(a){var b=a.slice().sort(function(x,y){return x-y});return b[b.length>>1]||0}
 function onChunk(sz){
-  /* iPhone (mp4) only: there the size per second is steady; other
-     encoders shrink a still scene far enough to look like a freeze */
-  if(!recording||!stream||!stream.getVideoTracks().length||!/mp4/.test(mr.mimeType||''))return;
+  /* iPhone only: there the size per second is steady; other encoders
+     shrink a still scene far enough to look like a freeze */
+  if(!recording||!stream||!stream.getVideoTracks().length||!IOS)return;
   chunkSz.push(sz);
   if(chunkSz.length<3){smallN=0;return}
   var good=median(chunkSz.slice(1,-1));
@@ -823,11 +828,21 @@ function onFreeze(sec){
   frozenAt=Math.max(0.5,sec);
   stopRec();
 }
+/* High profile first: Baseline (42E01E) has none of H.264's better tools,
+   and at phone bitrates a fast swing turns to a soft, hazy smear */
 function mime(){
-  var c=['video/mp4;codecs=avc1.42E01E','video/mp4','video/webm;codecs=vp9','video/webm;codecs=vp8','video/webm'];
+  var c=['video/mp4;codecs=avc1.64002A','video/mp4;codecs=avc1.640028','video/mp4;codecs=avc1.4D002A',
+         'video/mp4;codecs=avc1.42E01E','video/mp4','video/webm;codecs=vp9','video/webm;codecs=vp8','video/webm'];
   if(!window.MediaRecorder)return null;
   for(var i=0;i<c.length;i++){try{if(MediaRecorder.isTypeSupported(c[i]))return c[i]}catch(e){}}
   return '';
+}
+var QBPS={std:8,hi:16,max:25},QORD=['std','hi','max'];
+/* bits per second for a take: 60fps needs about twice what 30fps does */
+function vbps(f){
+  var q=S.q in QBPS?S.q:'hi';
+  if(qCap&&QORD.indexOf(q)>QORD.indexOf(qCap))q=qCap;
+  return Math.round(QBPS[q]*((f||fps)>=50?1:0.6)*1e6);
 }
 function tapRec(){
   if(recording){stopRec();return}
@@ -847,7 +862,7 @@ function beginRec(){
   if(m===null){toast('この環境は録画に対応していません');return}
 
   chunks=[];
-  try{mr=new MediaRecorder(stream,m?{mimeType:m,videoBitsPerSecond:6000000}:{})}
+  try{mr=new MediaRecorder(stream,m?{mimeType:m,videoBitsPerSecond:vbps()}:{})}
   catch(e){try{mr=new MediaRecorder(stream)}catch(e2){toast('録画を開始できません');return}}
   mr.ondataavailable=function(e){if(e.data&&e.data.size){chunks.push(e.data);onChunk(e.data.size)}};
   mr.onstop=onStop;
@@ -936,7 +951,10 @@ function rWarn(msg){
    returns; if it keeps happening, drop to 30fps, which is far lighter */
 function recoverCam(){
   freezeN++;
-  if(freezeN>=2&&!lowFps){lowFps=true;setTimeout(function(){toast('映像が止まりやすいため、なめらかさを30fpsに下げて撮影します')},4000)}
+  /* first lighten the picture one step, then the frame rate */
+  var q=S.q in QBPS?S.q:'hi',i=QORD.indexOf(qCap||q);
+  if(freezeN===1&&i>0){qCap=QORD[i-1];setTimeout(function(){toast('映像が止まらないよう、この撮影中は画質を一段下げます')},4000)}
+  else if(freezeN>=2&&!lowFps){lowFps=true;setTimeout(function(){toast('映像が止まりやすいため、なめらかさを30fpsに下げて撮影します')},4000)}
   if(stream){stream.getTracks().forEach(function(t){t.stop()})}
 }
 
@@ -1255,6 +1273,7 @@ var sgGuide=seg('#segGuide',function(){return S.guide},function(v){S.guide=v});
 var sgFace=seg('#segFace',function(){return S.face},function(v){if(S.face!==v){S.face=v;startCam().catch(function(e){toast(e.message||'カメラ切替に失敗')})}});
 var rDur=rng('#rDur','#vDur',function(){return S.dur},function(v){S.dur=v},function(v){return v+'秒'});
 var sgCd=seg('#segCd',function(){return S.cd},function(v){S.cd=+v});
+var sgQ=seg('#segQ',function(){return S.q},function(v){S.q=v});
 var sgAuto=seg('#segAuto',function(){return S.auto},function(v){S.auto=v;autoReset(false)});
 var sgPost=seg('#segPost',function(){return S.post},function(v){S.post=+v});
 var sgTrig=seg('#segTrig',function(){return S.trig},function(v){S.trig=v});
@@ -1278,7 +1297,7 @@ $('#camZoom').addEventListener('change',save);
 
 function syncSheet(){
   sgSlot.sync();sgGuide.sync();sgFace.sync();sgCd.sync();sgCut.sync();
-  rScale.sync();rOp.sync();rDur.sync();rSens.sync();rAsens.sync();sgAuto.sync();sgPost.sync();sgTrig.sync();autoBadge(autoState==='armed'?'構え待ち':'待機中');
+  rScale.sync();rOp.sync();rDur.sync();rSens.sync();rAsens.sync();sgAuto.sync();sgQ.sync();sgPost.sync();sgTrig.sync();autoBadge(autoState==='armed'?'構え待ち':'待機中');
 }
 function applyAll(){
   /* "長さ" used to be the fixed length of a manual take — 8 seconds by default.
@@ -2078,7 +2097,8 @@ $('#rSave').onclick=function(){
   var W=rv.videoWidth,H=rv.videoHeight;
   var c=document.createElement('canvas');c.width=W;c.height=H;
   var x=c.getContext('2d');
-  var st=c.captureStream?c.captureStream(30):null;
+  var outFps=(cur.fps||30)>=50?60:30;
+  var st=c.captureStream?c.captureStream(outFps):null;
   var m=mime();
   if(!st||m===null){
     saveTo(cur.blob,'swing_'+cur.id+'.'+ext,'video',{guide:cur.guide,note:cur.note,original:true});
@@ -2089,7 +2109,7 @@ $('#rSave').onclick=function(){
   if(ad&&ad.stream.getAudioTracks().length)tracks=tracks.concat(ad.stream.getAudioTracks());
   var outStream=new MediaStream(tracks);
   var rec;
-  try{rec=new MediaRecorder(outStream,m?{mimeType:m,videoBitsPerSecond:8000000}:{})}
+  try{rec=new MediaRecorder(outStream,m?{mimeType:m,videoBitsPerSecond:vbps(outFps)}:{})}
   catch(e){saveTo(cur.blob,'swing_'+cur.id+'.'+ext,'video',{guide:cur.guide,note:cur.note,original:true});return}
   var parts=[],raf=0,k=W/(rc.width/(window.devicePixelRatio||1)),stopped=false;
   rec.ondataavailable=function(e){if(e.data&&e.data.size)parts.push(e.data)};
