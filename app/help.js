@@ -18,7 +18,7 @@ const FLOW = [
 
 const TABS_EXPLAIN = [
   ['home', 'ホーム', 'home', '次にやること・今月のドリル・残りの回数など、いま大事なことがまとめて見られます'],
-  ['video', '撮影・提出', 'video', 'スイングを撮影して、コーチに動画を送ります'],
+  ['video', '撮影・提出', 'video', 'スイングを撮影して、コーチに動画を送ります。動画の撮影・保存のみでも使えます'],
   ['lesson', 'レッスン', 'book', 'コーチから届いたレッスンと、送った動画をあとから見返せます'],
   ['drill', 'ドリル', 'target', '毎月1つ届く練習メニュー（ドリル）と、1年間の練習計画が見られます'],
   ['menu', 'メニュー', 'grid', 'スコア記録・お祝い・用語集・アカウントなど、すべての機能はここから'],
@@ -52,8 +52,8 @@ function firstPage(icon) {
   <div class="card help-basics">
     <dl>
       <dt>どんなスポーツ？</dt><dd>止まっているボールをクラブで打ち、<b>できるだけ少ない回数でカップ（穴）に入れる</b>スポーツです。打った回数がそのままスコアになり、<b>少ないほど良い</b>成績です。</dd>
-      <dt>1ラウンド＝18ホール</dt><dd>コースは18の「ホール」でできています。18ホールを回ることを「1ラウンド」と言い、4〜5時間ほどかかります。</dd>
-      <dt>パー＝基準の打数</dt><dd>ホールごとに「このくらいで入れられたら上手」という基準（パー3・4・5）があります。18ホールの合計はふつう<b>72</b>です。</dd>
+      <dt>1ラウンド＝18ホール</dt><dd>コースは18の「ホール」でできています。18ホールを回ることを「1ラウンド」と言い、4〜5時間ほどかけてプレーします。</dd>
+      <dt>パー＝基準の打数</dt><dd>ホールごとに「このくらいで入れられたら上手」という基準（パー3・4・5）があります。18ホールの合計は基本<b>72</b>です。</dd>
       <dt>目標の目安</dt><dd>はじめてのラウンドは<b>120〜150</b>くらいがふつうです。上達の目安として「<b>100切り</b>」（99以下）、「<b>90切り</b>」（89以下）がよく目標にされます。</dd>
       <dt>クラブは最大14本</dt><dd>遠くへ飛ばす「ドライバー」から、グリーンの上で転がす「パター」まで、距離に合わせて使い分けます。最初は数本でも大丈夫です。</dd>
     </dl>
@@ -79,12 +79,21 @@ const SVG_ANGLE = `<svg viewBox="0 0 360 250" class="zk-svg" role="img" aria-lab
   <text x="238" y="152" font-size="12.5" fill="#3f6b3c" font-weight="700">打つ方向（目標）→</text>
   <circle cx="190" cy="132" r="5" fill="#fff" stroke="#555"/>
   <text x="198" y="124" font-size="11.5" fill="#555">ボール</text>
-  <ellipse cx="190" cy="176" rx="27" ry="11" fill="#1f2d24"/>
-  <circle cx="190" cy="176" r="9.5" fill="#f0d9b5" stroke="#1f2d24" stroke-width="2"/>
-  <path d="M190 164v-22" stroke="#1f2d24" stroke-width="1.5" marker-end="url(#ar)"/>
-  <text x="128" y="206" font-size="12" fill="#1f2d24" font-weight="700">あなた</text>
-  <text x="128" y="221" font-size="10.5" fill="#1f2d24">（上から見た図・ボールの方を向いて立つ）</text>
-  <defs><marker id="ar" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto"><path d="M0 0L6 3L0 6z" fill="#1f2d24"/></marker></defs>
+  <g stroke="#1f2d24" stroke-linecap="round" stroke-linejoin="round">
+    <ellipse cx="170" cy="194" rx="6" ry="10" fill="#fff" stroke-width="2"/>
+    <ellipse cx="210" cy="194" rx="6" ry="10" fill="#fff" stroke-width="2"/>
+    <path d="M166 176Q178 158 191 151M214 176Q203 160 192 151" fill="none" stroke-width="9"/>
+    <path d="M166 176Q178 158 191 151M214 176Q203 160 192 151" fill="none" stroke="#fff" stroke-width="5"/>
+    <rect x="160" y="171" width="60" height="16" rx="8" fill="#fff" stroke-width="2.2"/>
+    <circle cx="190" cy="179" r="9.5" fill="#f0d9b5" stroke-width="2"/>
+    <path d="M181 175a9.5 9.5 0 0 1 18 0z" fill="#1f2d24" stroke-width="1"/>
+    <path d="M184 172q6-7 12 0" fill="#1f2d24" stroke-width="1"/>
+    <circle cx="191.5" cy="151" r="4" fill="#fff" stroke-width="1.8"/>
+  </g>
+  <line x1="191" y1="148" x2="190" y2="136" stroke="#777" stroke-width="2"/>
+  <text x="222" y="186" font-size="12" fill="#1f2d24" font-weight="700">あなた（右打ち）</text>
+  <text x="222" y="200" font-size="10.5" fill="#1f2d24">左肩が打つ方向を向く</text>
+  <text x="104" y="226" font-size="10.5" fill="#1f2d24">（上から見た図・ボールの方を向いて立つ）</text>
   <g transform="translate(190 36)"><rect x="-17" y="-11" width="34" height="22" rx="4" fill="#2f6fb0"/><circle r="5.5" fill="#fff"/></g>
   <path d="M190 50v70" stroke="#2f6fb0" stroke-width="2" stroke-dasharray="4 4"/>
   <text x="214" y="32" font-size="14" font-weight="700" fill="#2f6fb0">正面から</text>
@@ -121,26 +130,54 @@ const SVG_COURSE = `<svg viewBox="0 0 360 230" class="zk-svg" role="img" aria-la
   </g>
 </svg>`;
 
-// スイングの流れ（正面から見た棒人間）
-function stick(a, c, label, n) {
+// スイングの流れ（正面から見た人型・右打ち）。撮影機能のガイドと同じ、線で描いた人型
+// 各場面の体の位置：sc=肩の中心, sw=肩幅の半分, hx/hy=手の位置, ca=クラブの向き（度・右=0 下=90）, cl=クラブの長さ, hp=腰の位置, trail=右足かかとを上げる
+const POSES = [
+  { sc: 60, sw: 13, hx: 61, hy: 76, ca: 92, cl: 42, hp: 60 },
+  { sc: 58, sw: 11, hx: 38, hy: 70, ca: 186, cl: 34, hp: 59 },
+  { sc: 57, sw: 8, hx: 40, hy: 25, ca: 2, cl: 34, hp: 58 },
+  { sc: 58, sw: 9, hx: 38, hy: 40, ca: 300, cl: 34, hp: 60 },
+  { sc: 60, sw: 11, hx: 46, hy: 64, ca: 228, cl: 34, hp: 62 },
+  { sc: 61, sw: 13, hx: 63, hy: 76, ca: 94, cl: 42, hp: 63 },
+  { sc: 63, sw: 10, hx: 84, hy: 62, ca: 318, cl: 34, hp: 64, trail: 1 },
+  { sc: 64, sw: 8, hx: 79, hy: 22, ca: 196, cl: 34, hp: 65, trail: 2 },
+];
+const INK = '#1f2d24';
+function figure(P, label, n) {
+  const f = (v) => v.toFixed(1);
   const rad = (d) => (d * Math.PI) / 180;
-  const sx = 40, sy = 34, R = 24, L = 30;
-  const hx = sx - R * Math.sin(rad(a)), hy = sy + R * Math.cos(rad(a));
-  const cx = hx - L * Math.sin(rad(c)), cy = hy + L * Math.cos(rad(c));
-  return `<figure class="zk-fig"><svg viewBox="0 0 80 104" aria-hidden="true">
-    <line x1="4" y1="98" x2="76" y2="98" stroke="#b9c7b4" stroke-width="2"/>
-    <circle cx="40" cy="97" r="2.6" fill="#fff" stroke="#666"/>
-    <circle cx="40" cy="16" r="8" fill="#f0d9b5" stroke="#1f2d24" stroke-width="2"/>
-    <path d="M40 24v36M40 60l-9 37M40 60l9 37" stroke="#1f2d24" stroke-width="3" stroke-linecap="round" fill="none"/>
-    <path d="M40 ${sy}L${hx.toFixed(1)} ${hy.toFixed(1)}" stroke="#1f2d24" stroke-width="3" stroke-linecap="round"/>
-    <path d="M${hx.toFixed(1)} ${hy.toFixed(1)}L${cx.toFixed(1)} ${cy.toFixed(1)}" stroke="#6b4fa0" stroke-width="2.6" stroke-linecap="round"/>
-    <circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="3.2" fill="#6b4fa0"/>
+  const ex = P.hx + P.cl * Math.cos(rad(P.ca)), ey = P.hy + P.cl * Math.sin(rad(P.ca));
+  const sL = [P.sc - P.sw, 38], sR = [P.sc + P.sw, 38];         // 画面の左＝右肩、右＝左肩（正面から見た右打ち）
+  const hL = [P.hp - 8, 74], hR = [P.hp + 8, 74];
+  const kneeL = P.trail ? [P.hp - 2, 97] : [52, 97], kneeR = [68, 97];
+  const ankL = P.trail === 2 ? [57, 117] : P.trail ? [52, 119] : [49, 120], ankR = [71, 120];
+  const arm = (s) => { const mx = (s[0] + P.hx) / 2 + (s[0] < P.sc ? -3 : 3), my = (s[1] + P.hy) / 2; return `M${f(s[0])} ${f(s[1])}Q${f(mx)} ${f(my)} ${f(P.hx)} ${f(P.hy)}`; };
+  const leg = (h, k, a) => `M${f(h[0])} ${f(h[1])}L${f(k[0])} ${f(k[1])}L${f(a[0])} ${f(a[1])}`;
+  const legs = (w, color) => `<g fill="none" stroke="${color}" stroke-linecap="round" stroke-linejoin="round" stroke-width="${w}">
+      <path d="${leg(hL, kneeL, ankL)}"/><path d="${leg(hR, kneeR, ankR)}"/></g>`;
+  const arms = (w, color) => `<g fill="none" stroke="${color}" stroke-linecap="round" stroke-linejoin="round" stroke-width="${w}">
+      <path d="${arm(sL)}"/><path d="${arm(sR)}"/></g>`;
+  const torso = `M${f(sL[0] - 1)} ${f(sL[1] - 1)}Q${f(P.sc)} ${f(sL[1] - 5)} ${f(sR[0] + 1)} ${f(sR[1] - 1)}L${f(hR[0] + 1)} ${f(hR[1] - 4)}L${f(hL[0] - 1)} ${f(hL[1] - 4)}Z`;
+  const shoe = (a, up) => `<ellipse cx="${f(a[0] + (up ? 0 : a[0] < 60 ? -2 : 2))}" cy="${f(a[1] + 3)}" rx="${up ? 3 : 6}" ry="3" fill="#fff" stroke="${INK}" stroke-width="1.6"/>`;
+  return `<figure class="zk-fig"><svg viewBox="0 0 120 130" aria-hidden="true">
+    <line x1="4" y1="125" x2="116" y2="125" stroke="#b9c7b4" stroke-width="2"/>
+    ${n <= 2 || n === 6 ? '<circle cx="60" cy="122" r="2.8" fill="#fff" stroke="#666"/>' : ''}
+    ${legs(13, INK)}${legs(9, '#fff')}
+    <path d="M${f(hL[0] - 1)} ${f(hL[1] - 3)}L${f(hR[0] + 1)} ${f(hR[1] - 3)}" stroke="${INK}" stroke-width="2.4"/>
+    ${shoe(ankL, P.trail === 2)}${shoe(ankR)}
+    <path d="${torso}" fill="#fff" stroke="${INK}" stroke-width="2.4" stroke-linejoin="round"/>
+    <circle cx="${f(P.sc)}" cy="24" r="8.5" fill="#fff" stroke="${INK}" stroke-width="2.2"/>
+    <path d="M${f(P.sc - 9)} 22Q${f(P.sc)} 9 ${f(P.sc + 9)} 22Z" fill="${INK}"/>
+    <path d="M${f(P.sc - 9)} 22h18" stroke="${INK}" stroke-width="2.4" stroke-linecap="round"/>
+    <line x1="${f(P.hx)}" y1="${f(P.hy)}" x2="${f(ex)}" y2="${f(ey)}" stroke="#555" stroke-width="2" stroke-linecap="round"/>
+    <circle cx="${f(ex)}" cy="${f(ey)}" r="3" fill="#8a9097"/>
+    ${arms(8.5, INK)}${arms(4.5, '#fff')}
+    <circle cx="${f(P.hx)}" cy="${f(P.hy)}" r="3.6" fill="#fff" stroke="${INK}" stroke-width="1.8"/>
   </svg><figcaption><span>${n}</span>${label}</figcaption></figure>`;
 }
 const SWING = [
-  [0, -8, 'アドレス', '構える'], [45, 90, 'テークバック', 'クラブを上げ始める'], [160, -90, 'トップ', 'いちばん上'],
-  [115, 175, '切り返し', '下ろし始める'], [55, 120, 'ダウンスイング', '下ろす'], [0, 0, 'インパクト', 'ボールに当たる瞬間'],
-  [-60, -100, 'フォロースルー', '振り抜く'], [-160, -250, 'フィニッシュ', '振り終わり'],
+  ['アドレス', '構える'], ['テークバック', 'クラブを上げ始める'], ['トップ', 'いちばん上'], ['切り返し', '下ろし始める'],
+  ['ダウンスイング', '下ろす'], ['インパクト', 'ボールに当たる瞬間'], ['フォロースルー', '振り抜く'], ['フィニッシュ', '振り終わり'],
 ];
 
 // クラブの種類と飛ぶ距離の目安
@@ -192,14 +229,14 @@ function zukaiPage(icon) {
     <h2 class="zk-h">${icon('video')}撮影の向き</h2>
     <p>動画は「<b>正面</b>」か「<b>後方</b>」のどちらかから撮ります。送るときに、どちらから撮ったかを選びます。</p>
     ${SVG_ANGLE}
-    <ul class="zk-points"><li>頭から足先まで、<b>クラブ全体</b>が画面に入るように</li><li>スマホは<b>腰くらいの高さ</b>で固定（三脚があると安定）</li><li>ボールの近くに立ちすぎないよう、<b>2〜3m</b>はなれて撮る</li></ul>
+    <ul class="zk-points"><li>頭から足先まで、<b>クラブ全体</b>が画面に入るように</li><li>スマホは<b>胸の少し下あたりの高さ</b>で固定（三脚があると安定）</li><li>ボールの近くに立ちすぎないよう、<b>2〜3m</b>はなれて撮る</li></ul>
   </section>
 
   <section class="card zk cat-drill" id="zk-swing">
     <h2 class="zk-h">${icon('target')}スイングの流れ</h2>
     <p>スイングは、構えてから振り終わるまでを8つの場面に分けて考えます。レッスンでは「トップで〜」「インパクトで〜」のように、この言葉で説明します。</p>
-    <div class="zk-swing">${SWING.map(([a, c, t, d], i) => stick(a, c, `<b>${t}</b><small>${d}</small>`, i + 1)).join('')}</div>
-    <p class="muted small">※ 正面から見た図です。紫の線がクラブです。</p>
+    <div class="zk-swing">${SWING.map(([t, d], i) => figure(POSES[i], `<b>${t}</b><small>${d}</small>`, i + 1)).join('')}</div>
+    <p class="muted small">※ 右打ちの人を、正面（体の前）から見た図です。</p>
   </section>
 
   <section class="card zk cat-score" id="zk-course">
@@ -275,7 +312,7 @@ const WORDS = [
   ['course', 'カップ', 'かっぷ', 'グリーンにある穴。ここにボールを入れたらホール終了です。'],
   ['course', 'OB', 'おーびー', '「アウト・オブ・バウンズ」の略。コースの外のこと。入ると1打の罰が加わり、打ち直しになります。'],
   ['course', 'ハザード', 'はざーど', '池など、ボールが入ると困る場所。'],
-  ['score', 'パー', 'ぱー', 'ホールごとに決められた基準の打数。18ホールの合計はふつう72です。'],
+  ['score', 'パー', 'ぱー', 'ホールごとに決められた基準の打数。18ホールの合計は基本72です。'],
   ['score', 'ボギー', 'ぼぎー', 'パーより1打多いこと。'],
   ['score', 'バーディ', 'ばーでぃ', 'パーより1打少ないこと。'],
   ['score', 'ベストスコア', 'べすとすこあ', 'これまでで一番良かった（少なかった）18ホールのスコア。'],
