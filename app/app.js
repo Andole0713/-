@@ -63,7 +63,7 @@ function toast(msg, bad = false) {
 }
 
 // 確認画面（「変更する」を押すと true、「キャンセル」・背景・Esc で false）
-function confirmDialog({ title, body, ok = '変更する' }) {
+function confirmDialog({ title, body, ok = '変更する', onOpen }) {
   return new Promise((resolve) => {
     const prev = document.activeElement;
     const wrap = document.createElement('div');
@@ -104,6 +104,7 @@ function confirmDialog({ title, body, ok = '変更する' }) {
     document.addEventListener('keydown', onKey, true);
     document.body.appendChild(wrap);
     (wrap.querySelector('.modal-body [name]') || wrap.querySelector('[data-modal="ok"]')).focus();
+    onOpen?.(wrap);
   });
 }
 
@@ -486,14 +487,43 @@ const fmtMD = (ymd) => `${Number(ymd.slice(5, 7))}/${Number(ymd.slice(8, 10))}`;
 // ロードマップの月が会員に公開済みか（公開日が来た、または前倒しで公開した）
 // 取り消した月（hidden）は、公開日を過ぎていても公開しない
 const rmOpen = (r) => !r.hidden && (Boolean(r.published_at) || r.publish_on <= today());
-const monthKey = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`; };
-// 今月の追加本数（LINE で申し込み → コーチが会員詳細で設定。月が変わると 0 本）
-const extraThisMonth = (p) => (p.extra_submissions_month === monthKey() ? p.extra_submissions || 0 : 0);
-// 今月送れる本数（上限のないプランは null）。データベースの can_submit_video() と同じ計算
-function quotaOf(p) {
-  const base = planOf(p.plan)?.monthly?.submissions;
-  return base ? base + extraThisMonth(p) : null;
+// ---------- 権利（動画・面談の回数）----------
+// 毎月プランごとの回数が付与され、付与された月から半年後の月末まで使える。使うときは期限が近いものから
+const planCredits = (planId) => planOf(planId)?.credits || null;
+const hasMeetingPlan = (planId) => (planCredits(planId)?.meeting || 0) > 0;
+// 権利の一覧を読み込む（自分の分は、今月の分をまだ受け取っていなければ先に受け取る）。設定前（表がない）なら null
+async function loadCredits(memberId, { self = false } = {}) {
+  if (self) await sb.rpc('ensure_my_credits').then(() => {}, () => {});
+  const { data, error } = await sb.from('credits').select('*').eq('member_id', memberId).order('expires_on').order('granted_on');
+  return error ? null : data;
 }
+function creditSummary(rows) {
+  const t = today();
+  const live = (rows || []).filter((c) => !c.used_at && c.expires_on >= t);
+  return { video: live.filter((c) => c.kind === 'video'), meeting: live.filter((c) => c.kind === 'meeting'), live };
+}
+// 「4/30まで 2回・5/31まで 1回」のように期限ごとにまとめる
+function expiryText(list) {
+  const by = new Map();
+  list.forEach((c) => by.set(c.expires_on, (by.get(c.expires_on) || 0) + 1));
+  return [...by].map(([d, n]) => `${fmtDate(d)}まで ${n}回`).join('・');
+}
+// 権利の明細（会員・スタッフ共通）：使える権利と、最近使った・期限切れの権利
+function creditDetails(rows, { admin = false } = {}) {
+  if (!rows?.length) return '';
+  const t = today();
+  const live = rows.filter((c) => !c.used_at && c.expires_on >= t);
+  const past = rows.filter((c) => c.used_at || c.expires_on < t).sort((a, b) => ((a.used_at || a.expires_on) < (b.used_at || b.expires_on) ? 1 : -1)).slice(0, 12);
+  const kindLabel = (k) => (k === 'video' ? '動画' : '面談');
+  const line = (c) => {
+    const state = c.used_at ? `<span class="pill">使用 ${fmtDate(c.used_at)}</span>` : c.expires_on < t ? '<span class="pill mute">期限切れ</span>' : `<span class="pill ok">${fmtDate(c.expires_on)}まで</span>`;
+    return `<li><span class="cr-kind ${c.kind}">${kindLabel(c.kind)}</span><span class="grow">${esc(CREDIT_SOURCE[c.source] || '')}${c.note ? `<small>${esc(c.note)}</small>` : ''}</span>${state}
+      ${admin && !c.used_at && c.expires_on >= t ? `<button type="button" class="link inline" data-action="credit-delete" data-id="${c.id}">取り消す</button>` : ''}</li>`;
+  };
+  return `<details class="credit-list"${admin ? ' open' : ''}><summary>権利の明細を見る（${live.length}回 使えます）</summary>
+    <ul>${live.map(line).join('')}</ul>${past.length ? `<p class="muted small" style="margin:8px 0 4px">最近使った・期限切れ</p><ul>${past.map(line).join('')}</ul>` : ''}</details>`;
+}
+const CREDIT_SOURCE = { monthly: '毎月の付与', first_free: '初回無料', purchase: '追加（都度購入など）', manual: '手動' };
 const lineBtn = (label) => `<a class="btn btn-block btn-line" href="${esc(CONTACT.lineUrl)}" target="_blank" rel="noopener">${label}</a>`;
 
 function getRoute() {
@@ -698,7 +728,7 @@ function viewPlans() {
       <div class="muted">プランを選んで決済が完了すると、動画提出やレッスンの閲覧ができるようになります。</div></div>
     ${troubled ? `<div class="notice">お支払いの確認ができていません（${esc(STATUS_LABEL[p.subscription_status]?.[0] ?? p.subscription_status)}）。
         カード情報を更新してください。<button class="btn-block" data-action="portal">お支払い情報を更新する</button></div>` : ''}
-    ${troubled ? '' : PLANS.map((pl) => `<div class="card plan${pl.recommended ? ' rec' : ''}">
+    ${troubled ? '' : PLANS.filter((pl) => !pl.hidden).map((pl) => `<div class="card plan${pl.recommended ? ' rec' : ''}">
         <div class="between"><span class="eyebrow">${esc(pl.en)}</span>${pl.recommended ? '<span class="pill">中級〜上級者におすすめ</span>' : ''}</div>
         <h3>${esc(pl.name)}</h3>
         <p class="lead">${esc(pl.lead)}</p>
@@ -715,10 +745,11 @@ function viewPlans() {
 // ---------- 画面：会員 ----------
 
 // ホームの一番上に出す「次にやること」（そのときいちばん大事なことを1つだけ）
-function nextAction({ latest, rmNow, practicedToday, quota, monthSubs, pending, tasks, done }) {
+function nextAction({ latest, rmNow, practicedToday, cr, pending, tasks, done }) {
   const p = state.profile;
   const meetSoon = p.next_meeting_at && new Date(p.next_meeting_at).getTime() > Date.now() - 2 * 3600000 && new Date(p.next_meeting_at).getTime() < Date.now() + 36 * 3600000;
-  const left = quota ? quota - monthSubs.length : 0;
+  const left = cr ? cr.video.length : 0;
+  const soon = cr ? cr.live.filter((c) => c.expires_on <= isoDaysFrom(31).slice(0, 10)) : [];
   const card = (icon, title, sub, href, btn) => {
     const body = `<span class="na-ico" aria-hidden="true">${icon}</span>
       <span class="na-body"><span class="na-eyebrow">次にやること</span><b>${title}</b>${sub ? `<small>${sub}</small>` : ''}</span>`;
@@ -729,7 +760,8 @@ function nextAction({ latest, rmNow, practicedToday, quota, monthSubs, pending, 
   if (latest && !latest.read_at) return card('✉', '新しいレッスンが届いています', `「${esc(latest.title)}」`, `#/lesson/${latest.id}`, '見る');
   if (rmNow && !rmNow.seen_at) return card('🎯', '今月のドリルが公開されました', esc(rmNow.theme || rmNow.drills?.title || ''), '#/drills', '見る');
   if (meetSoon) return card('◷', `面談は ${esc(fmtShort(p.next_meeting_at))} からです`, '聞きたいことをメモしておくとスムーズです');
-  if (quota && left > 0 && !pending.length) return card('●', `今月はあと ${left} 本 動画を送れます`, '撮影して、そのままコーチに送れます', SWINGFRAME_URL, '撮影する');
+  if (soon.length) return card('⏳', `期限が近い権利が ${soon.length} 回あります`, `${expiryText(soon)}。期限を過ぎると使えなくなります`, soon.some((c) => c.kind === 'video') ? SWINGFRAME_URL : '#/home', soon.some((c) => c.kind === 'video') ? '撮影する' : '確認');
+  if (cr && left > 0 && !pending.length) return card('●', `動画をあと ${left} 回 送れます`, '撮影して、そのままコーチに送れます', SWINGFRAME_URL, '撮影する');
   if (rmNow && !practicedToday) return card('✓', '今日の練習を記録しましょう', `今月のドリル：${esc(rmNow.drills?.title || rmNow.theme || '')}`, '#/drills', '記録する');
   if (tasks.length && done < tasks.length) return card('☐', `今月の課題があと ${tasks.length - done} 件あります`, '下の「今月の課題」で、終わったらタップしてチェック');
   return card('⛳', 'ラウンドしたらスコアを記録しましょう', 'ベスト・平均が自動で計算されます', '#/scores', '記録する');
@@ -764,12 +796,11 @@ async function viewMemberHome() {
   const latest = lessons[0];
   const done = tasks.filter((t) => t.done).length;
   const plan = planOf(p.plan);
-  const quota = quotaOf(p);
-  const extra = extraThisMonth(p);
+  const cr = planCredits(p.plan) ? creditSummary(await loadCredits(p.id, { self: true })) : null;
   return header('マイページ') + `<div class="content wide"><div class="cols">
   <div class="col-main">
     <div class="blk" style="--o:1">
-    ${nextAction({ latest, rmNow, practicedToday, quota, monthSubs, pending: subs, tasks, done })}
+    ${nextAction({ latest, rmNow, practicedToday, cr, pending: subs, tasks, done })}
     </div>
     <div class="blk" style="--o:2">
     <div class="hero">${plan ? `<span class="pill">${esc(plan.name)}</span>` : ''}
@@ -825,14 +856,15 @@ async function viewMemberHome() {
     <div class="section-title"><div><div class="eyebrow">This Month</div><h2>今月のサポート</h2></div></div>
     <div class="card">
       <div class="support">
-        <div><span class="label">動画提出</span><b>${monthSubs.length}${quota ? `<small>/${quota}本</small>` : '<small>本</small>'}</b>
-          ${quota ? `<div class="meter"><i style="width:${Math.min(100, (monthSubs.length / quota) * 100)}%"></i></div>` : ''}</div>
-        <div><span class="label">解説動画</span><b>${monthLessons.length}<small>本</small></b></div>
+        ${cr ? `<div><span class="label">動画（残り）</span><b>${cr.video.length}<small>回</small></b></div>
+        <div><span class="label">面談（残り）</span><b>${cr.meeting.length}<small>回</small></b></div>`
+          : `<div><span class="label">動画提出</span><b>${monthSubs.length}<small>本</small></b></div>
+        <div><span class="label">解説動画</span><b>${monthLessons.length}<small>本</small></b></div>`}
         <div><span class="label">次回の面談</span>${p.next_meeting_at && new Date(p.next_meeting_at).getTime() > Date.now() - 2 * 3600000 ? meetingWhen(p.next_meeting_at) : '<b class="none">未定</b>'}</div>
       </div>
-      ${extra ? `<p class="muted small" style="margin:10px 0 0">今月は追加の ${extra} 本を含みます。</p>` : ''}
+      ${cr && cr.live.length ? `<p class="small credit-exp">有効期限：${expiryText(cr.live)}（期限が近いものから使われます）</p>` : ''}
       ${exemptN ? `<p class="small quota-free-note">回数外の動画 ${exemptN}本（コーチ側で戻した分）は数えていません。</p>` : ''}
-      ${plan?.monthly ? '<p class="muted small" style="margin:10px 0 0">毎月、動画2本の提出と25分のオンライン面談1回が受けられます。</p>' : ''}
+      ${plan?.credits ? `<p class="muted small" style="margin:10px 0 0">毎月1日に、動画${plan.credits.video}回${plan.credits.meeting ? `・オンライン面談${plan.credits.meeting}回` : ''}の権利が付与されます（付与された月から半年後の月末まで有効）。</p>` : ''}
       ${lastMeeting ? `<details class="last-meeting"><summary>前回の面談（${fmtShort(lastMeeting.scheduled_at)}）のまとめ</summary><p class="pre">${esc(lastMeeting.summary)}</p></details>` : ''}
       <div class="meeting-book">
         <p class="muted small">面談のご予約はLINEで承ります。日時が決まると「次回の面談」に表示されます。</p>
@@ -846,26 +878,21 @@ async function viewMemberHome() {
 
 async function viewSubmit() {
   const p = state.profile;
-  const quota = quotaOf(p);
-  const extra = extraThisMonth(p);
   const myClubs = p.clubs || [];
-  // 「回数に数えない」にした動画は本数に入れない
-  const monthAll = quota ? await must(sb.from('submissions').select('*').eq('member_id', p.id).gte('created_at', monthStart())) : [];
-  const monthSubs = monthAll.filter((x) => !x.quota_exempt);
-  const exemptN = monthAll.length - monthSubs.length;
-  const usage = quota ? `<div class="card"><div class="between"><span>今月の提出</span><b>${monthSubs.length} / ${quota} 本</b></div>
-      <div class="meter"><i style="width:${Math.min(100, (monthSubs.length / quota) * 100)}%"></i></div>
-      ${extra ? `<p class="muted small" style="margin:8px 0 0">追加の ${extra} 本を含みます。</p>` : ''}
-      ${exemptN ? `<p class="small quota-free-note">回数外の動画 ${exemptN}本（コーチ側で戻した分）は数えていません。</p>` : ''}</div>` : '';
-  if (quota && monthSubs.length >= quota) {
+  const pc = planCredits(p.plan);
+  const rows = pc ? await loadCredits(p.id, { self: true }) : null;
+  const cr = rows ? creditSummary(rows) : null;
+  const usage = cr ? `<div class="card credit-card"><div class="between"><span>動画を送れる残り</span><b>${cr.video.length} 回</b></div>
+      ${cr.video.length ? `<p class="small credit-exp">${expiryText(cr.video)}（期限が近いものから使います）</p>` : ''}
+      ${creditDetails(rows)}</div>` : '';
+  if (cr && !cr.video.length) {
     return header('スイング動画を送る') + `<div class="content">${usage}
       <div class="card limit">
-        <b>今月の提出本数に達しました</b>
-        <p>${extra ? '追加分も含めて、今月送れる本数をすべて使いました。' : `今月の動画（${quota}本）はすべて送信済みです。`}さらに動画を送りたい場合は、追加料金でお送りいただけます。</p>
-        <p class="muted small">LINEで「動画を追加したい」とお送りください。お支払いの確認後、コーチが追加の設定をすると、この画面から送れるようになります。</p>
+        <b>動画を送る権利が残っていません</b>
+        <p>毎月1日に、動画${pc.video}回分の権利が付与されます。それより前に送りたい場合は、追加（都度購入）でお送りいただけます。</p>
+        <p class="muted small">LINEで「動画を追加したい」とお送りください。お支払いの確認後、コーチが権利を追加すると、この画面から送れるようになります。</p>
         ${lineBtn('LINEで追加を申し込む')}
       </div>
-      <p class="muted small center">来月1日になると、また${planOf(p.plan).monthly.submissions}本送れるようになります。</p>
     </div>` + memberNav('submit');
   }
   return header('スイング動画を送る') + `<div class="content">
@@ -1082,7 +1109,7 @@ async function viewSubmission(id) {
   return header('送った動画', 'history') + `<div class="content">
     <div class="between"><div><div class="muted">送信日</div><b style="font-size:18px">${fmtDate(sub.created_at)}</b></div>
       <span>${sub.quota_exempt ? '<span class="pill quota-free">回数外</span> ' : ''}${sub.status === 'pending' ? '<span class="pill warn">確認待ち</span>' : '<span class="pill ok">解説済み</span>'}</span></div>
-    ${sub.quota_exempt ? '<div class="notice quota-note">この動画は<b>提出回数に数えていません</b>（コーチ側で1本分を戻しました）。今月の送れる本数は減っていません。</div>' : ''}
+    ${sub.quota_exempt ? '<div class="notice quota-note">この動画は<b>提出回数に数えていません</b>（コーチ側で1本分を戻しました）。使った権利は戻っています。</div>' : ''}
     <div class="card">
       ${deleted ? `<p class="muted">保存期間（${RETENTION_LABEL}）を過ぎたため、動画は削除されました。</p>` : swingVideo(sub, urls)}
       <div class="list-item"><span class="muted">クラブ・撮影方向</span><span>${esc(sub.club)} / ${esc(sub.angle)}</span></div>
@@ -1439,6 +1466,9 @@ const meetingPill = (m) => {
   const [label, cls] = late ? ['結果未入力', 'warn'] : MEETING_STATUS[m.status] || ['—', ''];
   return `<span class="pill ${cls}">${label}</span>`;
 };
+// 面談の支払い方法（権利を使う／都度払い）
+const PAY_TYPE = { credit: ['権利', 'ok'], unpaid: ['都度払い・未払い', 'warn'], paid: ['都度払い・支払済', ''], free: ['無料', 'mute'] };
+const payPill = (m) => (PAY_TYPE[m.pay_type] ? `<span class="pill ${PAY_TYPE[m.pay_type][1]}">${PAY_TYPE[m.pay_type][0]}</span>` : '');
 // 動画の返信目標（提出から何時間以内に返すか）
 const REPLY_TARGET_H = 48;
 // 平均スコアより何打以上良ければ「好スコア」としてお知らせするか
@@ -1495,11 +1525,13 @@ async function loadAdminBadges() {
 
 // ダッシュボード：対応が必要なことを1画面にまとめる
 async function viewDashboard() {
+  // 今月の権利をまだ受け取っていない会員に付与する（自動付与の予備。1回のログインにつき1回だけ）
+  if (!state.creditsGranted) { state.creditsGranted = true; await sb.rpc('grant_monthly_credits').then(() => {}, () => {}); }
   const today0 = new Date(); today0.setHours(0, 0, 0, 0);
   const [members, pending, meetings, rmSoon, rmAll, subs30, practice30, rounds30, refs7, rounds18, acks, unread] = await Promise.all([
     must(sb.from('profiles').select('id, name, email, role, plan, subscription_status, access_until, current_period_end, created_at, best_score, avg_score').order('created_at', { ascending: false })),
     must(sb.from('submissions').select('*, profiles(name)').eq('status', 'pending').order('created_at')),
-    must(sb.from('meetings').select('id, member_id, scheduled_at, duration_min, status, profiles(name)').gte('scheduled_at', isoDaysFrom(-45)).order('scheduled_at')),
+    must(sb.from('meetings').select('*, profiles(name)').gte('scheduled_at', isoDaysFrom(-45)).order('scheduled_at')),
     must(sb.from('roadmap_items').select('id, member_id, publish_on, theme, profiles(name)').is('drill_id', null).eq('hidden', false).gte('publish_on', today()).lte('publish_on', isoDaysFrom(14).slice(0, 10)).order('publish_on')),
     must(sb.from('roadmap_items').select('member_id')),
     must(sb.from('submissions').select('member_id, created_at').gte('created_at', isoDaysFrom(-30))),
@@ -1519,7 +1551,8 @@ async function viewDashboard() {
   const todayMeetings = upcoming.filter((m) => new Date(m.scheduled_at).toDateString() === new Date().toDateString());
   const monthFrom = new Date(monthStartIso()).getTime();
   const metThisMonth = new Set(meetings.filter((m) => ['scheduled', 'done'].includes(m.status) && new Date(m.scheduled_at).getTime() >= monthFrom).map((m) => m.member_id));
-  const needMeeting = active.filter((m) => m.plan === 'SUBSCRIPTION' && !metThisMonth.has(m.id));
+  const needMeeting = active.filter((m) => hasMeetingPlan(m.plan) && !metThisMonth.has(m.id));
+  const unpaid = meetings.filter((m) => m.pay_type === 'unpaid' && m.status !== 'canceled');
   const withRoadmap = new Set(rmAll.map((r) => r.member_id));
   const noRoadmap = active.filter((m) => !withRoadmap.has(m.id));
   const soonExpire = people.filter((m) => m.access_until && m.access_until >= today() && m.access_until <= isoDaysFrom(14).slice(0, 10));
@@ -1531,7 +1564,7 @@ async function viewDashboard() {
   const overdue = pending.filter((x) => replyDue(x.created_at).over);
   const celebrations = findCelebrations(rounds18, people, new Set(acks.map((a) => a.ref_id)));
   const cancelReq = pending.filter((x) => x.cancel_requested_at);
-  const todo = cancelReq.length + pending.length + lateMeetings.length + needMeeting.length + rmSoon.length + pastDue.length + soonExpire.length;
+  const todo = cancelReq.length + pending.length + lateMeetings.length + needMeeting.length + unpaid.length + rmSoon.length + pastDue.length + soonExpire.length;
   state.adminTodo = todo;
 
   // kind: todo=対応が必要（赤・「対応が必要」の数に含む） / watch=様子を見る（黄） / info=お知らせ（青）
@@ -1551,7 +1584,9 @@ async function viewDashboard() {
       `<button type="button" class="btn btn-sm" data-action="meeting-done" data-id="${m.id}">結果を入力</button>`)), '入力待ちの面談はありません'),
     section('今後7日の面談', '◷', upcoming.map((m) => row(`<b>${fmtShort(m.scheduled_at)}</b>　${memberLink(m.member_id, m.profiles?.name)}`, `${m.duration_min}分${todayMeetings.includes(m) ? '・<b class="today">今日</b>' : ''}`,
       `<a class="btn btn-sm btn-sub" href="#/admin/prep/${m.id}">準備メモ</a>`)), '予定はありません', '<a class="dash-more" href="#/admin/meetings">面談管理 ›</a>', 'info'),
-    section('今月まだ面談の予定がない会員', '◎', needMeeting.map((m) => row(memberLink(m.id, m.name), 'サブスクリプション制（月1回）',
+    ...(unpaid.length ? [section('面談：都度払いの未払い', '¥', unpaid.map((m) => row(memberLink(m.member_id, m.profiles?.name), `${fmtShort(m.scheduled_at)} の面談`,
+      `<button type="button" class="btn btn-sm" data-action="meeting-paid" data-id="${m.id}">支払い済みにする</button>`)), '')] : []),
+    section('今月まだ面談の予定がない会員', '◎', needMeeting.map((m) => row(memberLink(m.id, m.name), `${esc(planLabel(m.plan))}（面談の権利つき）`,
       `<button type="button" class="btn btn-sm btn-sub" data-action="meeting-add" data-member="${m.id}">予約を入れる</button>`)), '全員、今月の面談が入っています'),
   ];
   const right = [
@@ -1600,7 +1635,7 @@ async function viewDashboard() {
 async function viewMeetings() {
   const tab = state.meetingTab;
   const [list, members] = await Promise.all([
-    must(sb.from('meetings').select('id, member_id, scheduled_at, duration_min, status, summary, profiles(name)').gte('scheduled_at', isoDaysFrom(-120)).order('scheduled_at')),
+    must(sb.from('meetings').select('*, profiles(name)').gte('scheduled_at', isoDaysFrom(-120)).order('scheduled_at')),
     must(sb.from('profiles').select('id, name, role, plan, subscription_status, access_until').neq('role', 'admin').order('name')),
   ]);
   meetingMembers = members;
@@ -1640,6 +1675,24 @@ async function viewMeetings() {
   </div>` + adminNav('admin/meetings');
 }
 let meetingMembers = [];
+// 面談予約：会員の面談の権利の残りを見て、支払い方法の初期値を決める
+let creditsReady = null;
+const payTypeOptions = (sel) => [['credit', '権利を使う'], ['unpaid', '都度払い（未払い）'], ['paid', '都度払い（支払い済み）'], ['free', '無料']]
+  .map(([k, l]) => `<option value="${k}"${k === sel ? ' selected' : ''}>${l}</option>`).join('');
+async function refreshPayType(wrap) {
+  const sel = wrap.querySelector('[data-pay-type]');
+  const hint = wrap.querySelector('[data-pay-hint]');
+  const mid = wrap.querySelector('select[name="member_id"]')?.value;
+  if (!sel || !mid) return;
+  const { count, error } = await sb.from('credits').select('id', { count: 'exact', head: true })
+    .eq('member_id', mid).eq('kind', 'meeting').is('used_at', null).gte('expires_on', today());
+  creditsReady = !error;
+  if (error) { sel.closest('.modal-form').querySelectorAll('[data-pay-type], [data-pay-hint]').forEach((x) => x.remove()); return; }
+  sel.options[0].textContent = `権利を使う（残り${count}回）`;
+  sel.options[0].disabled = !count;
+  sel.value = count ? 'credit' : 'unpaid';
+  hint.textContent = count ? '予約した時点で権利を1回使います（キャンセルにすると戻ります。欠席は戻りません）。' : '面談の権利が残っていないため、都度払いになります。';
+}
 async function meetingMemberOptions(selected) {
   if (!meetingMembers.length || !('email' in meetingMembers[0])) meetingMembers = await must(sb.from('profiles').select('id, name, email, role, plan, subscription_status, access_until').neq('role', 'admin').order('name'));
   return memberOptionsHtml(meetingMembers, selected);
@@ -1846,7 +1899,7 @@ async function viewMembers() {
     if (m.role === 'admin') return '';
     const f = [];
     if (pendBy.get(m.id)) f.push(`<span class="flag red">動画 ${pendBy.get(m.id)}件 確認待ち</span>`);
-    if (isActive(m) && m.plan === 'SUBSCRIPTION' && !metBy.has(m.id)) f.push('<span class="flag yellow">今月の面談 未予約</span>');
+    if (isActive(m) && hasMeetingPlan(m.plan) && !metBy.has(m.id)) f.push('<span class="flag yellow">今月の面談 未予約</span>');
     if (m.next_meeting_at && new Date(m.next_meeting_at).getTime() > Date.now()) f.push(`<span class="flag">面談 ${fmtShort(m.next_meeting_at)}</span>`);
     if (m.access_until && m.access_until >= today() && m.access_until <= isoDaysFrom(14).slice(0, 10)) f.push(`<span class="flag yellow">期限 ${fmtDate(m.access_until)}</span>`);
     if (m.subscription_status === 'past_due') f.push('<span class="flag red">支払い遅延</span>');
@@ -1870,6 +1923,27 @@ async function viewMembers() {
   </div>` + adminNav('admin/members');
 }
 
+// 会員詳細：動画・面談の権利（残り・期限・明細）と、付与・追加のボタン
+function creditCard(m, rows) {
+  if (m.role === 'admin') return '';
+  if (!rows) return `<div class="card"><b>権利（動画・面談の回数）</b><p class="muted small">データベースの設定（20261018000000_credits.sql）がまだのため表示できません。</p></div>`;
+  const cs = creditSummary(rows);
+  const pc = planCredits(m.plan);
+  const granted = rows.some((c) => c.source === 'monthly' && c.granted_on >= monthStart().slice(0, 10));
+  return `<div class="card credit-card">
+    <div class="between"><b>権利（動画・面談の回数）</b><span class="muted small">${pc ? `毎月 動画${pc.video}回${pc.meeting ? `・面談${pc.meeting}回` : ''}` : '毎月の付与なし'}</span></div>
+    <div class="credit-nums"><div><span>動画</span><b>${cs.video.length}<small>回</small></b></div><div><span>面談</span><b>${cs.meeting.length}<small>回</small></b></div></div>
+    ${cs.live.length ? `<p class="small credit-exp">${expiryText(cs.live)}</p>` : ''}
+    <div class="credit-btns">
+      ${pc && !granted ? `<button type="button" class="btn btn-sm btn-gold" data-action="credit-grant-month" data-member="${m.id}">今月分を付与</button>` : ''}
+      <button type="button" class="btn btn-sm btn-sub" data-action="credit-add" data-member="${m.id}" data-kind="video">＋ 動画1回</button>
+      <button type="button" class="btn btn-sm btn-sub" data-action="credit-add" data-member="${m.id}" data-kind="meeting">＋ 面談1回</button>
+    </div>
+    ${pc && !granted ? '<p class="muted small" style="margin:6px 0 0">今月分はまだ付与されていません（11日以降に契約した会員は、初月は自動で付与されません）。</p>' : ''}
+    ${creditDetails(rows, { admin: true })}
+  </div>`;
+}
+
 async function viewMemberDetail(id) {
   const [m, tasks, lessons, subs, monthSubs, roadmap] = await Promise.all([
     must(sb.from('profiles').select('*').eq('id', id).maybeSingle()),
@@ -1886,11 +1960,12 @@ async function viewMemberDetail(id) {
   ]) : [[], [], []];
   const [mRounds, mMeetings, mNotes, mPractice, karte] = await Promise.all([
     must(sb.from('rounds').select('played_on, course_name, score, holes, created_at').eq('member_id', id).order('played_on', { ascending: false })),
-    must(sb.from('meetings').select('id, scheduled_at, duration_min, status, summary').eq('member_id', id).order('scheduled_at', { ascending: false })),
+    must(sb.from('meetings').select('*').eq('member_id', id).order('scheduled_at', { ascending: false })),
     must(sb.from('staff_notes').select('id, body, pinned, created_at').eq('member_id', id).order('pinned', { ascending: false }).order('created_at', { ascending: false })),
     must(sb.from('roadmap_practice').select('practiced_on').eq('member_id', id).gte('practiced_on', isoDaysFrom(-30).slice(0, 10))),
     sb.from('member_karte').select('*').eq('member_id', id).maybeSingle().then((r) => r.data),
   ]);
+  const mCredits = await loadCredits(id);
   const mst = scoreStats(mRounds, m || {});
   const subUrls = await signedVideoUrls(subs.filter((x) => !x.video_deleted_at)).catch(() => ({}));
   if (!m) return header('会員詳細', 'admin/members') + '<div class="content"><div class="empty">会員が見つかりません</div></div>';
@@ -1915,12 +1990,10 @@ async function viewMemberDetail(id) {
       <label for="theme">今月のテーマ</label><input id="theme" name="theme" value="${esc(m.theme)}" maxlength="100">
       <label for="access_until">利用期限 <span class="muted">（LINE・電話で申し込んだ会員用。カード決済の会員は空欄）</span></label>
       <input id="access_until" name="access_until" type="date" value="${esc(m.access_until || '')}">
-      <label for="extra_submissions">今月の追加本数 <span class="muted">（LINEで追加の申し込み・お支払いがあった分。来月は自動で0本に戻ります）</span></label>
-      <input id="extra_submissions" name="extra_submissions" type="number" min="0" max="20" value="${extraThisMonth(m)}">
       ${(() => {
         const counted = monthSubs.filter((x) => !x.quota_exempt).length;
         const exempt = monthSubs.length - counted;
-        return `<div class="quota-line"><p class="muted small" style="margin:4px 0 0">今月の提出：${counted}本${exempt ? `（回数に数えない ${exempt}本は別）` : ''}${quotaOf(m) ? ` ／ 送れる本数：${quotaOf(m)}本` : ''}</p>
+        return `<div class="quota-line"><p class="muted small" style="margin:4px 0 0">今月の提出：${counted}本${exempt ? `（回数に数えない ${exempt}本は別）` : ''}</p>
           ${counted ? `<button type="button" class="btn-sm btn-sub" data-action="quota-reset" data-member="${m.id}" data-count="${counted}">今月の提出回数を0に戻す</button>` : ''}</div>`;
       })()}
       ${self ? '' : `<label for="role">権限</label><select id="role" name="role">
@@ -1928,6 +2001,8 @@ async function viewMemberDetail(id) {
         <option value="admin" ${m.role === 'admin' ? 'selected' : ''}>管理者（コーチ）</option></select>`}
       <button class="btn-block" type="submit">保存する</button>
     </form>
+
+    ${creditCard(m, mCredits)}
 
     ${karteForm(m.id, karte)}
 
@@ -1949,7 +2024,8 @@ async function viewMemberDetail(id) {
           <a class="btn btn-sm btn-gold" href="#/admin/prep/${next.id}">準備メモ</a>
           <button type="button" class="btn btn-sm btn-sub" data-action="meeting-move" data-id="${next.id}" data-at="${next.scheduled_at}" data-min="${next.duration_min}">日時変更</button></div>`
         : '<p class="muted small" style="margin:0">次回の面談は入っていません。LINEで日程が決まったら「＋ 予約」から登録します。</p>'}
-      ${recent.length ? `<div class="mt-history">${recent.map((x) => `<div class="list-item small"><div class="grow">${fmtShort(x.scheduled_at)} ${meetingPill(x)}${x.summary ? `<div class="muted">${esc(x.summary.slice(0, 60))}</div>` : ''}</div>
+      ${next ? `<p class="small" style="margin:6px 0 0">支払い：${payPill(next) || '—'}${next.pay_type === 'unpaid' ? ` <button type="button" class="link inline" data-action="meeting-paid" data-id="${next.id}">支払い済みにする</button>` : ''}</p>` : ''}
+      ${recent.length ? `<div class="mt-history">${recent.map((x) => `<div class="list-item small"><div class="grow">${fmtShort(x.scheduled_at)} ${meetingPill(x)} ${payPill(x)}${x.pay_type === 'unpaid' && x.status !== 'canceled' ? ` <button type="button" class="link inline" data-action="meeting-paid" data-id="${x.id}">支払い済みにする</button>` : ''}${x.summary ? `<div class="muted">${esc(x.summary.slice(0, 60))}</div>` : ''}</div>
           <button type="button" class="btn btn-sm btn-sub" data-action="meeting-done" data-id="${x.id}">${x.status === 'scheduled' ? '結果' : '編集'}</button></div>`).join('')}</div>` : ''}
     </div>
 
@@ -2653,13 +2729,46 @@ const actions = {
         <div class="grid"><div><label>日付</label><input name="date" type="date" value="${d}" required></div>
           <div><label>時刻</label><input name="time" type="time" value="19:00" step="300" required></div></div>
         <label>時間（分）</label><input name="duration_min" type="number" min="5" max="180" value="25" required>
+        <label>支払い方法</label>
+        <select name="pay_type" data-pay-type>${payTypeOptions(null)}</select>
+        <p class="muted small" data-pay-hint style="margin:4px 0 0"></p>
       </div>`,
       ok: '予約する',
+      onOpen: (wrap) => refreshPayType(wrap),
     });
     if (!v) return;
     const at = new Date(`${v.date}T${v.time}`);
-    await must(sb.from('meetings').insert({ member_id: v.member_id, scheduled_at: at.toISOString(), duration_min: Number(v.duration_min) || 25 }));
+    const row = { member_id: v.member_id, scheduled_at: at.toISOString(), duration_min: Number(v.duration_min) || 25 };
+    if (creditsReady) row.pay_type = v.pay_type;
+    await must(sb.from('meetings').insert(row));
     toast(`${fmtShort(at.toISOString())} に面談を予約しました`); render();
+  },
+  'meeting-paid': async (el) => {
+    if (!(await confirmDialog({ title: 'この面談を「支払い済み」にしますか？', body: '<p>都度払いのお支払いを確認したら押してください。</p>', ok: '支払い済みにする' }))) return;
+    await must(sb.from('meetings').update({ pay_type: 'paid' }).eq('id', el.dataset.id));
+    toast('支払い済みにしました'); render();
+  },
+  'credit-grant-month': async (el) => {
+    if (!(await confirmDialog({ title: '今月分の権利を付与しますか？', body: '<p>プランで決まった回数（動画・面談）を今月分として付与します。有効期限は半年後の月末です。</p>', ok: '付与する' }))) return;
+    await must(sb.rpc('admin_grant_month', { p_member: el.dataset.member }));
+    toast('今月分の権利を付与しました'); render();
+  },
+  'credit-add': async (el) => {
+    const label = el.dataset.kind === 'video' ? '動画' : '面談';
+    const v = await confirmDialog({
+      title: `${label}の権利を1回追加`,
+      body: `<p>都度購入などで追加する分です。有効期限は今月から半年後の月末です。</p>
+        <div class="form modal-form"><label>メモ <span class="muted">（任意）</span></label><input name="note" maxlength="100" placeholder="例：10/12 LINEで追加購入・振込確認済み"></div>`,
+      ok: '追加する',
+    });
+    if (!v) return;
+    await must(sb.rpc('admin_add_credits', { p_member: el.dataset.member, p_kind: el.dataset.kind, p_count: 1, p_note: v.note.trim() }));
+    toast(`${label}の権利を1回追加しました`); render();
+  },
+  'credit-delete': async (el) => {
+    if (!(await confirmDialog({ title: 'この権利を取り消しますか？', body: '<p>まだ使っていない権利を1回分なくします（間違えて追加したときなど）。</p>', ok: '取り消す' }))) return;
+    await must(sb.from('credits').delete().eq('id', el.dataset.id));
+    toast('権利を取り消しました'); render();
   },
   'meeting-move': async (el) => {
     const [d, t] = splitLocal(el.dataset.at);
@@ -2902,7 +3011,7 @@ const actions = {
   'quota-reset': async (el) => {
     const ok = await confirmDialog({
       title: '今月の提出回数を0に戻しますか？',
-      body: `<p>今月送られた動画 <b>${esc(el.dataset.count)}本</b> を、提出回数に数えないようにします。動画とレッスンはそのまま残ります。</p>
+      body: `<p>今月送られた動画 <b>${esc(el.dataset.count)}本</b> を、提出回数に数えないようにします（使った権利が戻ります）。動画とレッスンはそのまま残ります。</p>
         <p class="muted small">1本だけ戻したいときは、下の「提出動画」から動画を開いて「この動画を提出回数に数えない」を押してください。</p>`,
       ok: '0に戻す',
     });
@@ -2913,8 +3022,8 @@ const actions = {
   'sub-exempt': async (el) => {
     const on = el.dataset.on === '1';
     const ok = await confirmDialog(on
-      ? { title: 'この動画を提出回数に数えないようにしますか？', body: '<p>会員の今月の提出回数が<b>1本戻り</b>、もう1本送れるようになります。動画とレッスンはそのまま残ります。</p>', ok: '1本戻す' }
-      : { title: 'この動画を提出回数に数えるように戻しますか？', body: '<p>会員の今月の提出回数が<b>1本増えます</b>。</p>', ok: '数えるように戻す' });
+      ? { title: 'この動画を提出回数に数えないようにしますか？', body: '<p>使った動画の権利が<b>1回戻り</b>、もう1本送れるようになります。動画とレッスンはそのまま残ります。</p>', ok: '1本戻す' }
+      : { title: 'この動画を提出回数に数えるように戻しますか？', body: '<p>動画の権利を<b>1回使います</b>（残りがないときは戻せません）。</p>', ok: '数えるように戻す' });
     if (!ok) return;
     await must(sb.from('submissions').update({ quota_exempt: on }).eq('id', el.dataset.id));
     toast(on ? 'この動画を提出回数に数えないようにしました（1本戻りました）' : '提出回数に数えるように戻しました'); render();
@@ -3037,8 +3146,6 @@ const forms = {
       name: f.name.value.trim(), plan: f.plan.value || null, goal: f.goal.value.trim(),
       theme: f.theme.value.trim(),
       access_until: f.access_until.value || null,
-      extra_submissions: Number(f.extra_submissions.value) || 0,
-      extra_submissions_month: monthKey(),
     };
     if (f.role) update.role = f.role.value;
     await must(sb.from('profiles').update(update).eq('id', f.dataset.id));
@@ -3216,6 +3323,8 @@ document.addEventListener('input', (ev) => {
   if (ev.target.matches('[data-member-search]')) {
     const sel = ev.target.parentElement.querySelector('select[name="member_id"]');
     sel.innerHTML = memberOptionsHtml(meetingMembers, sel.value, ev.target.value);
+    const modal = ev.target.closest('.modal');
+    if (modal) refreshPayType(modal);
     return;
   }
   if (ev.target.dataset.action !== 'filter-members') return;
@@ -3236,6 +3345,7 @@ document.addEventListener('submit', async (ev) => {
 // 動画を選んだら、ファイル名と容量を表示してプレビューする
 let previewUrl = null;
 document.addEventListener('change', (ev) => {
+  if (ev.target.name === 'member_id' && ev.target.closest('.modal')) { refreshPayType(ev.target.closest('.modal')); return; }
   if (ev.target.name === 'sound_toggle') {
     local.set('atg-sound', ev.target.checked ? 'on' : 'off');
     if (ev.target.checked) playCupIn();

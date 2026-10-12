@@ -931,3 +931,22 @@ a.next-action:hover{box-shadow:var(--shadow-lg)}
 .pill.quota-free{background:#e7eef8;color:#24598f}
 .quota-free-note{margin:8px 0 0;color:#24598f}
 .quota-note{margin-top:10px}
+
+/* 権利（動画・面談の回数） */
+.link.inline{display:inline;margin:0;padding:0 4px;font-size:12px}
+.credit-exp{margin:8px 0 0;color:#5b4a14}
+.credit-nums{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:10px 0 4px}
+.credit-nums div{background:var(--paper-2);border-radius:10px;padding:8px 12px}
+.credit-nums span{display:block;font-size:12px;color:#6b726c}
+.credit-nums b{font-size:22px}
+.credit-nums small{font-size:12px;margin-left:2px}
+.credit-btns{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:10px}
+.credit-btns .btn-sm{margin:0;width:auto;min-height:0}
+.credit-list{margin-top:10px;font-size:13px}
+.credit-list summary{cursor:pointer;color:#6b726c}
+.credit-list ul{list-style:none;margin:6px 0 0;padding:0}
+.credit-list li{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--paper-2)}
+.credit-list li .grow{flex:1;min-width:0}
+.credit-list li small{display:block;color:#6b726c}
+.cr-kind{font-size:11px;font-weight:700;border-radius:6px;padding:2px 6px;background:#e7eef8;color:#24598f;flex:none}
+.cr-kind.meeting{background:#f3ead2;color:#7a5a00}
