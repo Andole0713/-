@@ -71,39 +71,14 @@ function firstPage(icon) {
 }
 
 // ---------- 図解 ----------
-// 撮影の向き（上から見た図）
-const SVG_ANGLE = `<svg viewBox="0 0 360 250" class="zk-svg" role="img" aria-label="撮影の向きの図：正面はボールの向こう側から体の正面を、後方は打つ方向の真後ろから撮ります">
-  <rect x="0" y="0" width="360" height="250" rx="14" fill="#eef5ea"/>
-  <line x1="66" y1="132" x2="334" y2="132" stroke="#9cb79a" stroke-width="2" stroke-dasharray="6 6"/>
-  <path d="M322 124l14 8-14 8" fill="none" stroke="#5f8a5c" stroke-width="2.5"/>
-  <text x="238" y="152" font-size="12.5" fill="#3f6b3c" font-weight="700">打つ方向（目標）→</text>
-  <circle cx="190" cy="132" r="5" fill="#fff" stroke="#555"/>
-  <text x="198" y="124" font-size="11.5" fill="#555">ボール</text>
-  <g stroke="#1f2d24" stroke-linecap="round" stroke-linejoin="round">
-    <ellipse cx="170" cy="194" rx="6" ry="10" fill="#fff" stroke-width="2"/>
-    <ellipse cx="210" cy="194" rx="6" ry="10" fill="#fff" stroke-width="2"/>
-    <path d="M166 176Q178 158 191 151M214 176Q203 160 192 151" fill="none" stroke-width="9"/>
-    <path d="M166 176Q178 158 191 151M214 176Q203 160 192 151" fill="none" stroke="#fff" stroke-width="5"/>
-    <rect x="160" y="171" width="60" height="16" rx="8" fill="#fff" stroke-width="2.2"/>
-    <circle cx="190" cy="179" r="9.5" fill="#f0d9b5" stroke-width="2"/>
-    <path d="M181 175a9.5 9.5 0 0 1 18 0z" fill="#1f2d24" stroke-width="1"/>
-    <path d="M184 172q6-7 12 0" fill="#1f2d24" stroke-width="1"/>
-    <circle cx="191.5" cy="151" r="4" fill="#fff" stroke-width="1.8"/>
-  </g>
-  <line x1="191" y1="148" x2="190" y2="136" stroke="#777" stroke-width="2"/>
-  <text x="222" y="186" font-size="12" fill="#1f2d24" font-weight="700">あなた（右打ち）</text>
-  <text x="222" y="200" font-size="10.5" fill="#1f2d24">左肩が打つ方向を向く</text>
-  <text x="104" y="226" font-size="10.5" fill="#1f2d24">（上から見た図・ボールの方を向いて立つ）</text>
-  <g transform="translate(190 36)"><rect x="-17" y="-11" width="34" height="22" rx="4" fill="#2f6fb0"/><circle r="5.5" fill="#fff"/></g>
-  <path d="M190 50v70" stroke="#2f6fb0" stroke-width="2" stroke-dasharray="4 4"/>
-  <text x="214" y="32" font-size="14" font-weight="700" fill="#2f6fb0">正面から</text>
-  <text x="214" y="49" font-size="11" fill="#2f6fb0">ボールの向こう側から、</text>
-  <text x="214" y="64" font-size="11" fill="#2f6fb0">体の正面（おなか側）を撮る</text>
-  <g transform="translate(36 132) rotate(90)"><rect x="-17" y="-11" width="34" height="22" rx="4" fill="#c46a1b"/><circle r="5.5" fill="#fff"/></g>
-  <path d="M50 132h128" stroke="#c46a1b" stroke-width="2" stroke-dasharray="4 4"/>
-  <text x="14" y="88" font-size="14" font-weight="700" fill="#c46a1b">後方から</text>
-  <text x="14" y="105" font-size="11" fill="#c46a1b">打つ方向の真後ろから撮る</text>
-</svg>`;
+// 撮影の向き：スマホ2台の置き場所（右打ち）。画像は img/camera-setup.jpg、文字は画像の上に重ねる
+// 画像の切り出し範囲：元画像 x60〜1360, y90〜1030（1300×940）。位置は％で指定
+const SETUP = `<div class="zk-setup" role="img" aria-label="スマホの置き場所の図：正面はボールをはさんで体の正面に、後方はボールの打ち出し方向の真後ろの線上に置きます">
+    <img src="img/camera-setup.jpg" alt="" width="900" height="651" loading="lazy">
+    <span class="zs-tag zs-front" style="left:2%;top:86%">① 正面から</span>
+    <span class="zs-tag zs-back" style="left:1%;top:16%">② 後方から</span>
+    <span class="zs-dir" style="left:73%;top:79%">打つ方向 →</span>
+  </div>`;
 
 // ゴルフコース（上から見た図）
 const SVG_COURSE = `<svg viewBox="0 0 360 230" class="zk-svg" role="img" aria-label="ゴルフコースの図：ティーグラウンドから打ち、フェアウェイを通って、グリーンのカップに入れます">
@@ -130,51 +105,8 @@ const SVG_COURSE = `<svg viewBox="0 0 360 230" class="zk-svg" role="img" aria-la
   </g>
 </svg>`;
 
-// スイングの流れ（正面から見た人型・右打ち）。撮影機能のガイドと同じ、線で描いた人型
-// 各場面の体の位置：sc=肩の中心, sw=肩幅の半分, hx/hy=手の位置, ca=クラブの向き（度・右=0 下=90）, cl=クラブの長さ, hp=腰の位置, trail=右足かかとを上げる
-const POSES = [
-  { sc: 60, sw: 13, hx: 61, hy: 76, ca: 92, cl: 42, hp: 60 },
-  { sc: 58, sw: 11, hx: 38, hy: 70, ca: 186, cl: 34, hp: 59 },
-  { sc: 57, sw: 8, hx: 40, hy: 25, ca: 2, cl: 34, hp: 58 },
-  { sc: 58, sw: 9, hx: 38, hy: 40, ca: 300, cl: 34, hp: 60 },
-  { sc: 60, sw: 11, hx: 46, hy: 64, ca: 228, cl: 34, hp: 62 },
-  { sc: 61, sw: 13, hx: 63, hy: 76, ca: 94, cl: 42, hp: 63 },
-  { sc: 63, sw: 10, hx: 84, hy: 62, ca: 318, cl: 34, hp: 64, trail: 1 },
-  { sc: 64, sw: 8, hx: 79, hy: 22, ca: 196, cl: 34, hp: 65, trail: 2 },
-];
-const INK = '#1f2d24';
-function figure(P, label, n) {
-  const f = (v) => v.toFixed(1);
-  const rad = (d) => (d * Math.PI) / 180;
-  const ex = P.hx + P.cl * Math.cos(rad(P.ca)), ey = P.hy + P.cl * Math.sin(rad(P.ca));
-  const sL = [P.sc - P.sw, 38], sR = [P.sc + P.sw, 38];         // 画面の左＝右肩、右＝左肩（正面から見た右打ち）
-  const hL = [P.hp - 8, 74], hR = [P.hp + 8, 74];
-  const kneeL = P.trail ? [P.hp - 2, 97] : [52, 97], kneeR = [68, 97];
-  const ankL = P.trail === 2 ? [57, 117] : P.trail ? [52, 119] : [49, 120], ankR = [71, 120];
-  const arm = (s) => { const mx = (s[0] + P.hx) / 2 + (s[0] < P.sc ? -3 : 3), my = (s[1] + P.hy) / 2; return `M${f(s[0])} ${f(s[1])}Q${f(mx)} ${f(my)} ${f(P.hx)} ${f(P.hy)}`; };
-  const leg = (h, k, a) => `M${f(h[0])} ${f(h[1])}L${f(k[0])} ${f(k[1])}L${f(a[0])} ${f(a[1])}`;
-  const legs = (w, color) => `<g fill="none" stroke="${color}" stroke-linecap="round" stroke-linejoin="round" stroke-width="${w}">
-      <path d="${leg(hL, kneeL, ankL)}"/><path d="${leg(hR, kneeR, ankR)}"/></g>`;
-  const arms = (w, color) => `<g fill="none" stroke="${color}" stroke-linecap="round" stroke-linejoin="round" stroke-width="${w}">
-      <path d="${arm(sL)}"/><path d="${arm(sR)}"/></g>`;
-  const torso = `M${f(sL[0] - 1)} ${f(sL[1] - 1)}Q${f(P.sc)} ${f(sL[1] - 5)} ${f(sR[0] + 1)} ${f(sR[1] - 1)}L${f(hR[0] + 1)} ${f(hR[1] - 4)}L${f(hL[0] - 1)} ${f(hL[1] - 4)}Z`;
-  const shoe = (a, up) => `<ellipse cx="${f(a[0] + (up ? 0 : a[0] < 60 ? -2 : 2))}" cy="${f(a[1] + 3)}" rx="${up ? 3 : 6}" ry="3" fill="#fff" stroke="${INK}" stroke-width="1.6"/>`;
-  return `<figure class="zk-fig"><svg viewBox="0 0 120 130" aria-hidden="true">
-    <line x1="4" y1="125" x2="116" y2="125" stroke="#b9c7b4" stroke-width="2"/>
-    ${n <= 2 || n === 6 ? '<circle cx="60" cy="122" r="2.8" fill="#fff" stroke="#666"/>' : ''}
-    ${legs(13, INK)}${legs(9, '#fff')}
-    <path d="M${f(hL[0] - 1)} ${f(hL[1] - 3)}L${f(hR[0] + 1)} ${f(hR[1] - 3)}" stroke="${INK}" stroke-width="2.4"/>
-    ${shoe(ankL, P.trail === 2)}${shoe(ankR)}
-    <path d="${torso}" fill="#fff" stroke="${INK}" stroke-width="2.4" stroke-linejoin="round"/>
-    <circle cx="${f(P.sc)}" cy="24" r="8.5" fill="#fff" stroke="${INK}" stroke-width="2.2"/>
-    <path d="M${f(P.sc - 9)} 22Q${f(P.sc)} 9 ${f(P.sc + 9)} 22Z" fill="${INK}"/>
-    <path d="M${f(P.sc - 9)} 22h18" stroke="${INK}" stroke-width="2.4" stroke-linecap="round"/>
-    <line x1="${f(P.hx)}" y1="${f(P.hy)}" x2="${f(ex)}" y2="${f(ey)}" stroke="#555" stroke-width="2" stroke-linecap="round"/>
-    <circle cx="${f(ex)}" cy="${f(ey)}" r="3" fill="#8a9097"/>
-    ${arms(8.5, INK)}${arms(4.5, '#fff')}
-    <circle cx="${f(P.hx)}" cy="${f(P.hy)}" r="3.6" fill="#fff" stroke="${INK}" stroke-width="1.8"/>
-  </svg><figcaption><span>${n}</span>${label}</figcaption></figure>`;
-}
+// スイングの流れ：右打ちの人を正面（体の前）から見たシルエット（img/swing-1〜8.png）
+const figure = (n, label) => `<figure class="zk-fig"><img src="img/swing-${n}.png" alt="" loading="lazy" width="320" height="452"><figcaption><span>${n}</span>${label}</figcaption></figure>`;
 const SWING = [
   ['アドレス', '構える'], ['テークバック', 'クラブを上げ始める'], ['トップ', 'いちばん上'], ['切り返し', '下ろし始める'],
   ['ダウンスイング', '下ろす'], ['インパクト', 'ボールに当たる瞬間'], ['フォロースルー', '振り抜く'], ['フィニッシュ', '振り終わり'],
@@ -228,14 +160,19 @@ function zukaiPage(icon) {
   <section class="card zk cat-video" id="zk-angle">
     <h2 class="zk-h">${icon('video')}撮影の向き</h2>
     <p>動画は「<b>正面</b>」か「<b>後方</b>」のどちらかから撮ります。送るときに、どちらから撮ったかを選びます。</p>
-    ${SVG_ANGLE}
+    ${SETUP}
+    <div class="zk-views">
+      <figure><img src="img/guide-front.jpg" alt="正面から撮ったときの見え方（右打ちの人の構え）" loading="lazy" width="276" height="414"><figcaption><b class="v-front">正面から</b>撮るとこう写ります</figcaption></figure>
+      <figure><img src="img/guide-dtl.jpg" alt="後方から撮ったときの見え方（右打ちの人の構え）" loading="lazy" width="414" height="414"><figcaption><b class="v-back">後方から</b>撮るとこう写ります</figcaption></figure>
+    </div>
+    <p class="muted small">撮影機能（SwingFrame）では、この形の人型ガイドに体を合わせると、毎回同じ向きで撮れます。</p>
     <ul class="zk-points"><li>頭から足先まで、<b>クラブ全体</b>が画面に入るように</li><li>スマホは<b>胸の少し下あたりの高さ</b>で固定（三脚があると安定）</li><li>ボールの近くに立ちすぎないよう、<b>2〜3m</b>はなれて撮る</li></ul>
   </section>
 
   <section class="card zk cat-drill" id="zk-swing">
     <h2 class="zk-h">${icon('target')}スイングの流れ</h2>
     <p>スイングは、構えてから振り終わるまでを8つの場面に分けて考えます。レッスンでは「トップで〜」「インパクトで〜」のように、この言葉で説明します。</p>
-    <div class="zk-swing">${SWING.map(([t, d], i) => figure(POSES[i], `<b>${t}</b><small>${d}</small>`, i + 1)).join('')}</div>
+    <div class="zk-swing">${SWING.map(([t, d], i) => figure(i + 1, `<b>${t}</b><small>${d}</small>`)).join('')}</div>
     <p class="muted small">※ 右打ちの人を、正面（体の前）から見た図です。</p>
   </section>
 
