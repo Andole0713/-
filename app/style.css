@@ -1180,3 +1180,9 @@ a.btn-block.btn-cat{min-height:52px;display:flex;align-items:center;justify-cont
 @media (max-width:559px){.zk-swing{grid-template-columns:repeat(2,1fr);gap:8px}.zk-fig svg{max-width:150px}.zk-fig figcaption b{font-size:12.5px}.zk-fig figcaption small{font-size:11.5px}}
 @media (min-width:560px){.zk-fig svg{max-width:120px}}
 .zk-fig img{display:block;width:100%;height:auto;max-width:150px;margin:0 auto}
+.zk-setup{position:relative;margin:6px 0 10px;border-radius:12px;overflow:hidden;background:#eeeeee}
+.zk-setup img{display:block;width:100%;height:auto}
+.zs-tag{position:absolute;font-size:13px;font-weight:800;color:#fff;border-radius:999px;padding:3px 10px;box-shadow:0 2px 6px rgba(0,0,0,.2);white-space:nowrap}
+.zs-front{background:#2f6fb0}.zs-back{background:#c46a1b}
+.zs-dir{position:absolute;font-size:12px;font-weight:700;color:#3f6b3c;transform:rotate(15deg);transform-origin:left center;white-space:nowrap}
+@media (min-width:560px){.zs-tag{font-size:15px}.zs-dir{font-size:14px}}

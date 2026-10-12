@@ -71,45 +71,14 @@ function firstPage(icon) {
 }
 
 // ---------- 図解 ----------
-// 撮影の向き（上から見た図）
-// 撮影の向き（上から見た図）。右打ち：打つ方向（右）に左肩を向け、ボールの向こう側に立つ
-const SVG_ANGLE = `<svg viewBox="0 0 360 270" class="zk-svg" role="img" aria-label="撮影の向きの図：右打ちの人を上から見た図。正面はボールをはさんで体の正面から、後方は打つ方向の真後ろから撮ります">
-  <rect x="0" y="0" width="360" height="270" rx="14" fill="#eef5ea"/>
-  <text x="14" y="22" font-size="11" fill="#5d6b5a">上から見た図（右打ちの場合）</text>
-  <line x1="62" y1="140" x2="334" y2="140" stroke="#9cb79a" stroke-width="2" stroke-dasharray="6 6"/>
-  <path d="M322 132l14 8-14 8" fill="none" stroke="#5f8a5c" stroke-width="2.5"/>
-  <text x="250" y="160" font-size="12.5" fill="#3f6b3c" font-weight="700">打つ方向（目標）</text>
-  <circle cx="190" cy="140" r="4.6" fill="#fff" stroke="#555" stroke-width="1.5"/>
-  <text x="140" y="160" font-size="11.5" fill="#555">ボール</text>
-  <g stroke="#1c2420" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
-    <ellipse cx="161" cy="100" rx="7" ry="12.5" fill="#fff" transform="rotate(-6 161 100)"/>
-    <ellipse cx="219" cy="100" rx="7" ry="12.5" fill="#fff" transform="rotate(6 219 100)"/>
-    <path d="M171 56c5-4 33-4 38 0 4 5 5 14 4 22h-46c-1-8 0-17 4-22z" fill="#0f8f8a"/>
-    <path d="M168 76h44c3 6 6 12 8 18 2 7-2 11-9 11h-42c-7 0-11-4-9-11 2-6 5-12 8-18z" fill="#fff"/>
-    <path d="M176 78h28" stroke-width="2.4" stroke="#1c2420"/>
-    <path d="M168 99Q175 115 186 123" fill="none" stroke-width="10"/>
-    <path d="M212 99Q205 115 194 123" fill="none" stroke-width="10"/>
-    <path d="M168 99Q175 115 186 123M212 99Q205 115 194 123" fill="none" stroke="#f0c9a0" stroke-width="6.5"/>
-    <circle cx="190" cy="125" r="6" fill="#fff"/>
-    <circle cx="190" cy="102" r="11.5" fill="#0f8f8a"/>
-    <path d="M181 108q9 12 18 0z" fill="#0a6e6a"/>
-  </g>
-  <line x1="190" y1="131" x2="190" y2="135.5" stroke="#1c2420" stroke-width="2.5" stroke-linecap="round"/>
-  <path d="M219 90l12-22" stroke="#c46a1b" stroke-width="1.4"/>
-  <text x="232" y="52" font-size="13" fill="#1c2420" font-weight="700">あなた（右打ち）</text>
-  <text x="232" y="68" font-size="10.5" fill="#1c2420">左肩を打つ方向に向けて、</text>
-  <text x="232" y="82" font-size="10.5" fill="#1c2420">ボールの方を向いて立つ</text>
-  <g transform="translate(190 236)"><rect x="-17" y="-11" width="34" height="22" rx="4" fill="#2f6fb0"/><circle r="5.5" fill="#fff"/></g>
-  <path d="M190 222v-74" stroke="#2f6fb0" stroke-width="2" stroke-dasharray="4 4"/>
-  <text x="210" y="228" font-size="14" font-weight="700" fill="#2f6fb0">正面から</text>
-  <text x="210" y="244" font-size="10.5" fill="#2f6fb0">ボールをはさんだ向かい側から</text>
-  <text x="210" y="258" font-size="10.5" fill="#2f6fb0">体の正面（おなか側）を撮る</text>
-  <g transform="translate(34 140) rotate(90)"><rect x="-17" y="-11" width="34" height="22" rx="4" fill="#c46a1b"/><circle r="5.5" fill="#fff"/></g>
-  <path d="M48 140h134" stroke="#c46a1b" stroke-width="2" stroke-dasharray="4 4"/>
-  <text x="14" y="186" font-size="14" font-weight="700" fill="#c46a1b">後方から</text>
-  <text x="14" y="203" font-size="11" fill="#c46a1b">打つ方向の真後ろ</text>
-  <text x="14" y="218" font-size="11" fill="#c46a1b">から撮る</text>
-</svg>`;
+// 撮影の向き：スマホ2台の置き場所（右打ち）。画像は img/camera-setup.jpg、文字は画像の上に重ねる
+// 画像の切り出し範囲：元画像 x60〜1360, y90〜1030（1300×940）。位置は％で指定
+const SETUP = `<div class="zk-setup" role="img" aria-label="スマホの置き場所の図：正面はボールをはさんで体の正面に、後方はボールの打ち出し方向の真後ろの線上に置きます">
+    <img src="img/camera-setup.jpg" alt="" width="900" height="651" loading="lazy">
+    <span class="zs-tag zs-front" style="left:2%;top:86%">① 正面から</span>
+    <span class="zs-tag zs-back" style="left:1%;top:16%">② 後方から</span>
+    <span class="zs-dir" style="left:73%;top:79%">打つ方向 →</span>
+  </div>`;
 
 // ゴルフコース（上から見た図）
 const SVG_COURSE = `<svg viewBox="0 0 360 230" class="zk-svg" role="img" aria-label="ゴルフコースの図：ティーグラウンドから打ち、フェアウェイを通って、グリーンのカップに入れます">
@@ -191,7 +160,7 @@ function zukaiPage(icon) {
   <section class="card zk cat-video" id="zk-angle">
     <h2 class="zk-h">${icon('video')}撮影の向き</h2>
     <p>動画は「<b>正面</b>」か「<b>後方</b>」のどちらかから撮ります。送るときに、どちらから撮ったかを選びます。</p>
-    ${SVG_ANGLE}
+    ${SETUP}
     <div class="zk-views">
       <figure><img src="img/guide-front.jpg" alt="正面から撮ったときの見え方（右打ちの人の構え）" loading="lazy" width="276" height="414"><figcaption><b class="v-front">正面から</b>撮るとこう写ります</figcaption></figure>
       <figure><img src="img/guide-dtl.jpg" alt="後方から撮ったときの見え方（右打ちの人の構え）" loading="lazy" width="414" height="414"><figcaption><b class="v-back">後方から</b>撮るとこう写ります</figcaption></figure>
