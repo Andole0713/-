@@ -136,76 +136,8 @@ const SVG_COURSE = `<svg viewBox="0 0 360 230" class="zk-svg" role="img" aria-la
   </g>
 </svg>`;
 
-// スイングの流れ：右打ちの人を正面（体の前）から見たシルエット。関節の位置から体の形を作る
-// 画面の左＝右半身（右肩・右足）、画面の右＝左半身（打つ方向）
-const POSES = [
-  // アドレス
-  { head: [97, 47], neck: [98, 63], sL: [78, 75], sR: [121, 69], eL: [84, 103], eR: [116, 101], hand: [101, 127], hipL: [86, 134], hipR: [114, 134], kL: [80, 188], kR: [120, 188], aL: [76, 242], aR: [124, 242], club: [106, 248], ball: true },
-  // テークバック
-  { head: [99, 46], neck: [99, 62], sL: [81, 72], sR: [119, 75], eL: [78, 98], eR: [98, 104], hand: [70, 121], hipL: [86, 134], hipR: [114, 134], kL: [80, 188], kR: [118, 189], aL: [76, 242], aR: [124, 242], club: [6, 117], ball: true },
-  // トップ
-  { head: [99, 46], neck: [99, 62], sL: [88, 72], sR: [111, 77], eL: [70, 68], eR: [92, 60], hand: [76, 38], hipL: [88, 134], hipR: [113, 134], kL: [82, 188], kR: [112, 190], aL: [76, 242], aR: [124, 242], club: [166, 46] },
-  // 切り返し
-  { head: [100, 46], neck: [100, 62], sL: [86, 72], sR: [113, 75], eL: [80, 96], eR: [93, 72], hand: [72, 63], hipL: [90, 134], hipR: [118, 134], kL: [85, 189], kR: [121, 188], aL: [76, 242], aR: [124, 242], club: [94, -16] },
-  // ダウンスイング
-  { head: [100, 47], neck: [100, 63], sL: [83, 75], sR: [118, 72], eL: [84, 98], eR: [100, 88], hand: [82, 106], hipL: [92, 134], hipR: [120, 134], kL: [88, 189], kR: [124, 188], aL: [77, 242], aR: [124, 242], club: [26, 50] },
-  // インパクト
-  { head: [96, 48], neck: [98, 64], sL: [80, 77], sR: [121, 70], eL: [90, 104], eR: [114, 101], hand: [106, 128], hipL: [92, 133], hipR: [121, 132], kL: [90, 189], kR: [124, 188], aL: [80, 240], aR: [124, 242], club: [108, 248], heelUp: true, ball: true },
-  // フォロースルー
-  { head: [104, 48], neck: [104, 64], sL: [93, 73], sR: [116, 71], eL: [116, 86], eR: [131, 78], hand: [142, 92], hipL: [97, 133], hipR: [121, 132], kL: [102, 190], kR: [123, 188], aL: [89, 236], aR: [124, 242], club: [184, 22], heelUp: true },
-  // フィニッシュ
-  { head: [110, 34], neck: [110, 50], sL: [99, 61], sR: [122, 59], eL: [104, 40], eR: [136, 46], hand: [124, 28], hipL: [100, 127], hipR: [121, 126], kL: [106, 186], kR: [121, 184], aL: [96, 234], aR: [123, 242], club: [47, 50], heelUp: true },
-];
-const INK = '#1c2420';
-const fx = (v) => v.toFixed(1);
-// 2つの円をつないだ形（腕・脚の太さを、根元から先へ細くする）
-function capsule([x1, y1], r1, [x2, y2], r2) {
-  const dx = x2 - x1, dy = y2 - y1, d = Math.hypot(dx, dy) || 0.01;
-  const t = Math.atan2(dy, dx), ph = Math.acos(Math.max(-1, Math.min(1, (r1 - r2) / d)));
-  const p = (x, y, r, a) => `${fx(x + r * Math.cos(a))} ${fx(y + r * Math.sin(a))}`;
-  return `M${p(x1, y1, r1, t + ph)}L${p(x2, y2, r2, t + ph)}A${r2} ${r2} 0 0 0 ${p(x2, y2, r2, t - ph)}L${p(x1, y1, r1, t - ph)}A${r1} ${r1} 0 0 0 ${p(x1, y1, r1, t + ph)}Z`;
-}
-function figure(P, label, n) {
-  const mid = (a, b) => [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
-  const w = mid(P.hipL, P.hipR);
-  const calf = (k, a) => [k[0] + (a[0] - k[0]) * 0.3, k[1] + (a[1] - k[1]) * 0.3];
-  // 腰のくびれ：肩と腰の間を少し内側へ
-  const wl = [P.sL[0] + (P.hipL[0] - P.sL[0]) * 0.6 + 0.5, P.sL[1] + (P.hipL[1] - P.sL[1]) * 0.6];
-  const wr = [P.sR[0] + (P.hipR[0] - P.sR[0]) * 0.6 - 0.5, P.sR[1] + (P.hipR[1] - P.sR[1]) * 0.6];
-  const torso = `M${fx(P.sL[0])} ${fx(P.sL[1])}Q${fx((P.sL[0] + P.sR[0]) / 2)} ${fx(Math.min(P.sL[1], P.sR[1]) - 5)} ${fx(P.sR[0])} ${fx(P.sR[1])}`
-    + `Q${fx(P.sR[0] + 1)} ${fx((P.sR[1] + wr[1]) / 2)} ${fx(wr[0])} ${fx(wr[1])}Q${fx(wr[0] + 1)} ${fx((wr[1] + P.hipR[1]) / 2)} ${fx(P.hipR[0] + 3)} ${fx(P.hipR[1])}`
-    + `L${fx(w[0])} ${fx(w[1] + 6)}L${fx(P.hipL[0] - 3)} ${fx(P.hipL[1])}`
-    + `Q${fx(wl[0] - 1)} ${fx((wl[1] + P.hipL[1]) / 2)} ${fx(wl[0])} ${fx(wl[1])}Q${fx(P.sL[0] - 1)} ${fx((P.sL[1] + wl[1]) / 2)} ${fx(P.sL[0])} ${fx(P.sL[1])}Z`;
-  const shoe = (a, side, up) => (up
-    ? `<ellipse cx="${fx(a[0])}" cy="${fx(a[1] + 6)}" rx="4.5" ry="9" transform="rotate(${side * 20} ${fx(a[0])} ${fx(a[1] + 6)})"/>`
-    : `<ellipse cx="${fx(a[0] + side * 4)}" cy="${fx(a[1] + 4)}" rx="10" ry="5.5"/>`);
-  const [hx, hy] = P.head;
-  const v = [P.hand[0] - P.club[0], P.hand[1] - P.club[1]], L = Math.hypot(v[0], v[1]);
-  const ch = [P.club[0] + (v[1] / L) * 5, P.club[1] - (v[0] / L) * 5];
-  return `<figure class="zk-fig"><svg viewBox="0 -24 200 280" aria-hidden="true">
-    <line x1="6" y1="252" x2="194" y2="252" stroke="#c3cdbf" stroke-width="2.5"/>
-    ${P.ball ? '<circle cx="109" cy="247" r="4.2" fill="#fff" stroke="#555" stroke-width="1.5"/>' : ''}
-    <g fill="${INK}" stroke="${INK}" stroke-linejoin="round">
-      <path d="${capsule(P.hipL, 10.5, P.kL, 8)}"/><path d="${capsule(P.kL, 8, calf(P.kL, P.aL), 7.6)}"/><path d="${capsule(calf(P.kL, P.aL), 7.6, P.aL, 4.8)}"/>
-      <path d="${capsule(P.hipR, 10.5, P.kR, 8)}"/><path d="${capsule(P.kR, 8, calf(P.kR, P.aR), 7.6)}"/><path d="${capsule(calf(P.kR, P.aR), 7.6, P.aR, 4.8)}"/>
-      ${shoe(P.aL, -1, P.heelUp)}${shoe(P.aR, 1, false)}
-      <path d="${torso}" stroke-width="5"/>
-      <path d="${capsule(P.neck, 6.5, [hx, hy], 6)}"/>
-      <ellipse cx="${hx}" cy="${hy + 1}" rx="10" ry="12"/>
-      <path d="M${hx - 11} ${hy - 2}C${hx - 11} ${hy - 17} ${hx + 11} ${hy - 17} ${hx + 11} ${hy - 2}Z"/>
-      <path d="M${hx - 12.5} ${hy - 2.5}Q${hx} ${hy + 1.5} ${hx + 12.5} ${hy - 2.5}Q${hx} ${hy - 4.5} ${hx - 12.5} ${hy - 2.5}Z" stroke-width="2.4"/>
-      <ellipse cx="${hx - 10}" cy="${hy + 2}" rx="2.2" ry="3.4"/><ellipse cx="${hx + 10}" cy="${hy + 2}" rx="2.2" ry="3.4"/>
-    </g>
-    <line x1="${fx(P.hand[0])}" y1="${fx(P.hand[1])}" x2="${fx(P.club[0])}" y2="${fx(P.club[1])}" stroke="${INK}" stroke-width="2.4" stroke-linecap="round"/>
-    <path d="M${fx(P.club[0])} ${fx(P.club[1])}L${fx(ch[0])} ${fx(ch[1])}" stroke="${INK}" stroke-width="5.5" stroke-linecap="round"/>
-    <g fill="${INK}">
-      <circle cx="${fx(P.sL[0])}" cy="${fx(P.sL[1] + 2)}" r="8.5"/><circle cx="${fx(P.sR[0])}" cy="${fx(P.sR[1] + 2)}" r="8.5"/>
-      <path d="${capsule(P.sL, 7.5, P.eL, 5.5)}"/><path d="${capsule(P.eL, 5.5, P.hand, 4.5)}"/>
-      <path d="${capsule(P.sR, 7.5, P.eR, 5.5)}"/><path d="${capsule(P.eR, 5.5, P.hand, 4.5)}"/>
-      <circle cx="${fx(P.hand[0])}" cy="${fx(P.hand[1])}" r="6"/>
-    </g>
-  </svg><figcaption><span>${n}</span>${label}</figcaption></figure>`;
-}
+// スイングの流れ：右打ちの人を正面（体の前）から見たシルエット（img/swing-1〜8.png）
+const figure = (n, label) => `<figure class="zk-fig"><img src="img/swing-${n}.png" alt="" loading="lazy" width="320" height="452"><figcaption><span>${n}</span>${label}</figcaption></figure>`;
 const SWING = [
   ['アドレス', '構える'], ['テークバック', 'クラブを上げ始める'], ['トップ', 'いちばん上'], ['切り返し', '下ろし始める'],
   ['ダウンスイング', '下ろす'], ['インパクト', 'ボールに当たる瞬間'], ['フォロースルー', '振り抜く'], ['フィニッシュ', '振り終わり'],
@@ -261,8 +193,8 @@ function zukaiPage(icon) {
     <p>動画は「<b>正面</b>」か「<b>後方</b>」のどちらかから撮ります。送るときに、どちらから撮ったかを選びます。</p>
     ${SVG_ANGLE}
     <div class="zk-views">
-      <figure><img src="guide-front.jpg" alt="正面から撮ったときの見え方（右打ちの人の構え）" loading="lazy" width="276" height="414"><figcaption><b class="v-front">正面から</b>撮るとこう写ります</figcaption></figure>
-      <figure><img src="guide-dtl.jpg" alt="後方から撮ったときの見え方（右打ちの人の構え）" loading="lazy" width="414" height="414"><figcaption><b class="v-back">後方から</b>撮るとこう写ります</figcaption></figure>
+      <figure><img src="img/guide-front.jpg" alt="正面から撮ったときの見え方（右打ちの人の構え）" loading="lazy" width="276" height="414"><figcaption><b class="v-front">正面から</b>撮るとこう写ります</figcaption></figure>
+      <figure><img src="img/guide-dtl.jpg" alt="後方から撮ったときの見え方（右打ちの人の構え）" loading="lazy" width="414" height="414"><figcaption><b class="v-back">後方から</b>撮るとこう写ります</figcaption></figure>
     </div>
     <p class="muted small">撮影機能（SwingFrame）では、この形の人型ガイドに体を合わせると、毎回同じ向きで撮れます。</p>
     <ul class="zk-points"><li>頭から足先まで、<b>クラブ全体</b>が画面に入るように</li><li>スマホは<b>胸の少し下あたりの高さ</b>で固定（三脚があると安定）</li><li>ボールの近くに立ちすぎないよう、<b>2〜3m</b>はなれて撮る</li></ul>
@@ -271,7 +203,7 @@ function zukaiPage(icon) {
   <section class="card zk cat-drill" id="zk-swing">
     <h2 class="zk-h">${icon('target')}スイングの流れ</h2>
     <p>スイングは、構えてから振り終わるまでを8つの場面に分けて考えます。レッスンでは「トップで〜」「インパクトで〜」のように、この言葉で説明します。</p>
-    <div class="zk-swing">${SWING.map(([t, d], i) => figure(POSES[i], `<b>${t}</b><small>${d}</small>`, i + 1)).join('')}</div>
+    <div class="zk-swing">${SWING.map(([t, d], i) => figure(i + 1, `<b>${t}</b><small>${d}</small>`)).join('')}</div>
     <p class="muted small">※ 右打ちの人を、正面（体の前）から見た図です。</p>
   </section>
 
