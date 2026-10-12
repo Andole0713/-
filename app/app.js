@@ -918,6 +918,105 @@ async function viewMemberHome() {
   </div>  </div>` + memberNav('home');
 }
 
+// 動画を送る：1画面ずつ順番に進む（動画 → クラブ → 撮影方向 → お悩み → 確認・送信）
+const WIZ_STEPS = ['動画を選ぶ', 'クラブを選ぶ', '撮影方向を選ぶ', 'お悩み・質問', '確認して送る'];
+function submitWizard(myClubs) {
+  const h = state.handoff;
+  const clubs = myClubs.length ? [...myClubs, 'その他'] : DEFAULT_CLUB_OPTIONS;
+  const last = { club: local.get('atg-last-club'), angle: local.get('atg-last-angle') };
+  const pick = (field, value, inner, cls = '') => `<button type="button" class="wiz-pick ${cls}${value === last[field] ? ' last' : ''}" data-action="wiz-pick" data-field="${field}" data-value="${esc(value)}">${inner}${value === last[field] ? '<em>前回</em>' : ''}</button>`;
+  return `<div class="wiz hidden" id="wiz" role="dialog" aria-modal="true" aria-labelledby="wiz-title" data-step="1">
+  <form class="wiz-box form" data-form="submit">
+    <div class="wiz-head">
+      <button type="button" class="wiz-back" data-action="wiz-back" aria-label="前へ戻る">‹</button>
+      <div class="wiz-ttl"><small id="wiz-count">1 / ${WIZ_STEPS.length}</small><b id="wiz-title">${WIZ_STEPS[0]}</b></div>
+      <button type="button" class="wiz-close" data-action="wiz-close" aria-label="閉じる">×</button>
+    </div>
+    <div class="wiz-dots" aria-hidden="true">${WIZ_STEPS.map((_, i) => `<i data-dot="${i + 1}"></i>`).join('')}</div>
+    <input type="hidden" name="club"><input type="hidden" name="angle"><input type="hidden" name="use_handoff" value="">
+
+    <section class="wiz-step" data-step="1">
+      <p class="wiz-lead">コーチに送るスイング動画を選んでください。</p>
+      ${h ? `<button type="button" class="wiz-big" data-action="wiz-use-handoff"><span class="wb-ic">📹</span>
+          <span><b>SwingFrame で撮った動画を送る</b><small>${new Date(h.ts).toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}・${formatBytes(h.blob.size)}</small></span></button>
+        <video class="swing-video wiz-handoff-preview" controls playsinline muted src="${URL.createObjectURL(h.blob)}"></video>
+        <button type="button" class="link" data-action="handoff-clear">この動画は使わない</button>` : ''}
+      <input id="video" name="video" type="file" accept="video/*" class="visually-hidden">
+      <label class="wiz-big" for="video"><span class="wb-ic">🎞</span>
+        <span><b>${h ? 'ほかの動画を選ぶ' : '動画を選ぶ・撮影する'}</b><small>スマホのカメラロールから選ぶか、その場で撮影できます</small></span></label>
+      <a class="wiz-sf" href="${SWINGFRAME_URL}">SwingFrame で撮影する ›</a>
+    </section>
+
+    <section class="wiz-step" data-step="2" hidden>
+      <div class="wiz-chosen" id="wiz-chosen"></div>
+      <p class="wiz-lead">打ったクラブを選んでください。</p>
+      <div class="wiz-grid">${clubs.map((c) => pick('club', c, `<b>${esc(c)}</b>`)).join('')}</div>
+      ${myClubs.length ? '' : '<p class="tip">アカウントの<a href="#/account/clubs">「Myクラブセッティング」</a>を登録すると、お使いのクラブから選べるようになります。</p>'}
+    </section>
+
+    <section class="wiz-step" data-step="3" hidden>
+      <p class="wiz-lead">どちらから撮影しましたか？</p>
+      <div class="wiz-angles">
+        ${pick('angle', '正面', '<img src="img/guide-front.jpg" alt=""><b>正面から</b><small>体の前（おなか側）から</small>', 'angle')}
+        ${pick('angle', '後方', '<img src="img/guide-dtl.jpg" alt=""><b>後方から</b><small>打つ方向の真後ろから</small>', 'angle')}
+      </div>
+      ${pick('angle', 'その他', '<b>その他の向き</b>', 'wide')}
+    </section>
+
+    <section class="wiz-step" data-step="4" hidden>
+      <p class="wiz-lead">お悩みや質問を書いてください。<span class="muted small">（書かなくても送れます）</span></p>
+      <textarea id="question" name="question" rows="6" maxlength="2000" placeholder="例：最近ドライバーが右に出ます。前回の課題はだいぶできるようになりました。">${esc(h?.note || '')}</textarea>
+      <button type="button" class="btn-block btn-cat cat-video" data-action="wiz-next">確認へ進む ›</button>
+    </section>
+
+    <section class="wiz-step" data-step="5" hidden>
+      <p class="wiz-lead">この内容で送ります。</p>
+      <dl class="wiz-sum" id="wiz-sum"></dl>
+      <div id="upload-progress" class="hidden" aria-live="polite">
+        <div class="between small"><span>送信中…</span><span id="upload-percent">0%</span></div>
+        <div class="meter"><i id="upload-bar" style="width:0%"></i></div>
+        <p class="muted small" style="margin:6px 0 0">送信が終わるまで、この画面を閉じないでください。</p>
+      </div>
+      <button class="btn-block btn-gold" type="submit">動画を送信する</button>
+    </section>
+  </form></div>`;
+}
+let wizPreviewUrl = null;
+function wizGo(n) {
+  const w = document.getElementById('wiz');
+  if (!w) return;
+  const f = w.querySelector('form');
+  if (n === 5) {
+    const file = f.video.files[0];
+    const name = file ? `${file.name}（${formatBytes(file.size)}）` : 'SwingFrame で撮った動画';
+    document.getElementById('wiz-sum').innerHTML = [['動画', esc(name)], ['クラブ', esc(f.club.value)], ['撮影方向', esc(f.angle.value)],
+      ['お悩み・質問', f.question.value.trim() ? `<span class="pre">${esc(f.question.value.trim())}</span>` : '<span class="muted">なし</span>']]
+      .map(([k, v], i) => `<div><dt>${k}</dt><dd>${v}</dd><button type="button" class="link" data-action="wiz-goto" data-step="${[1, 2, 3, 4][i]}">変更</button></div>`).join('');
+  }
+  w.dataset.step = n;
+  w.querySelectorAll('.wiz-step').forEach((sec) => { sec.hidden = Number(sec.dataset.step) !== n; });
+  w.querySelectorAll('[data-dot]').forEach((d) => d.classList.toggle('on', Number(d.dataset.dot) <= n));
+  document.getElementById('wiz-title').textContent = WIZ_STEPS[n - 1];
+  document.getElementById('wiz-count').textContent = `${n} / ${WIZ_STEPS.length}`;
+  w.querySelector('.wiz-back').style.visibility = n === 1 ? 'hidden' : '';
+  w.querySelector('.wiz-box').scrollTop = 0;
+}
+function openWizard() {
+  const w = document.getElementById('wiz');
+  if (!w) return;
+  w.classList.remove('hidden');
+  document.body.classList.add('wiz-open');
+  wizGo(1);
+}
+// 選んだ動画を、クラブを選ぶ画面の上に小さく表示する
+function wizShowChosen(file) {
+  const box = document.getElementById('wiz-chosen');
+  if (!box) return;
+  if (wizPreviewUrl) { URL.revokeObjectURL(wizPreviewUrl); wizPreviewUrl = null; }
+  const src = file ? (wizPreviewUrl = URL.createObjectURL(file)) : state.handoff ? URL.createObjectURL(state.handoff.blob) : '';
+  box.innerHTML = src ? `<video src="${src}" muted playsinline preload="metadata"></video><span>${file ? esc(file.name) : 'SwingFrame で撮った動画'}<button type="button" class="link" data-action="wiz-goto" data-step="1">選び直す</button></span>` : '';
+}
+
 async function viewSubmit() {
   const p = state.profile;
   const myClubs = p.clubs || [];
@@ -943,34 +1042,8 @@ async function viewSubmit() {
     <a class="shoot-cta" href="${SWINGFRAME_URL}"><span class="ico" aria-hidden="true">●</span>
       <span><b>SwingFrame で撮影する</b><small>ガイドに合わせて自動で録画。撮ったあと再生画面の「⛳ コーチへ」を押すと、そのままここに届きます</small></span><i aria-hidden="true">›</i></a>
     <div class="notice">正面または後方から、全身とクラブが入るように撮影してください。<a href="#/guide">撮り方ガイドを見る</a><br>送った動画は<b>${RETENTION_LABEL}</b>保存され、その後自動で削除されます。</div>
-    <form class="card form" data-form="submit">
-      <label for="video">スイング動画</label>
-      <input id="video" name="video" type="file" accept="video/*"${state.handoff ? '' : ' required'} class="visually-hidden">
-      ${state.handoff ? `<div class="handoff-pick"><b>📹 SwingFrame で撮った動画</b>
-          <span>${new Date(state.handoff.ts).toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}・${formatBytes(state.handoff.blob.size)}</span>
-          <button type="button" class="link" data-action="handoff-clear">この動画を使わない</button></div>` : ''}
-      <label class="file-pick" for="video">
-        <span class="file-pick-main">${state.handoff ? 'ほかの動画を選ぶ' : '動画を選ぶ・撮影する'}</span>
-        <span class="file-pick-sub" id="video-name">スマホのカメラロールから選べます</span>
-      </label>
-      <video id="video-preview" class="swing-video${state.handoff ? '' : ' hidden'}" controls playsinline muted${state.handoff ? ` src="${URL.createObjectURL(state.handoff.blob)}"` : ''}></video>
-      <div class="grid">
-        <div><label for="club">クラブ</label><select id="club" name="club">
-          ${(myClubs.length ? [...myClubs, 'その他'] : DEFAULT_CLUB_OPTIONS).map((c) => `<option${c === local.get('atg-last-club') ? ' selected' : ''}>${esc(c)}</option>`).join('')}</select></div>
-        <div><label for="angle">撮影方向</label><select id="angle" name="angle">${['正面', '後方', 'その他'].map((a) => `<option${a === local.get('atg-last-angle') ? ' selected' : ''}>${a}</option>`).join('')}</select></div>
-      </div>
-      ${myClubs.length
-        ? '<p class="muted small" style="margin:8px 0 0">クラブはMyクラブセッティングから表示しています。<a href="#/account/clubs">変更する</a></p>'
-        : '<p class="tip">アカウントの<a href="#/account/clubs">「Myクラブセッティング」</a>を登録すると、お使いのクラブから選べるようになります。</p>'}
-      <label for="question">お悩み・質問（文章で）</label>
-      <textarea id="question" name="question" rows="5" maxlength="2000" placeholder="例：最近ドライバーが右に出ます。前回の課題はだいぶできるようになりました。">${esc(state.handoff?.note || '')}</textarea>
-      <div id="upload-progress" class="hidden" aria-live="polite">
-        <div class="between small"><span>送信中…</span><span id="upload-percent">0%</span></div>
-        <div class="meter"><i id="upload-bar" style="width:0%"></i></div>
-        <p class="muted small" style="margin:6px 0 0">送信が終わるまで、この画面を閉じないでください。</p>
-      </div>
-      <button class="btn-block btn-gold" type="submit">動画を送信する</button>
-    </form>
+    <button type="button" class="btn-block btn-cat cat-video send-start" data-action="wiz-open">${icon('video')} 動画を送る</button>
+    ${submitWizard(myClubs)}
   </div>` + memberNav('submit');
 }
 
@@ -1110,6 +1183,7 @@ async function viewLesson(id, back = 'history') {
       <h1>${esc(l.title)}</h1>
       ${l.point ? `<div class="diag"><span>今回の診断</span><p>${esc(l.point)}</p></div>` : ''}
     </div>
+    ${mine ? glossaryLink() : ''}
     </div>
   <div class="cols">
   <div class="col-main">
@@ -1129,7 +1203,8 @@ async function viewLesson(id, back = 'history') {
   </div>
   <div class="col-side">
     <div class="blk" style="--o:3">
-    ${l.feedback ? `<section class="card lesson-sec">${secTitle('✎', 'コーチからのフィードバック')}<div class="fb">${richText(l.feedback)}</div></section>` : ''}
+    ${l.feedback ? `<section class="card lesson-sec">${secTitle('✎', 'コーチからのフィードバック')}<div class="fb">${richText(l.feedback)}</div>
+        ${mine ? '<button type="button" class="gl-inline" data-action="open-glossary">📖 わからない言葉は「用語集」で調べる ›</button>' : ''}</section>` : ''}
     </div>
     <div class="blk" style="--o:4">
     ${l.practice ? `<section class="card lesson-sec practice">${secTitle('✓', '次回までの練習')}
@@ -1438,6 +1513,7 @@ async function viewMemberDrills() {
   const urls = await signedDrillUrls([...list.map((r) => r.drills), ...roadmap.filter(rmOpen).map((r) => r.drills)]);
   return header('ドリル') + `<div class="content wide">
     <p class="page-lead">毎月1つ届く練習メニュー（ドリル）と、1年間の練習計画（ロードマップ）です。練習したら記録しましょう。</p>
+    ${glossaryLink()}
     ${roadmapView(roadmap, urls, { practice, reflections, goal: goals[0]?.goal || p.goal })}
     <div class="section-title"><div><div class="eyebrow">From Lessons</div><h2>レッスンで届いたドリル</h2></div></div>
     ${list.length ? `<div class="drill-list">${list.map((r) => drillCard(r.drills, urls,
@@ -1497,13 +1573,18 @@ function viewHelp(tab) {
   const key = tab ? `help/${tab}` : 'help';
   const title = HELP_TABS.find(([k]) => k === key)?.[1] || 'はじめての方へ';
   const p = state.profile;
-  return header(title, isActive(p) ? 'menu' : '') + `<div class="content help">
+  const back = state.helpFrom && tab === 'words' ? state.helpFrom : isActive(p) ? 'menu' : '';
+  return header(title, back) + `<div class="content help">
+    ${back && back !== 'menu' ? `<a class="help-back" href="#/${back}">‹ ${back.startsWith('lesson') ? 'レッスン' : back.startsWith('drills') ? 'ドリル' : '前の画面'}に戻る</a>` : ''}
     <div class="help-tabs" role="tablist">${HELP_TABS.map(([k, l]) => `<a role="tab" href="#/${k}" class="${k === key ? 'on' : ''}"${k === key ? ' aria-selected="true"' : ''}>${l}</a>`).join('')}</div>
     ${helpPage(tab, icon)}
     <div class="card help-ask"><b>分からないことがあれば</b><p class="muted small">どんな小さなことでも、LINEでコーチに気軽に聞いてください。</p>${lineBtn('LINEで質問する')}</div>
   </div>` + (p.role === 'admin' ? adminNav('') : isActive(p) ? memberNav('menu') : guestNav('help'));
 }
 
+// レッスン・ドリルの画面から用語集へ（戻るボタンで元の画面に戻れるようにする）
+const glossaryLink = () => `<button type="button" class="glossary-link" data-action="open-glossary">
+    <span class="gll-ic" aria-hidden="true">📖</span><span><b>わからない言葉は「用語集」で</b><small>レッスンやドリルに出てくるゴルフの言葉を、やさしく説明しています</small></span><i aria-hidden="true">›</i></button>`;
 // 用語集の絞り込み（文字・分類）
 function filterGlossary() {
   const q = (document.querySelector('[data-glossary-search]')?.value || '').trim().toLowerCase();
@@ -2670,6 +2751,7 @@ async function render() {
   const paint = (html) => {
     if (seq !== renderSeq) return;
     document.body.classList.toggle('on-auth', html.startsWith('<div class="auth-page">'));
+    document.body.classList.remove('wiz-open');
     // パソコンでは下部メニューを左側のサイドメニューにするため、メニューがある画面かどうかを付けておく
     document.body.classList.toggle('with-nav', html.includes('<nav class="nav"'));
     const y = navScrollTarget();
@@ -2685,6 +2767,7 @@ async function render() {
 
     const p = state.profile;
     const r = getRoute();
+    if (r[0] !== 'help') state.helpFrom = null;
     if (p.deletion_requested_at && p.role !== 'admin') return paint(viewDeletionPending());
     if (r[0] === 'continue') return paint(viewContinue());
     if (r[0] === 'account') {
@@ -2733,7 +2816,11 @@ async function render() {
     state.drillUnread = unreadDrills.count || 0;
     if (r[0] === 'menu') return paint(viewMenu());
     if (r[0] === 'celebrations') return paint(await viewCelebrations());
-    if (r[0] === 'submit') return paint(await viewSubmit());
+    if (r[0] === 'submit') {
+      paint(await viewSubmit());
+      if (r[1] === 'swingframe' && state.handoff) openWizard();
+      return;
+    }
     if (r[0] === 'history') return paint(await viewHistory());
     if (r[0] === 'drills') {
       paint(await viewMemberDrills());
@@ -3010,6 +3097,24 @@ const actions = {
     toast('🏆 これからも一緒にがんばりましょう！');
     render();
   },
+  'wiz-open': () => openWizard(),
+  'wiz-close': () => { document.getElementById('wiz')?.classList.add('hidden'); document.body.classList.remove('wiz-open'); },
+  'wiz-back': () => { const w = document.getElementById('wiz'); wizGo(Math.max(1, Number(w.dataset.step) - 1)); },
+  'wiz-goto': (el) => wizGo(Number(el.dataset.step)),
+  'wiz-next': () => { const w = document.getElementById('wiz'); wizGo(Number(w.dataset.step) + 1); },
+  'wiz-use-handoff': () => {
+    const f = document.querySelector('#wiz form');
+    f.video.value = ''; f.use_handoff.value = '1';
+    wizShowChosen(null); wizGo(2);
+  },
+  'wiz-pick': (el) => {
+    const f = el.closest('form');
+    f.elements[el.dataset.field].value = el.dataset.value;
+    el.parentElement.querySelectorAll('.wiz-pick').forEach((b) => b.classList.toggle('on', b === el));
+    el.closest('.wiz-step').querySelectorAll('.wiz-pick').forEach((b) => b.classList.toggle('on', b === el));
+    setTimeout(() => wizGo(el.dataset.field === 'club' ? 3 : 4), 180);
+  },
+  'open-glossary': () => { state.helpFrom = location.hash.replace(/^#\/?/, ''); go('help/words'); },
   'glossary-cat': (el) => {
     document.querySelectorAll('.gl-cat').forEach((b) => b.classList.toggle('on', b === el));
     filterGlossary();
@@ -3347,7 +3452,9 @@ const forms = {
     unlockAudio(); // スマホでは、押した瞬間に音の準備をしておかないと後で鳴らせない
     const h = state.handoff;
     const file = f.video.files[0] || (h ? new File([h.blob], h.name || 'swingframe.mp4', { type: h.type || h.blob.type || 'video/mp4' }) : null);
-    if (!file) throw new Error('送る動画を選んでください');
+    if (!file) { wizGo(1); throw new Error('送る動画を選んでください'); }
+    if (!f.club.value) { wizGo(2); throw new Error('クラブを選んでください'); }
+    if (!f.angle.value) { wizGo(3); throw new Error('撮影方向を選んでください'); }
     if (file.type && !file.type.startsWith('video/')) throw new Error('動画ファイルを選んでください');
     if (!(await must(sb.rpc('can_submit_video')))) {
       render();
@@ -3374,6 +3481,7 @@ const forms = {
     }
     if (h && !f.video.files[0]) await clearHandoff();
     local.set('atg-last-club', f.club.value); local.set('atg-last-angle', f.angle.value); // 次回も同じものを最初から選んでおく
+    document.body.classList.remove('wiz-open');
     playCupIn();
     toast('⛳ 動画を送信しました。コーチからの解説をお待ちください。');
     go('home');
@@ -3581,7 +3689,6 @@ document.addEventListener('submit', async (ev) => {
 });
 
 // 動画を選んだら、ファイル名と容量を表示してプレビューする
-let previewUrl = null;
 document.addEventListener('change', (ev) => {
   if (ev.target.name === 'member_id' && ev.target.closest('.modal')) { refreshPayType(ev.target.closest('.modal')); return; }
   if (ev.target.name === 'sound_toggle') {
@@ -3622,14 +3729,10 @@ document.addEventListener('change', (ev) => {
   }
   if (ev.target.id !== 'video') return;
   const file = ev.target.files[0];
-  const name = document.getElementById('video-name');
-  const preview = document.getElementById('video-preview');
-  if (previewUrl) { URL.revokeObjectURL(previewUrl); previewUrl = null; }
-  if (!file) { name.textContent = 'スマホのカメラロールから選べます'; preview.classList.add('hidden'); return; }
-  name.textContent = `${file.name}（${formatBytes(file.size)}）`;
-  previewUrl = URL.createObjectURL(file);
-  preview.src = previewUrl;
-  preview.classList.remove('hidden');
+  if (!file) return;
+  const f = ev.target.form; if (f?.use_handoff) f.use_handoff.value = '';
+  wizShowChosen(file);
+  wizGo(2);
 });
 
 window.addEventListener('hashchange', render);

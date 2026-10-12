@@ -1166,7 +1166,7 @@ a.btn-block.btn-cat{min-height:52px;display:flex;align-items:center;justify-cont
 .gl-item dt{font-weight:700;font-size:15.5px;display:flex;align-items:center;gap:8px}
 .gl-item dd{margin:4px 0 0;font-size:14px;line-height:1.75}
 .gl-tag{font-size:10.5px;font-weight:700;color:#fff;background:var(--gl);border-radius:6px;padding:1px 7px;letter-spacing:.04em}
-.c-app{--gl:var(--c-home)} .c-swing{--gl:var(--c-drill)} .c-club{--gl:var(--c-lesson)} .c-course{--gl:var(--c-meeting)} .c-score{--gl:var(--c-score)} .c-play{--gl:var(--c-video)}
+.c-app{--gl:var(--c-home)} .c-swing{--gl:var(--c-drill)} .c-ball{--gl:var(--c-celebrate)} .c-shot{--gl:var(--c-help)} .c-club{--gl:var(--c-lesson)} .c-course{--gl:var(--c-meeting)} .c-score{--gl:var(--c-score)} .c-rule{--gl:var(--c-member)} .c-play{--gl:var(--c-video)}
 .gl-cat[class*=" c-"]{border-color:var(--gl);color:var(--gl)}
 .gl-cat[class*=" c-"].on{background:var(--gl);color:#fff}
 .zk-fig figcaption b{font-size:10.5px;letter-spacing:-.02em;white-space:nowrap}
@@ -1186,3 +1186,58 @@ a.btn-block.btn-cat{min-height:52px;display:flex;align-items:center;justify-cont
 .zs-front{background:#2f6fb0}.zs-back{background:#c46a1b}
 .zs-dir{position:absolute;font-size:12px;font-weight:700;color:#3f6b3c;transform:rotate(15deg);transform-origin:left center;white-space:nowrap}
 @media (min-width:560px){.zs-tag{font-size:15px}.zs-dir{font-size:14px}}
+
+/* 用語集への入口（レッスン・ドリル） */
+.glossary-link{display:flex;align-items:center;gap:12px;width:100%;text-align:left;background:color-mix(in srgb,var(--c-help) 9%,#fff);color:var(--text);border:1px solid color-mix(in srgb,var(--c-help) 35%,#fff);border-radius:14px;padding:10px 14px;margin:10px 0 4px;font-weight:400;letter-spacing:.02em}
+.glossary-link .gll-ic{flex:none;font-size:22px}
+.glossary-link b{display:block;color:var(--c-help);font-size:14.5px}
+.glossary-link small{display:block;font-size:12px;color:var(--muted);line-height:1.5}
+.glossary-link>i{margin-left:auto;font-style:normal;font-size:20px;color:var(--c-help)}
+.gl-inline{display:block;margin:12px 0 0;background:none;color:var(--c-help);padding:4px 0;font-size:13.5px;text-align:left}
+.help-back{display:inline-block;margin:0 0 10px;font-size:13.5px;font-weight:700;color:var(--c-help);text-decoration:none}
+
+/* 動画を送る：順番に進む画面 */
+.send-start{min-height:58px;font-size:17px;display:flex;align-items:center;justify-content:center;gap:8px;margin-top:18px}
+.send-start svg{width:24px;height:24px}
+body.wiz-open{overflow:hidden}
+.wiz{position:fixed;inset:0;z-index:50;background:rgba(15,23,18,.55);display:flex;align-items:stretch;justify-content:center}
+.wiz.hidden{display:none}
+.wiz-box{background:var(--paper);width:100%;max-width:560px;height:100%;overflow-y:auto;padding:0 18px 28px;display:block}
+@media (min-width:640px){.wiz{align-items:center;padding:24px}.wiz-box{height:auto;max-height:92vh;border-radius:20px}}
+.wiz-head{position:sticky;top:0;z-index:2;display:flex;align-items:center;gap:8px;background:var(--paper);padding:12px 0 6px;margin:0 -2px}
+.wiz-back,.wiz-close{flex:none;width:40px;height:40px;padding:0;border-radius:50%;background:#fff;color:var(--text);border:1px solid var(--line);font-size:22px;line-height:1}
+.wiz-ttl{flex:1;text-align:center}
+.wiz-ttl small{display:block;font-size:11.5px;color:var(--c-video);font-weight:700;letter-spacing:.1em}
+.wiz-ttl b{font-size:17px}
+.wiz-dots{display:flex;gap:6px;margin:4px 0 14px}
+.wiz-dots i{flex:1;height:4px;border-radius:4px;background:var(--line)}
+.wiz-dots i.on{background:var(--c-video)}
+.wiz-lead{margin:0 0 12px;font-size:15px;font-weight:700}
+.wiz-big{display:flex;align-items:center;gap:14px;width:100%;text-align:left;background:#fff;color:var(--text);border:2px solid color-mix(in srgb,var(--c-video) 40%,#fff);border-radius:16px;padding:16px;margin:0 0 10px;cursor:pointer;font-weight:400;letter-spacing:.02em}
+.wiz-big .wb-ic{flex:none;width:48px;height:48px;border-radius:14px;display:grid;place-items:center;font-size:24px;background:color-mix(in srgb,var(--c-video) 12%,#fff)}
+.wiz-big b{display:block;font-size:16px;color:var(--c-video)}
+.wiz-big small{display:block;font-size:12.5px;color:var(--muted)}
+.wiz-handoff-preview{margin:0 0 6px}
+.wiz-sf{display:block;text-align:center;margin:14px 0 0;font-size:13.5px;font-weight:700;color:var(--c-video)}
+.wiz-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.wiz-pick{position:relative;background:#fff;color:var(--text);border:2px solid var(--line);border-radius:14px;padding:14px 6px;min-height:58px;font-weight:700;letter-spacing:.02em}
+.wiz-pick b{display:block;font-size:15px}
+.wiz-pick small{display:block;font-size:11.5px;color:var(--muted);font-weight:400}
+.wiz-pick em{position:absolute;top:-8px;right:-4px;font-style:normal;font-size:10.5px;background:var(--c-video);color:#fff;border-radius:999px;padding:1px 7px}
+.wiz-pick.on{border-color:var(--c-video);background:color-mix(in srgb,var(--c-video) 10%,#fff)}
+.wiz-angles{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:0 0 10px}
+.wiz-pick.angle{padding:10px}
+.wiz-pick.angle img{display:block;width:100%;height:140px;object-fit:contain;margin:0 0 6px}
+.wiz-pick.wide{width:100%}
+.wiz-chosen{display:flex;align-items:center;gap:10px;margin:0 0 14px;font-size:12.5px;color:var(--muted)}
+.wiz-chosen:empty{display:none}
+.wiz-chosen video{width:72px;height:72px;object-fit:cover;border-radius:10px;background:#000;flex:none}
+.wiz-chosen span{min-width:0;overflow-wrap:anywhere}
+.wiz-chosen .link{display:block;margin:2px 0 0;padding:0;text-align:left}
+.wiz-step textarea{width:100%;font-size:16px}
+.wiz-sum{margin:0 0 14px;background:#fff;border:1px solid var(--line);border-radius:14px;padding:4px 14px}
+.wiz-sum div{display:grid;grid-template-columns:6.5em 1fr auto;gap:8px;align-items:start;padding:10px 0;border-bottom:1px solid var(--line)}
+.wiz-sum div:last-child{border-bottom:0}
+.wiz-sum dt{font-size:12.5px;color:var(--muted);font-weight:700}
+.wiz-sum dd{margin:0;font-size:14.5px;font-weight:700;overflow-wrap:anywhere}
+.wiz-sum .link{margin:0;padding:0;font-size:12.5px;display:inline}
