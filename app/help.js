@@ -72,37 +72,43 @@ function firstPage(icon) {
 
 // ---------- 図解 ----------
 // 撮影の向き（上から見た図）
-const SVG_ANGLE = `<svg viewBox="0 0 360 250" class="zk-svg" role="img" aria-label="撮影の向きの図：正面はボールの向こう側から体の正面を、後方は打つ方向の真後ろから撮ります">
-  <rect x="0" y="0" width="360" height="250" rx="14" fill="#eef5ea"/>
-  <line x1="66" y1="132" x2="334" y2="132" stroke="#9cb79a" stroke-width="2" stroke-dasharray="6 6"/>
-  <path d="M322 124l14 8-14 8" fill="none" stroke="#5f8a5c" stroke-width="2.5"/>
-  <text x="238" y="152" font-size="12.5" fill="#3f6b3c" font-weight="700">打つ方向（目標）→</text>
-  <circle cx="190" cy="132" r="5" fill="#fff" stroke="#555"/>
-  <text x="198" y="124" font-size="11.5" fill="#555">ボール</text>
-  <g stroke="#1f2d24" stroke-linecap="round" stroke-linejoin="round">
-    <ellipse cx="170" cy="194" rx="6" ry="10" fill="#fff" stroke-width="2"/>
-    <ellipse cx="210" cy="194" rx="6" ry="10" fill="#fff" stroke-width="2"/>
-    <path d="M166 176Q178 158 191 151M214 176Q203 160 192 151" fill="none" stroke-width="9"/>
-    <path d="M166 176Q178 158 191 151M214 176Q203 160 192 151" fill="none" stroke="#fff" stroke-width="5"/>
-    <rect x="160" y="171" width="60" height="16" rx="8" fill="#fff" stroke-width="2.2"/>
-    <circle cx="190" cy="179" r="9.5" fill="#f0d9b5" stroke-width="2"/>
-    <path d="M181 175a9.5 9.5 0 0 1 18 0z" fill="#1f2d24" stroke-width="1"/>
-    <path d="M184 172q6-7 12 0" fill="#1f2d24" stroke-width="1"/>
-    <circle cx="191.5" cy="151" r="4" fill="#fff" stroke-width="1.8"/>
+// 撮影の向き（上から見た図）。右打ち：打つ方向（右）に左肩を向け、ボールの向こう側に立つ
+const SVG_ANGLE = `<svg viewBox="0 0 360 270" class="zk-svg" role="img" aria-label="撮影の向きの図：右打ちの人を上から見た図。正面はボールをはさんで体の正面から、後方は打つ方向の真後ろから撮ります">
+  <rect x="0" y="0" width="360" height="270" rx="14" fill="#eef5ea"/>
+  <text x="14" y="22" font-size="11" fill="#5d6b5a">上から見た図（右打ちの場合）</text>
+  <line x1="62" y1="140" x2="334" y2="140" stroke="#9cb79a" stroke-width="2" stroke-dasharray="6 6"/>
+  <path d="M322 132l14 8-14 8" fill="none" stroke="#5f8a5c" stroke-width="2.5"/>
+  <text x="250" y="160" font-size="12.5" fill="#3f6b3c" font-weight="700">打つ方向（目標）</text>
+  <circle cx="190" cy="140" r="4.6" fill="#fff" stroke="#555" stroke-width="1.5"/>
+  <text x="140" y="160" font-size="11.5" fill="#555">ボール</text>
+  <g stroke="#1c2420" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+    <ellipse cx="161" cy="100" rx="7" ry="12.5" fill="#fff" transform="rotate(-6 161 100)"/>
+    <ellipse cx="219" cy="100" rx="7" ry="12.5" fill="#fff" transform="rotate(6 219 100)"/>
+    <path d="M171 56c5-4 33-4 38 0 4 5 5 14 4 22h-46c-1-8 0-17 4-22z" fill="#0f8f8a"/>
+    <path d="M168 76h44c3 6 6 12 8 18 2 7-2 11-9 11h-42c-7 0-11-4-9-11 2-6 5-12 8-18z" fill="#fff"/>
+    <path d="M176 78h28" stroke-width="2.4" stroke="#1c2420"/>
+    <path d="M168 99Q175 115 186 123" fill="none" stroke-width="10"/>
+    <path d="M212 99Q205 115 194 123" fill="none" stroke-width="10"/>
+    <path d="M168 99Q175 115 186 123M212 99Q205 115 194 123" fill="none" stroke="#f0c9a0" stroke-width="6.5"/>
+    <circle cx="190" cy="125" r="6" fill="#fff"/>
+    <circle cx="190" cy="102" r="11.5" fill="#0f8f8a"/>
+    <path d="M181 108q9 12 18 0z" fill="#0a6e6a"/>
   </g>
-  <line x1="191" y1="148" x2="190" y2="136" stroke="#777" stroke-width="2"/>
-  <text x="222" y="186" font-size="12" fill="#1f2d24" font-weight="700">あなた（右打ち）</text>
-  <text x="222" y="200" font-size="10.5" fill="#1f2d24">左肩が打つ方向を向く</text>
-  <text x="104" y="226" font-size="10.5" fill="#1f2d24">（上から見た図・ボールの方を向いて立つ）</text>
-  <g transform="translate(190 36)"><rect x="-17" y="-11" width="34" height="22" rx="4" fill="#2f6fb0"/><circle r="5.5" fill="#fff"/></g>
-  <path d="M190 50v70" stroke="#2f6fb0" stroke-width="2" stroke-dasharray="4 4"/>
-  <text x="214" y="32" font-size="14" font-weight="700" fill="#2f6fb0">正面から</text>
-  <text x="214" y="49" font-size="11" fill="#2f6fb0">ボールの向こう側から、</text>
-  <text x="214" y="64" font-size="11" fill="#2f6fb0">体の正面（おなか側）を撮る</text>
-  <g transform="translate(36 132) rotate(90)"><rect x="-17" y="-11" width="34" height="22" rx="4" fill="#c46a1b"/><circle r="5.5" fill="#fff"/></g>
-  <path d="M50 132h128" stroke="#c46a1b" stroke-width="2" stroke-dasharray="4 4"/>
-  <text x="14" y="88" font-size="14" font-weight="700" fill="#c46a1b">後方から</text>
-  <text x="14" y="105" font-size="11" fill="#c46a1b">打つ方向の真後ろから撮る</text>
+  <line x1="190" y1="131" x2="190" y2="135.5" stroke="#1c2420" stroke-width="2.5" stroke-linecap="round"/>
+  <path d="M219 90l12-22" stroke="#c46a1b" stroke-width="1.4"/>
+  <text x="232" y="52" font-size="13" fill="#1c2420" font-weight="700">あなた（右打ち）</text>
+  <text x="232" y="68" font-size="10.5" fill="#1c2420">左肩を打つ方向に向けて、</text>
+  <text x="232" y="82" font-size="10.5" fill="#1c2420">ボールの方を向いて立つ</text>
+  <g transform="translate(190 236)"><rect x="-17" y="-11" width="34" height="22" rx="4" fill="#2f6fb0"/><circle r="5.5" fill="#fff"/></g>
+  <path d="M190 222v-74" stroke="#2f6fb0" stroke-width="2" stroke-dasharray="4 4"/>
+  <text x="210" y="228" font-size="14" font-weight="700" fill="#2f6fb0">正面から</text>
+  <text x="210" y="244" font-size="10.5" fill="#2f6fb0">ボールをはさんだ向かい側から</text>
+  <text x="210" y="258" font-size="10.5" fill="#2f6fb0">体の正面（おなか側）を撮る</text>
+  <g transform="translate(34 140) rotate(90)"><rect x="-17" y="-11" width="34" height="22" rx="4" fill="#c46a1b"/><circle r="5.5" fill="#fff"/></g>
+  <path d="M48 140h134" stroke="#c46a1b" stroke-width="2" stroke-dasharray="4 4"/>
+  <text x="14" y="186" font-size="14" font-weight="700" fill="#c46a1b">後方から</text>
+  <text x="14" y="203" font-size="11" fill="#c46a1b">打つ方向の真後ろ</text>
+  <text x="14" y="218" font-size="11" fill="#c46a1b">から撮る</text>
 </svg>`;
 
 // ゴルフコース（上から見た図）
@@ -130,49 +136,74 @@ const SVG_COURSE = `<svg viewBox="0 0 360 230" class="zk-svg" role="img" aria-la
   </g>
 </svg>`;
 
-// スイングの流れ（正面から見た人型・右打ち）。撮影機能のガイドと同じ、線で描いた人型
-// 各場面の体の位置：sc=肩の中心, sw=肩幅の半分, hx/hy=手の位置, ca=クラブの向き（度・右=0 下=90）, cl=クラブの長さ, hp=腰の位置, trail=右足かかとを上げる
+// スイングの流れ：右打ちの人を正面（体の前）から見たシルエット。関節の位置から体の形を作る
+// 画面の左＝右半身（右肩・右足）、画面の右＝左半身（打つ方向）
 const POSES = [
-  { sc: 60, sw: 13, hx: 61, hy: 76, ca: 92, cl: 42, hp: 60 },
-  { sc: 58, sw: 11, hx: 38, hy: 70, ca: 186, cl: 34, hp: 59 },
-  { sc: 57, sw: 8, hx: 40, hy: 25, ca: 2, cl: 34, hp: 58 },
-  { sc: 58, sw: 9, hx: 38, hy: 40, ca: 300, cl: 34, hp: 60 },
-  { sc: 60, sw: 11, hx: 46, hy: 64, ca: 228, cl: 34, hp: 62 },
-  { sc: 61, sw: 13, hx: 63, hy: 76, ca: 94, cl: 42, hp: 63 },
-  { sc: 63, sw: 10, hx: 84, hy: 62, ca: 318, cl: 34, hp: 64, trail: 1 },
-  { sc: 64, sw: 8, hx: 79, hy: 22, ca: 196, cl: 34, hp: 65, trail: 2 },
+  // アドレス
+  { head: [97, 47], neck: [98, 63], sL: [78, 75], sR: [121, 69], eL: [84, 103], eR: [116, 101], hand: [101, 127], hipL: [86, 134], hipR: [114, 134], kL: [80, 188], kR: [120, 188], aL: [76, 242], aR: [124, 242], club: [106, 248], ball: true },
+  // テークバック
+  { head: [99, 46], neck: [99, 62], sL: [81, 72], sR: [119, 75], eL: [78, 98], eR: [98, 104], hand: [70, 121], hipL: [86, 134], hipR: [114, 134], kL: [80, 188], kR: [118, 189], aL: [76, 242], aR: [124, 242], club: [6, 117], ball: true },
+  // トップ
+  { head: [99, 46], neck: [99, 62], sL: [88, 72], sR: [111, 77], eL: [70, 68], eR: [92, 60], hand: [76, 38], hipL: [88, 134], hipR: [113, 134], kL: [82, 188], kR: [112, 190], aL: [76, 242], aR: [124, 242], club: [166, 46] },
+  // 切り返し
+  { head: [100, 46], neck: [100, 62], sL: [86, 72], sR: [113, 75], eL: [80, 96], eR: [93, 72], hand: [72, 63], hipL: [90, 134], hipR: [118, 134], kL: [85, 189], kR: [121, 188], aL: [76, 242], aR: [124, 242], club: [94, -16] },
+  // ダウンスイング
+  { head: [100, 47], neck: [100, 63], sL: [83, 75], sR: [118, 72], eL: [84, 98], eR: [100, 88], hand: [82, 106], hipL: [92, 134], hipR: [120, 134], kL: [88, 189], kR: [124, 188], aL: [77, 242], aR: [124, 242], club: [26, 50] },
+  // インパクト
+  { head: [96, 48], neck: [98, 64], sL: [80, 77], sR: [121, 70], eL: [90, 104], eR: [114, 101], hand: [106, 128], hipL: [92, 133], hipR: [121, 132], kL: [90, 189], kR: [124, 188], aL: [80, 240], aR: [124, 242], club: [108, 248], heelUp: true, ball: true },
+  // フォロースルー
+  { head: [104, 48], neck: [104, 64], sL: [93, 73], sR: [116, 71], eL: [116, 86], eR: [131, 78], hand: [142, 92], hipL: [97, 133], hipR: [121, 132], kL: [102, 190], kR: [123, 188], aL: [89, 236], aR: [124, 242], club: [184, 22], heelUp: true },
+  // フィニッシュ
+  { head: [110, 34], neck: [110, 50], sL: [99, 61], sR: [122, 59], eL: [104, 40], eR: [136, 46], hand: [124, 28], hipL: [100, 127], hipR: [121, 126], kL: [106, 186], kR: [121, 184], aL: [96, 234], aR: [123, 242], club: [47, 50], heelUp: true },
 ];
-const INK = '#1f2d24';
+const INK = '#1c2420';
+const fx = (v) => v.toFixed(1);
+// 2つの円をつないだ形（腕・脚の太さを、根元から先へ細くする）
+function capsule([x1, y1], r1, [x2, y2], r2) {
+  const dx = x2 - x1, dy = y2 - y1, d = Math.hypot(dx, dy) || 0.01;
+  const t = Math.atan2(dy, dx), ph = Math.acos(Math.max(-1, Math.min(1, (r1 - r2) / d)));
+  const p = (x, y, r, a) => `${fx(x + r * Math.cos(a))} ${fx(y + r * Math.sin(a))}`;
+  return `M${p(x1, y1, r1, t + ph)}L${p(x2, y2, r2, t + ph)}A${r2} ${r2} 0 0 0 ${p(x2, y2, r2, t - ph)}L${p(x1, y1, r1, t - ph)}A${r1} ${r1} 0 0 0 ${p(x1, y1, r1, t + ph)}Z`;
+}
 function figure(P, label, n) {
-  const f = (v) => v.toFixed(1);
-  const rad = (d) => (d * Math.PI) / 180;
-  const ex = P.hx + P.cl * Math.cos(rad(P.ca)), ey = P.hy + P.cl * Math.sin(rad(P.ca));
-  const sL = [P.sc - P.sw, 38], sR = [P.sc + P.sw, 38];         // 画面の左＝右肩、右＝左肩（正面から見た右打ち）
-  const hL = [P.hp - 8, 74], hR = [P.hp + 8, 74];
-  const kneeL = P.trail ? [P.hp - 2, 97] : [52, 97], kneeR = [68, 97];
-  const ankL = P.trail === 2 ? [57, 117] : P.trail ? [52, 119] : [49, 120], ankR = [71, 120];
-  const arm = (s) => { const mx = (s[0] + P.hx) / 2 + (s[0] < P.sc ? -3 : 3), my = (s[1] + P.hy) / 2; return `M${f(s[0])} ${f(s[1])}Q${f(mx)} ${f(my)} ${f(P.hx)} ${f(P.hy)}`; };
-  const leg = (h, k, a) => `M${f(h[0])} ${f(h[1])}L${f(k[0])} ${f(k[1])}L${f(a[0])} ${f(a[1])}`;
-  const legs = (w, color) => `<g fill="none" stroke="${color}" stroke-linecap="round" stroke-linejoin="round" stroke-width="${w}">
-      <path d="${leg(hL, kneeL, ankL)}"/><path d="${leg(hR, kneeR, ankR)}"/></g>`;
-  const arms = (w, color) => `<g fill="none" stroke="${color}" stroke-linecap="round" stroke-linejoin="round" stroke-width="${w}">
-      <path d="${arm(sL)}"/><path d="${arm(sR)}"/></g>`;
-  const torso = `M${f(sL[0] - 1)} ${f(sL[1] - 1)}Q${f(P.sc)} ${f(sL[1] - 5)} ${f(sR[0] + 1)} ${f(sR[1] - 1)}L${f(hR[0] + 1)} ${f(hR[1] - 4)}L${f(hL[0] - 1)} ${f(hL[1] - 4)}Z`;
-  const shoe = (a, up) => `<ellipse cx="${f(a[0] + (up ? 0 : a[0] < 60 ? -2 : 2))}" cy="${f(a[1] + 3)}" rx="${up ? 3 : 6}" ry="3" fill="#fff" stroke="${INK}" stroke-width="1.6"/>`;
-  return `<figure class="zk-fig"><svg viewBox="0 0 120 130" aria-hidden="true">
-    <line x1="4" y1="125" x2="116" y2="125" stroke="#b9c7b4" stroke-width="2"/>
-    ${n <= 2 || n === 6 ? '<circle cx="60" cy="122" r="2.8" fill="#fff" stroke="#666"/>' : ''}
-    ${legs(13, INK)}${legs(9, '#fff')}
-    <path d="M${f(hL[0] - 1)} ${f(hL[1] - 3)}L${f(hR[0] + 1)} ${f(hR[1] - 3)}" stroke="${INK}" stroke-width="2.4"/>
-    ${shoe(ankL, P.trail === 2)}${shoe(ankR)}
-    <path d="${torso}" fill="#fff" stroke="${INK}" stroke-width="2.4" stroke-linejoin="round"/>
-    <circle cx="${f(P.sc)}" cy="24" r="8.5" fill="#fff" stroke="${INK}" stroke-width="2.2"/>
-    <path d="M${f(P.sc - 9)} 22Q${f(P.sc)} 9 ${f(P.sc + 9)} 22Z" fill="${INK}"/>
-    <path d="M${f(P.sc - 9)} 22h18" stroke="${INK}" stroke-width="2.4" stroke-linecap="round"/>
-    <line x1="${f(P.hx)}" y1="${f(P.hy)}" x2="${f(ex)}" y2="${f(ey)}" stroke="#555" stroke-width="2" stroke-linecap="round"/>
-    <circle cx="${f(ex)}" cy="${f(ey)}" r="3" fill="#8a9097"/>
-    ${arms(8.5, INK)}${arms(4.5, '#fff')}
-    <circle cx="${f(P.hx)}" cy="${f(P.hy)}" r="3.6" fill="#fff" stroke="${INK}" stroke-width="1.8"/>
+  const mid = (a, b) => [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+  const w = mid(P.hipL, P.hipR);
+  const calf = (k, a) => [k[0] + (a[0] - k[0]) * 0.3, k[1] + (a[1] - k[1]) * 0.3];
+  // 腰のくびれ：肩と腰の間を少し内側へ
+  const wl = [P.sL[0] + (P.hipL[0] - P.sL[0]) * 0.6 + 0.5, P.sL[1] + (P.hipL[1] - P.sL[1]) * 0.6];
+  const wr = [P.sR[0] + (P.hipR[0] - P.sR[0]) * 0.6 - 0.5, P.sR[1] + (P.hipR[1] - P.sR[1]) * 0.6];
+  const torso = `M${fx(P.sL[0])} ${fx(P.sL[1])}Q${fx((P.sL[0] + P.sR[0]) / 2)} ${fx(Math.min(P.sL[1], P.sR[1]) - 5)} ${fx(P.sR[0])} ${fx(P.sR[1])}`
+    + `Q${fx(P.sR[0] + 1)} ${fx((P.sR[1] + wr[1]) / 2)} ${fx(wr[0])} ${fx(wr[1])}Q${fx(wr[0] + 1)} ${fx((wr[1] + P.hipR[1]) / 2)} ${fx(P.hipR[0] + 3)} ${fx(P.hipR[1])}`
+    + `L${fx(w[0])} ${fx(w[1] + 6)}L${fx(P.hipL[0] - 3)} ${fx(P.hipL[1])}`
+    + `Q${fx(wl[0] - 1)} ${fx((wl[1] + P.hipL[1]) / 2)} ${fx(wl[0])} ${fx(wl[1])}Q${fx(P.sL[0] - 1)} ${fx((P.sL[1] + wl[1]) / 2)} ${fx(P.sL[0])} ${fx(P.sL[1])}Z`;
+  const shoe = (a, side, up) => (up
+    ? `<ellipse cx="${fx(a[0])}" cy="${fx(a[1] + 6)}" rx="4.5" ry="9" transform="rotate(${side * 20} ${fx(a[0])} ${fx(a[1] + 6)})"/>`
+    : `<ellipse cx="${fx(a[0] + side * 4)}" cy="${fx(a[1] + 4)}" rx="10" ry="5.5"/>`);
+  const [hx, hy] = P.head;
+  const v = [P.hand[0] - P.club[0], P.hand[1] - P.club[1]], L = Math.hypot(v[0], v[1]);
+  const ch = [P.club[0] + (v[1] / L) * 5, P.club[1] - (v[0] / L) * 5];
+  return `<figure class="zk-fig"><svg viewBox="0 -24 200 280" aria-hidden="true">
+    <line x1="6" y1="252" x2="194" y2="252" stroke="#c3cdbf" stroke-width="2.5"/>
+    ${P.ball ? '<circle cx="109" cy="247" r="4.2" fill="#fff" stroke="#555" stroke-width="1.5"/>' : ''}
+    <g fill="${INK}" stroke="${INK}" stroke-linejoin="round">
+      <path d="${capsule(P.hipL, 10.5, P.kL, 8)}"/><path d="${capsule(P.kL, 8, calf(P.kL, P.aL), 7.6)}"/><path d="${capsule(calf(P.kL, P.aL), 7.6, P.aL, 4.8)}"/>
+      <path d="${capsule(P.hipR, 10.5, P.kR, 8)}"/><path d="${capsule(P.kR, 8, calf(P.kR, P.aR), 7.6)}"/><path d="${capsule(calf(P.kR, P.aR), 7.6, P.aR, 4.8)}"/>
+      ${shoe(P.aL, -1, P.heelUp)}${shoe(P.aR, 1, false)}
+      <path d="${torso}" stroke-width="5"/>
+      <path d="${capsule(P.neck, 6.5, [hx, hy], 6)}"/>
+      <ellipse cx="${hx}" cy="${hy + 1}" rx="10" ry="12"/>
+      <path d="M${hx - 11} ${hy - 2}C${hx - 11} ${hy - 17} ${hx + 11} ${hy - 17} ${hx + 11} ${hy - 2}Z"/>
+      <path d="M${hx - 12.5} ${hy - 2.5}Q${hx} ${hy + 1.5} ${hx + 12.5} ${hy - 2.5}Q${hx} ${hy - 4.5} ${hx - 12.5} ${hy - 2.5}Z" stroke-width="2.4"/>
+      <ellipse cx="${hx - 10}" cy="${hy + 2}" rx="2.2" ry="3.4"/><ellipse cx="${hx + 10}" cy="${hy + 2}" rx="2.2" ry="3.4"/>
+    </g>
+    <line x1="${fx(P.hand[0])}" y1="${fx(P.hand[1])}" x2="${fx(P.club[0])}" y2="${fx(P.club[1])}" stroke="${INK}" stroke-width="2.4" stroke-linecap="round"/>
+    <path d="M${fx(P.club[0])} ${fx(P.club[1])}L${fx(ch[0])} ${fx(ch[1])}" stroke="${INK}" stroke-width="5.5" stroke-linecap="round"/>
+    <g fill="${INK}">
+      <circle cx="${fx(P.sL[0])}" cy="${fx(P.sL[1] + 2)}" r="8.5"/><circle cx="${fx(P.sR[0])}" cy="${fx(P.sR[1] + 2)}" r="8.5"/>
+      <path d="${capsule(P.sL, 7.5, P.eL, 5.5)}"/><path d="${capsule(P.eL, 5.5, P.hand, 4.5)}"/>
+      <path d="${capsule(P.sR, 7.5, P.eR, 5.5)}"/><path d="${capsule(P.eR, 5.5, P.hand, 4.5)}"/>
+      <circle cx="${fx(P.hand[0])}" cy="${fx(P.hand[1])}" r="6"/>
+    </g>
   </svg><figcaption><span>${n}</span>${label}</figcaption></figure>`;
 }
 const SWING = [
@@ -229,6 +260,11 @@ function zukaiPage(icon) {
     <h2 class="zk-h">${icon('video')}撮影の向き</h2>
     <p>動画は「<b>正面</b>」か「<b>後方</b>」のどちらかから撮ります。送るときに、どちらから撮ったかを選びます。</p>
     ${SVG_ANGLE}
+    <div class="zk-views">
+      <figure><img src="guide-front.jpg" alt="正面から撮ったときの見え方（右打ちの人の構え）" loading="lazy" width="276" height="414"><figcaption><b class="v-front">正面から</b>撮るとこう写ります</figcaption></figure>
+      <figure><img src="guide-dtl.jpg" alt="後方から撮ったときの見え方（右打ちの人の構え）" loading="lazy" width="414" height="414"><figcaption><b class="v-back">後方から</b>撮るとこう写ります</figcaption></figure>
+    </div>
+    <p class="muted small">撮影機能（SwingFrame）では、この形の人型ガイドに体を合わせると、毎回同じ向きで撮れます。</p>
     <ul class="zk-points"><li>頭から足先まで、<b>クラブ全体</b>が画面に入るように</li><li>スマホは<b>胸の少し下あたりの高さ</b>で固定（三脚があると安定）</li><li>ボールの近くに立ちすぎないよう、<b>2〜3m</b>はなれて撮る</li></ul>
   </section>
 
