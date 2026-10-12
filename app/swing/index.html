@@ -92,6 +92,10 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
 #count{position:absolute;inset:0;display:none;align-items:center;justify-content:center;
   font-size:min(34vw,190px);font-weight:200;color:#fff;text-shadow:0 0 30px rgba(0,0,0,.85);pointer-events:none}
 #count.on{display:flex}
+#rWarn{position:absolute;left:50%;top:calc(env(safe-area-inset-top) + 64px);transform:translateX(-50%);z-index:30;
+  width:min(92vw,420px);background:var(--panel);border:1px solid #d9bb7c;border-radius:12px;padding:11px 14px;
+  font-size:14.4px;line-height:1.6;display:none}
+#rWarn.on{display:block}
 #toast{position:absolute;left:50%;bottom:calc(env(safe-area-inset-bottom) + 118px);transform:translateX(-50%);
   background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px 14px;font-size:14.9px;
   display:none;align-items:center;gap:14px;white-space:nowrap;max-width:92vw}
@@ -365,7 +369,7 @@ a.hbtn{text-decoration:none;color:inherit;box-sizing:border-box}
       <h1>SwingFrame</h1>
       <p>スイング撮影・スイング分析</p>
       <!-- 表示用の版数。sw.js の CACHE と必ずそろえること（片方だけ上げると更新に気づけません） -->
-      <div id="hVer">v39</div>
+      <div id="hVer">v40</div>
     </div>
     <button class="hbtn pri" id="hShoot"><i>●</i><span>スイングを撮影<em>ガイドに合わせて自動で録画</em></span></button>
     <button class="hbtn" id="hLib"><i>▤</i><span>ライブラリ<em id="hLibSub">保存した動画と画像</em></span></button>
@@ -481,6 +485,7 @@ a.hbtn{text-decoration:none;color:inherit;box-sizing:border-box}
 </div>
 
 <div id="reviewScreen" class="screen">
+  <div id="rWarn"></div>
   <div id="rStage">
     <video id="rVideo2" playsinline muted></video>
     <video id="rVideo" playsinline></video>
@@ -678,7 +683,7 @@ async function startCam(){
   if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia)
     throw new Error('この環境ではカメラAPIが使えません。HTTPS（またはlocalhost）で開いてください。');
   if(stream){stream.getTracks().forEach(function(t){t.stop()});stream=null}
-  var vc={facingMode:{ideal:S.face},width:{ideal:1920},height:{ideal:1080},frameRate:{ideal:60}};
+  var vc={facingMode:{ideal:S.face},width:{ideal:1920},height:{ideal:1080},frameRate:{ideal:lowFps?30:60}};
   /* the mic drives impact detection, but a denied mic must not cost us the
      camera — fall back to video only */
   try{
@@ -702,6 +707,7 @@ async function startCam(){
     if(c&&c.zoom&&c.zoom.max>c.zoom.min) zcap=c.zoom;
   }catch(e){}
   setupZoom();
+  watchFrames();
   layout();info();
 }
 function info(){
@@ -723,6 +729,13 @@ function setupZoom(){
 /* one place to change zoom, whichever control asked for it */
 function setZoom(v){
   if(!zcap)return;
+  /* changing the zoom makes iOS reconfigure the camera, which can stall the
+     frames going into a running recording — so it waits until recording ends */
+  if(recording){
+    $('#rZoom').value=S.zoom;$('#camZoom').value=S.zoom;
+    if(Date.now()-zoomWarn>3000){zoomWarn=Date.now();toast('録画中はズームを変えられません')}
+    return;
+  }
   v=Math.max(zcap.min,Math.min(zcap.max,v));
   S.zoom=v;
   $('#rZoom').value=v;$('#camZoom').value=v;
@@ -779,7 +792,37 @@ stage.addEventListener('pointercancel',pup);
 
 
 /* ============ recording ============ */
-var mr=null,chunks=[],recording=false,recT0=0,recTimer=null,recRaf=0,cdTimer=null;
+var mr=null,chunks=[],recording=false,recT0=0,recTimer=null,recRaf=0,cdTimer=null,zoomWarn=0;
+/* Freeze watch. On some iPhones the camera frames stop reaching the recorder
+   partway through a take while the sound keeps going, so the file runs on
+   with one still picture. Two independent signs catch it: the preview stops
+   getting new frames, or the recorder's 1-second pieces shrink to sound only.
+   The take is then stopped and trimmed to the part that really moved. */
+var lowFps=false,freezeN=0,frozenAt=0,lastFrameAt=0,frameN=0,vfcOn=false,chunkSz=[],smallN=0;
+function watchFrames(){
+  if(vfcOn||!video.requestVideoFrameCallback)return;
+  vfcOn=true;
+  var f=function(){lastFrameAt=Date.now();frameN++;video.requestVideoFrameCallback(f)};
+  video.requestVideoFrameCallback(f);
+}
+function median(a){var b=a.slice().sort(function(x,y){return x-y});return b[b.length>>1]||0}
+function onChunk(sz){
+  /* iPhone (mp4) only: there the size per second is steady; other
+     encoders shrink a still scene far enough to look like a freeze */
+  if(!recording||!stream||!stream.getVideoTracks().length||!/mp4/.test(mr.mimeType||''))return;
+  chunkSz.push(sz);
+  if(chunkSz.length<3){smallN=0;return}
+  var good=median(chunkSz.slice(1,-1));
+  /* a second of 1080p video is hundreds of KB even for a still scene;
+     a second of sound alone is about 20KB */
+  if(sz<150000&&sz<good*0.15)smallN++; else smallN=0;
+  if(smallN>=2)onFreeze((Date.now()-recT0)/1000-2);
+}
+function onFreeze(sec){
+  if(!recording||frozenAt)return;
+  frozenAt=Math.max(0.5,sec);
+  stopRec();
+}
 function mime(){
   var c=['video/mp4;codecs=avc1.42E01E','video/mp4','video/webm;codecs=vp9','video/webm;codecs=vp8','video/webm'];
   if(!window.MediaRecorder)return null;
@@ -804,11 +847,13 @@ function beginRec(){
   if(m===null){toast('この環境は録画に対応していません');return}
 
   chunks=[];
-  try{mr=new MediaRecorder(stream,m?{mimeType:m,videoBitsPerSecond:8000000}:{})}
+  try{mr=new MediaRecorder(stream,m?{mimeType:m,videoBitsPerSecond:6000000}:{})}
   catch(e){try{mr=new MediaRecorder(stream)}catch(e2){toast('録画を開始できません');return}}
-  mr.ondataavailable=function(e){if(e.data&&e.data.size)chunks.push(e.data)};
+  mr.ondataavailable=function(e){if(e.data&&e.data.size){chunks.push(e.data);onChunk(e.data.size)}};
   mr.onstop=onStop;
-  mr.start();
+  frozenAt=0;chunkSz=[];smallN=0;frameN=0;lastFrameAt=Date.now();
+  /* hand over the data every second instead of holding the whole take */
+  try{mr.start(1000)}catch(e){mr.start()}
   recording=true;recT0=Date.now();
   $('#rec').classList.add('recording');
   $('#recTime').classList.add('on');
@@ -835,6 +880,8 @@ function mmss(s){
 function tick(){
   if(!recording)return;
   var el=(Date.now()-recT0)/1000;
+  /* the preview has been delivering frames, and now it has stopped */
+  if(frameN>10&&Date.now()-lastFrameAt>1500){onFreeze((lastFrameAt-recT0)/1000);return}
   var p=Math.min(1,el/((autoRec?(soundOnly()?MAXREC_SND:MAXREC):S.dur)||1));
   $('#recArc').setAttribute('stroke-dashoffset',(295.31*(1-p)).toFixed(1));
   $('#recTime').textContent='● '+mmss(el)+(autoRec?'':'　もう一度押して停止');
@@ -850,8 +897,9 @@ function stopRec(){
 
 }
 function onStop(){
-  var wasAuto=autoRec,drop=discard;
-  autoRec=false;discard=false;
+  var wasAuto=autoRec,drop=discard,fz=frozenAt;
+  autoRec=false;discard=false;frozenAt=0;
+  if(fz)recoverCam();
   if(!chunks.length){chunks=[];toast('録画データがありません');autoReset(true);return}
   var type=(mr&&mr.mimeType)||'video/webm';
   var blob=new Blob(chunks,{type:type});chunks=[];
@@ -862,11 +910,34 @@ function onStop(){
   }
   var clip={id:Date.now(),ts:new Date().toISOString(),blob:blob,guide:S.guide,
             fps:fps,slot:slot,type:type,swing:(wasAuto&&swingT>0)?swingT:null};
+  if(fz){
+    if(wasAuto&&!(swingT>0&&swingT<fz)){
+      toast('カメラの映像が止まったため、この録画は破棄しました。もう一度撮影してください');
+      autoReset(true);
+      return;
+    }
+    /* keep only the part with real movement */
+    clip.cut0=0;clip.cut1=fz;
+    rWarn('カメラの映像が途中で止まったため、録画を止めました。止まる前の '+fz.toFixed(1)+' 秒ぶんは保存されています。');
+  }
   addClip(clip).then(function(){
     openReview(clip.id,'cam');
   });
   if(S.auto==='one'){S.auto='off';save();applyAll()}
   autoReset(true);
+}
+
+function rWarn(msg){
+  var w=$('#rWarn');w.textContent=msg;w.classList.add('on');
+  clearTimeout(rWarn.t);rWarn.t=setTimeout(function(){w.classList.remove('on')},8000);
+  w.onclick=function(){w.classList.remove('on')};
+}
+/* after a freeze the camera is started afresh when the shooting screen
+   returns; if it keeps happening, drop to 30fps, which is far lighter */
+function recoverCam(){
+  freezeN++;
+  if(freezeN>=2&&!lowFps){lowFps=true;setTimeout(function(){toast('映像が止まりやすいため、なめらかさを30fpsに下げて撮影します')},4000)}
+  if(stream){stream.getTracks().forEach(function(t){t.stop()})}
 }
 
 /* ============ auto record ============
