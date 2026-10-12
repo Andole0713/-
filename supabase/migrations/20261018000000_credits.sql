@@ -161,7 +161,8 @@ declare
   r record;
   total int := 0;
 begin
-  if not (public.is_admin() or public.is_service_role()) then
+  -- 管理者・サーバー・毎日の自動処理（pg_cron はデータベースに直接つないで動く）だけが実行できる
+  if not (public.is_admin() or public.is_service_role() or session_user in ('postgres', 'supabase_admin')) then
     raise exception '権限がありません';
   end if;
   for r in select p.id from public.profiles p join public.plan_quotas pq on pq.plan = p.plan loop
