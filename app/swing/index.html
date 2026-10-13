@@ -304,29 +304,34 @@ a.hbtn{text-decoration:none;color:inherit;box-sizing:border-box}
 #rNoteBox .nrow button.pri{background:rgba(var(--acc-rgb),.18);color:var(--accent);
   box-shadow:inset 0 0 0 1px rgba(var(--acc-rgb),.45)}
 
-/* length editor. It sits low so the picture stays visible while the handles
-   move — the whole point is to watch what is being cut. */
-#rCutBox{position:absolute;left:50%;bottom:calc(env(safe-area-inset-bottom) + 50px);
-  transform:translateX(-50%);z-index:20;width:min(364px,92vw);
-  display:none;flex-direction:column;gap:7px;padding:12px;border-radius:16px;
-  background:var(--panel);border:1px solid var(--line);
-  -webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px)}
+/* length editor. The whole point is to watch what is being cut, so while it
+   is open the side rails and seek bar step aside, the panel is small and
+   see-through, and while a handle is being dragged everything but the
+   handles fades almost away. */
+#rCutBox{position:absolute;left:50%;bottom:calc(env(safe-area-inset-bottom) + 10px);
+  transform:translateX(-50%);z-index:20;width:min(420px,96vw);
+  display:none;flex-direction:column;gap:6px;padding:8px 10px;border-radius:14px;
+  background:rgba(8,12,10,.38);border:1px solid rgba(255,255,255,.12);
+  text-shadow:0 1px 2px rgba(0,0,0,.8);transition:background .15s}
 #rCutBox.on{display:flex}
-#rCutBox .cttl{font-size:13.8px;color:var(--dim)}
 #rCutBox .crow{display:flex;align-items:center;gap:8px}
-#rCutBox .cl{flex:0 0 auto;width:32px;font-size:12.6px;color:var(--dim)}
+#rCutBox .cl{flex:0 0 auto;width:30px;font-size:12.6px;color:#fff;font-weight:600}
 #rCutBox .crow input[type=range]{flex:1;min-width:0}
-#rCutBox .cv{flex:0 0 auto;width:52px;text-align:right;font-size:12.6px;
-  color:var(--fg);font-variant-numeric:tabular-nums}
-#rCutBox .cnow{font-size:13.2px;color:var(--dim)}
-#rCutBox .cnow b{font-size:18.4px;color:var(--accent);font-variant-numeric:tabular-nums}
-#rCutBox .crow2{display:flex;gap:7px}
-#rCutBox .crow2 button{flex:1;padding:10px 6px;border-radius:10px;background:var(--chip);
-  font-size:13.2px;color:var(--dim);white-space:nowrap}
-#rCutBox .crow2 button.pri{background:rgba(var(--acc-rgb),.18);color:var(--accent);
-  box-shadow:inset 0 0 0 1px rgba(var(--acc-rgb),.45)}
+#rCutBox .cv{flex:0 0 auto;width:44px;text-align:right;font-size:12.6px;
+  color:#fff;font-variant-numeric:tabular-nums}
+#rCutBox .cnow{flex:1.4;font-size:11.5px;color:rgba(255,255,255,.8);line-height:1.35;white-space:nowrap}
+#rCutBox .cnow b{font-size:16px;color:var(--accent);font-variant-numeric:tabular-nums}
+#rCutBox .crow2{display:flex;gap:6px;align-items:center;transition:opacity .15s}
+#rCutBox .crow2 button{flex:1;padding:8px 4px;border-radius:9px;background:rgba(20,28,24,.6);
+  font-size:12.6px;color:#e8ece9;white-space:nowrap;border:1px solid rgba(255,255,255,.12)}
+#rCutBox .crow2 button.pri{background:rgba(var(--acc-rgb),.35);color:#fff;
+  box-shadow:inset 0 0 0 1px rgba(var(--acc-rgb),.7)}
 #rCutBox .crow2 button:disabled{opacity:.35}
-#rCutBox .cnote{font-size:11.5px;color:var(--dim);line-height:1.55}
+#rCutBox.drag{background:rgba(8,12,10,.12);border-color:transparent}
+#rCutBox.drag .crow2{opacity:.12}
+#reviewScreen.cutting #rTools,#reviewScreen.cutting #rPlayRail,
+#reviewScreen.cutting #rBottom{display:none}
+#reviewScreen.cutting #rTrans{opacity:.75}
 
 .libtab{display:flex;gap:6px;padding:0 4px 8px}
 .libtab button{flex:1;padding:8px 4px;border-radius:9px;background:var(--chip);font-size:13.8px;color:var(--dim)}
@@ -371,7 +376,7 @@ a.hbtn{text-decoration:none;color:inherit;box-sizing:border-box}
       <h1>SwingFrame</h1>
       <p>スイング撮影・スイング分析</p>
       <!-- 表示用の版数。sw.js の CACHE と必ずそろえること（片方だけ上げると更新に気づけません） -->
-      <div id="hVer">v43</div>
+      <div id="hVer">v44</div>
     </div>
     <button class="hbtn pri" id="hShoot"><i>●</i><span>スイングを撮影<em>ガイドに合わせて自動で録画</em></span></button>
     <button class="hbtn" id="hLib"><i>▤</i><span>ライブラリ<em id="hLibSub">保存した動画と画像</em></span></button>
@@ -589,24 +594,20 @@ a.hbtn{text-decoration:none;color:inherit;box-sizing:border-box}
   </div>
 
   <div id="rCutBox">
-    <div class="cttl">長さを調節</div>
     <div class="crow"><span class="cl">開始</span>
       <input type="range" id="rCut0" min="0" max="1000" step="1" value="0">
       <span class="cv" id="vCut0">0.00</span></div>
     <div class="crow"><span class="cl">終了</span>
       <input type="range" id="rCut1" min="0" max="1000" step="1" value="1000">
       <span class="cv" id="vCut1">0.00</span></div>
-    <div class="cnow">この長さ <b id="vCutLen">0.00</b> 秒　<span id="vCutFull"></span></div>
-    <div class="crow2">
-      <button id="rCutHere0">今ここを開始に</button>
-      <button id="rCutHere1">今ここを終了に</button>
-    </div>
-    <div class="crow2">
+    <div class="crow2 sm">
+      <button id="rCutHere0">今を開始に</button>
+      <button id="rCutHere1">今を終了に</button>
       <button id="rCutAuto">スイングだけ</button>
-      <button id="rCutReset">全部にもどす</button>
+      <button id="rCutReset">全部</button>
     </div>
-    <div class="cnote">つまみを動かすとその場面が表示されます。コマ送りで合わせてから「今ここを…」でも決められます。</div>
-    <div class="crow2">
+    <div class="crow2 last">
+      <div class="cnow">長さ <b id="vCutLen">0.00</b>秒<br><span id="vCutFull"></span></div>
       <button id="rCutCancel">やめる</button>
       <button id="rCutOK" class="pri">決定</button>
     </div>
@@ -2825,16 +2826,18 @@ function openCut(){
   cutBak={a:cur.cut0||0,b:cur.cut1||0};
   if(!(cur.cut1>cur.cut0)){cur.cut0=0;cur.cut1=d}
   $('#rCutAuto').disabled=!cur.swing;
-  $('#vCutFull').textContent='もとの長さ '+d.toFixed(1)+'秒';
+  $('#vCutFull').textContent='もと '+d.toFixed(1)+'秒';
   drawCut();
   $('#rCutBox').classList.add('on');
+  $('#reviewScreen').classList.add('cutting');
   /* the panel would otherwise sit on top of the play and frame buttons, and
      those are how the person finds the moment they want to cut at */
   $('#rTrans').style.bottom='calc(env(safe-area-inset-bottom) + '+
-    ($('#rCutBox').offsetHeight+58)+'px)';
+    ($('#rCutBox').offsetHeight+18)+'px)';
 }
 function closeCut(){
-  $('#rCutBox').classList.remove('on');
+  $('#rCutBox').classList.remove('on','drag');
+  $('#reviewScreen').classList.remove('cutting');
   $('#rTrans').style.bottom='';
 }
 /* a take made with the button has no detected swing and no length yet, so the
@@ -2851,6 +2854,14 @@ $('#rCut').onclick=function(){
   if($('#rCutBox').classList.contains('on')){closeCut();return}
   openCut();
 };
+/* while a handle is held, fade the rest of the panel so the picture shows */
+['#rCut0','#rCut1'].forEach(function(id){
+  var el=$(id),box=$('#rCutBox');
+  el.addEventListener('pointerdown',function(){box.classList.add('drag')});
+  ['pointerup','pointercancel','change','blur'].forEach(function(ev){
+    el.addEventListener(ev,function(){box.classList.remove('drag')});
+  });
+});
 $('#rCut0').addEventListener('input',function(){
   var d=vdur()||1;rv.pause();
   var a=d*this.value/1000;setCut(a,cur.cut1,a);
