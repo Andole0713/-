@@ -369,7 +369,7 @@ a.hbtn{text-decoration:none;color:inherit;box-sizing:border-box}
       <h1>SwingFrame</h1>
       <p>スイング撮影・スイング分析</p>
       <!-- 表示用の版数。sw.js の CACHE と必ずそろえること（片方だけ上げると更新に気づけません） -->
-      <div id="hVer">v41</div>
+      <div id="hVer">v42</div>
     </div>
     <button class="hbtn pri" id="hShoot"><i>●</i><span>スイングを撮影<em>ガイドに合わせて自動で録画</em></span></button>
     <button class="hbtn" id="hLib"><i>▤</i><span>ライブラリ<em id="hLibSub">保存した動画と画像</em></span></button>
@@ -935,7 +935,8 @@ function onStop(){
     clip.cut0=0;clip.cut1=fz;
     rWarn('カメラの映像が途中で止まったため、録画を止めました。止まる前の '+fz.toFixed(1)+' 秒ぶんは保存されています。');
   }
-  addClip(clip).then(function(){
+  clip.fixed=true;
+  fixMp4(blob).then(function(b){clip.blob=b;return addClip(clip)}).then(function(){
     openReview(clip.id,'cam');
   });
   if(S.auto==='one'){S.auto='off';save();applyAll()}
@@ -956,6 +957,114 @@ function recoverCam(){
   if(freezeN===1&&i>0){qCap=QORD[i-1];setTimeout(function(){toast('映像が止まらないよう、この撮影中は画質を一段下げます')},4000)}
   else if(freezeN>=2&&!lowFps){lowFps=true;setTimeout(function(){toast('映像が止まりやすいため、なめらかさを30fpsに下げて撮影します')},4000)}
   if(stream){stream.getTracks().forEach(function(t){t.stop()})}
+}
+
+/* ============ mp4 length repair ============
+   When Safari hands the recording over a second at a time it writes an
+   "unknown" length (0xFFFFFFFF) into the mp4 header, so players report a
+   take as about 7,158,000 seconds long. Measure the real length from the
+   fragments and write it into the header. The values are rewritten in
+   place, so no box changes size and nothing else in the file moves. */
+function fixMp4(blob){
+  if(!blob||!/mp4/i.test(blob.type||''))return Promise.resolve(blob);
+  function view(a,b){return blob.slice(a,b).arrayBuffer().then(function(x){return new DataView(x)})}
+  function kids(d,s,e,cb){
+    while(s+8<=e){
+      var sz=d.getUint32(s),t=String.fromCharCode(d.getUint8(s+4),d.getUint8(s+5),d.getUint8(s+6),d.getUint8(s+7));
+      if(sz<8||s+sz>e)return;
+      cb(t,s+8,s+sz);s+=sz;
+    }
+  }
+  function u64(d,o){return d.getUint32(o)*4294967296+d.getUint32(o+4)}
+  var tops=[];
+  function walk(off){
+    if(off+8>blob.size)return Promise.resolve();
+    return view(off,Math.min(blob.size,off+16)).then(function(d){
+      var sz=d.getUint32(0),t=String.fromCharCode(d.getUint8(4),d.getUint8(5),d.getUint8(6),d.getUint8(7));
+      if(sz===1&&d.byteLength>=16)sz=u64(d,8); else if(sz===0)sz=blob.size-off;
+      if(sz<8)return;
+      tops.push({t:t,o:off,n:sz});
+      return walk(off+sz);
+    });
+  }
+  return walk(0).then(function(){
+    var moov=tops.filter(function(b){return b.t==='moov'})[0];
+    var moofs=tops.filter(function(b){return b.t==='moof'});
+    if(!moov||!moofs.length||moov.n>4e6)return blob;
+    return Promise.all([view(moov.o,moov.o+moov.n)].concat(moofs.map(function(b){return view(b.o,b.o+b.n)})))
+    .then(function(vs){
+      var mv=vs[0],trk={},defDur={},end={};
+      /* every fragment: where each track's run starts and how long it lasts */
+      vs.slice(1).forEach(function(d){
+        kids(d,0,d.byteLength,function(t,b,e){
+          if(t!=='moof')return;
+          kids(d,b,e,function(t2,b2,e2){
+            if(t2!=='traf')return;
+            var id=0,dd=0,base=null,sum=0;
+            kids(d,b2,e2,function(t3,p,q){
+              var fl=d.getUint32(p)&0xffffff,v=d.getUint8(p),o;
+              if(t3==='tfhd'){
+                id=d.getUint32(p+4);o=p+8;dd=defDur[id]||0;
+                if(fl&1)o+=8; if(fl&2)o+=4; if(fl&8)dd=d.getUint32(o);
+              }else if(t3==='tfdt'){
+                base=v?u64(d,p+4):d.getUint32(p+4);
+              }else if(t3==='trun'){
+                var n=d.getUint32(p+4),i;o=p+8;
+                if(fl&1)o+=4; if(fl&4)o+=4;
+                for(i=0;i<n;i++){
+                  if(fl&0x100){sum+=d.getUint32(o);o+=4}else sum+=dd;
+                  if(fl&0x200)o+=4; if(fl&0x400)o+=4; if(fl&0x800)o+=4;
+                }
+              }
+            });
+            if(!id)return;
+            var from=base!=null?base:(end[id]||0);
+            end[id]=Math.max(end[id]||0,from+sum);
+          });
+        });
+      });
+      /* the header: movie and track time scales, and where the lengths live */
+      var out=new Uint8Array(mv.buffer.slice(0)),w=new DataView(out.buffer),mts=0,mvhd=0,mehd=0;
+      function put(o,v,big){
+        if(big){w.setUint32(o,Math.floor(v/4294967296));w.setUint32(o+4,v>>>0)}
+        else if(v<=0xffffffff)w.setUint32(o,v);
+      }
+      kids(mv,0,mv.byteLength,function(t,b,e){
+        if(t!=='moov')return;
+        kids(mv,b,e,function(t2,p,q){
+          if(t2==='mvhd'){mvhd=p;mts=mv.getUint32(p+(mv.getUint8(p)?20:12))}
+          else if(t2==='mvex')kids(mv,p,q,function(t3,r){
+            if(t3==='trex')defDur[mv.getUint32(r+4)]=mv.getUint32(r+12);
+            else if(t3==='mehd')mehd=r;
+          });
+          else if(t2==='trak'){
+            var tk={};
+            kids(mv,p,q,function(t3,r,s2){
+              if(t3==='tkhd'){tk.tkhd=r;tk.id=mv.getUint32(r+(mv.getUint8(r)?20:12))}
+              else if(t3==='mdia')kids(mv,r,s2,function(t4,u){
+                if(t4==='mdhd'){tk.mdhd=u;tk.ts=mv.getUint32(u+(mv.getUint8(u)?20:12))}
+              });
+            });
+            if(tk.id)trk[tk.id]=tk;
+          }
+        });
+      });
+      if(!mvhd||!mts)return blob;
+      var longest=0;
+      Object.keys(trk).forEach(function(id){
+        var tk=trk[id],e=end[id];
+        if(!e||!tk.ts||!tk.mdhd||!tk.tkhd)return;
+        var v=mv.getUint8(tk.mdhd);put(tk.mdhd+(v?24:16),e,v);
+        var m=Math.round(e/tk.ts*mts);
+        v=mv.getUint8(tk.tkhd);put(tk.tkhd+(v?28:20),m,v);
+        longest=Math.max(longest,m);
+      });
+      if(!longest)return blob;
+      var v=mv.getUint8(mvhd);put(mvhd+(v?24:16),longest,v);
+      if(mehd){v=mv.getUint8(mehd);put(mehd+4,longest,v)}
+      return new Blob([blob.slice(0,moov.o),out,blob.slice(moov.o+moov.n)],{type:blob.type});
+    });
+  }).catch(function(){return blob});
 }
 
 /* ============ auto record ============
@@ -1771,6 +1880,15 @@ function pick(c){
     offerCut();
   };
   rv.addEventListener('loadeddata',seek);
+  /* a take saved before the length repair existed: fix it once, keep it */
+  if(!c.fixed&&/mp4/i.test(c.type||'')){
+    c.fixed=true;
+    fixMp4(c.blob).then(function(b){
+      if(b===c.blob)return;
+      c.blob=b;updateClip(c);
+      if(cur===c)pick(c);
+    });
+  }
   lines=[];
   closeCut();
   if(skelId!==c.id)skelReset();     /* 別のスイングなら骨格は作り直し */
