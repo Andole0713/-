@@ -334,6 +334,8 @@ a.hbtn{text-decoration:none;color:inherit;box-sizing:border-box}
 .clip .fav{color:var(--bad);font-size:14.9px;flex:0 0 auto}
 .clip .note{color:var(--dim);font-size:12.6px;flex:0 0 auto}
 .clip .thumb{width:44px;height:56px;object-fit:cover;border-radius:6px;flex:0 0 auto;background:#000}
+.clip .vthumb{cursor:pointer}
+.clip .vthumb:not([src]){background:linear-gradient(135deg,#1b2420,#0c110e)}
 .clip .dl{font-size:12.6px;color:var(--dim);border:1px solid var(--line);border-radius:7px;padding:5px 8px}
 #rTop button.bigback{font-size:17.2px;font-weight:600;padding:11px 16px;border-radius:12px;
   background:rgba(15,23,18,.72);border:1px solid rgba(var(--acc-rgb),.4)}
@@ -369,7 +371,7 @@ a.hbtn{text-decoration:none;color:inherit;box-sizing:border-box}
       <h1>SwingFrame</h1>
       <p>スイング撮影・スイング分析</p>
       <!-- 表示用の版数。sw.js の CACHE と必ずそろえること（片方だけ上げると更新に気づけません） -->
-      <div id="hVer">v42</div>
+      <div id="hVer">v43</div>
     </div>
     <button class="hbtn pri" id="hShoot"><i>●</i><span>スイングを撮影<em>ガイドに合わせて自動で録画</em></span></button>
     <button class="hbtn" id="hLib"><i>▤</i><span>ライブラリ<em id="hLibSub">保存した動画と画像</em></span></button>
@@ -1839,15 +1841,76 @@ function renderList(){
   }
   list.forEach(function(c){
     var d=document.createElement('div');d.className='clip'+(cur&&cur.id===c.id?' on':'');
-    d.innerHTML='<span class="fav">'+(c.fav?'♥':'')+'</span>'+
+    var tu='';
+    if(c.thumb){tu=URL.createObjectURL(c.thumb);shotURLs.push(tu)}
+    d.innerHTML='<img class="thumb vthumb" alt=""'+(tu?' src="'+tu+'"':'')+'>'+
+      '<span class="fav">'+(c.fav?'♥':'')+'</span>'+
       '<span class="n">'+fmtTs(c.ts)+(c.note?'<br><span class="m">'+esc(c.note)+'</span>':'')+'</span>'+
       '<span class="m">'+(c.guide==='front'?'正面':'後方')+' / '+((c.blob.size/1048576).toFixed(1))+'MB'+
         (c.cut1>c.cut0?' / '+(c.cut1-c.cut0).toFixed(1)+'秒':'')+'</span>'+
       '<button class="cmp'+(cmpId===c.id?' on':'')+'">'+(cmpId===c.id?'比較中':'比較')+'</button>';
     d.querySelector('.n').onclick=function(){pick(c);$('#rSheet').classList.remove('on')};
+    d.querySelector('.thumb').onclick=function(){pick(c);$('#rSheet').classList.remove('on')};
+    if(!c.thumb)wantThumb(c,d.querySelector('.thumb'));
     d.querySelector('.m').onclick=function(){pick(c);$('#rSheet').classList.remove('on')};
     d.querySelector('.cmp').onclick=function(e){e.stopPropagation();setCompare(c)};
     L.appendChild(d);
+  });
+}
+/* ---------- library thumbnails ----------
+   A date alone does not say which swing is which, so each take gets a small
+   picture of its first frame. It is made once, in the background, one take
+   at a time, and kept with the take. */
+var thumbQ=[],thumbBusy=false;
+function wantThumb(c,img){
+  if(c.noThumb)return;
+  thumbQ.push({c:c,img:img});
+  if(!thumbBusy)nextThumb();
+}
+function nextThumb(){
+  var j=thumbQ.shift();
+  if(!j){thumbBusy=false;return}
+  thumbBusy=true;
+  if(j.c.thumb){showThumb(j);return nextThumb()}
+  makeThumb(j.c.blob).then(function(b){
+    if(b){j.c.thumb=b;updateClip(j.c);showThumb(j)}
+    else j.c.noThumb=true;
+    nextThumb();
+  });
+}
+function showThumb(j){
+  if(!j.img||!j.img.isConnected)return;
+  var u=URL.createObjectURL(j.c.thumb);shotURLs.push(u);j.img.src=u;
+}
+function makeThumb(blob){
+  return new Promise(function(done){
+    var v=document.createElement('video'),u=URL.createObjectURL(blob),fin=false;
+    v.muted=true;v.playsInline=true;v.setAttribute('playsinline','');v.preload='auto';
+    /* iOS only decodes a picture for a video that is in the page */
+    v.style.cssText='position:fixed;left:0;top:0;width:2px;height:2px;opacity:0;pointer-events:none';
+    document.body.appendChild(v);
+    function end(b){
+      if(fin)return;fin=true;
+      clearTimeout(to);v.removeAttribute('src');v.load();v.remove();URL.revokeObjectURL(u);
+      done(b||null);
+    }
+    var to=setTimeout(function(){end(null)},6000);
+    v.addEventListener('loadeddata',function(){
+      /* a hair past zero: the very first frame can still be black */
+      try{v.currentTime=Math.min(0.1,(v.duration||1)/2)}catch(e){end(null)}
+    },{once:true});
+    v.addEventListener('seeked',function(){
+      try{
+        var w=v.videoWidth,h=v.videoHeight;if(!w||!h)return end(null);
+        var k=160/Math.max(w,h),c=document.createElement('canvas');
+        c.width=Math.round(w*k);c.height=Math.round(h*k);
+        c.getContext('2d').drawImage(v,0,0,c.width,c.height);
+        c.toBlob(function(b){end(b)},'image/jpeg',0.8);
+      }catch(e){end(null)}
+    },{once:true});
+    v.addEventListener('error',function(){end(null)},{once:true});
+    v.src=u;
+    try{var pp=v.play();if(pp&&pp.then)pp.then(function(){v.pause()}).catch(function(){})}catch(e){}
   });
 }
 function esc(s){return String(s).replace(/[&<>]/g,function(m){return {'&':'&amp;','<':'&lt;','>':'&gt;'}[m]})}
