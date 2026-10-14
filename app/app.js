@@ -864,6 +864,15 @@ async function viewMemberHome() {
         <div class="rm-home-foot"><span class="rm-home-days">${rmDays ? `✓ 今月の練習 <b>${rmDays}</b>日` : 'まだ練習の記録がありません'}</span>
           <span class="rm-home-btn">ドリルを見る <i aria-hidden="true">›</i></span></div></a>` : ''}
     </div>
+    <div class="blk" style="--o:6">
+    <div class="section-title cat-lesson"><div><div class="eyebrow">Practice</div><h2>${icon('pen')}今月の課題</h2></div><span class="muted">${done}/${tasks.length}</span></div>
+    ${tasks.length ? tasks.map((t) => `<button type="button" class="task${t.done ? ' done' : ''}" data-action="toggle-task" data-id="${t.id}" data-done="${t.done}" aria-pressed="${t.done}">
+        <span class="check">${t.done ? '✓' : ''}</span><span><b>${esc(t.title)}</b><div class="muted">${esc(t.detail)}</div></span></button>`).join('')
+      : '<div class="empty">コーチから課題が届くとここに表示されます</div>'}
+    </div>
+    <div class="blk" style="--o:7">${wordCard()}</div>
+  </div>
+  <div class="col-side">
     <div class="blk" style="--o:4">
     <div class="section-title cat-meeting"><div><div class="eyebrow">This Month</div><h2>${icon('calendar')}今月のサポート</h2></div></div>
     <div class="card cat-meeting card-cat">
@@ -897,13 +906,6 @@ async function viewMemberHome() {
         <a href="#/submission/${subs[0].id}">間違えて送った場合はこちら</a></div>` : ''}
     <a class="btn btn-block btn-cat cat-video" href="#/submit">${icon('video')} スイング動画を送る</a>
     </div>
-    <div class="blk" style="--o:6">
-    <div class="section-title cat-lesson"><div><div class="eyebrow">Practice</div><h2>${icon('pen')}今月の課題</h2></div><span class="muted">${done}/${tasks.length}</span></div>
-    ${tasks.length ? tasks.map((t) => `<button type="button" class="task${t.done ? ' done' : ''}" data-action="toggle-task" data-id="${t.id}" data-done="${t.done}" aria-pressed="${t.done}">
-        <span class="check">${t.done ? '✓' : ''}</span><span><b>${esc(t.title)}</b><div class="muted">${esc(t.detail)}</div></span></button>`).join('')
-      : '<div class="empty">コーチから課題が届くとここに表示されます</div>'}
-    </div>
-    <div class="blk" style="--o:7">${wordCard()}</div>
     <div class="blk" style="--o:8">
     <div class="section-title cat-score"><div><div class="eyebrow">Score</div><h2>${icon('flag')}スコア</h2></div></div>
     <div class="grid cat-score">
@@ -912,8 +914,6 @@ async function viewMemberHome() {
     </div>
     <a class="score-add" href="#/scores"><span class="sa-txt">⛳ ラウンドのスコアを記録する${st.count ? `<small>${st.count}ラウンド記録済み</small>` : ''}</span><i aria-hidden="true">›</i></a>
     </div>
-  </div>
-  <div class="col-side">
     <div class="blk" style="--o:9">
     <a class="beginner-card cat-help" href="#/help"><span class="bc-ic">${icon('help')}</span>
       <span><b>はじめての方へ・用語集</b><small>アプリの使い方、ゴルフの言葉が分からないときはこちら</small></span><i aria-hidden="true">›</i></a>
