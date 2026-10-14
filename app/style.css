@@ -1256,3 +1256,19 @@ body.wiz-open{overflow:hidden}
 .rm-home.cat-drill .rm-home-drill,.rm-home.cat-drill .rm-home-step{color:#dcef9a}
 .rm-home.cat-drill .rm-home-meter i{background:#c9e265}
 .rm-home.cat-drill::after{border-color:rgba(201,226,101,.14)}
+
+/* 今日のゴルフ用語（ホーム） */
+.word-day{background:var(--cat-soft,color-mix(in srgb,var(--c-help) 9%,#fff));border:1px solid color-mix(in srgb,var(--c-help) 30%,#fff);border-radius:16px;padding:14px 16px 12px;margin:0 0 14px}
+.word-day{--cat-soft:color-mix(in srgb,var(--c-help) 8%,#fff)}
+.wd-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.wd-badge{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:#fff;background:var(--c-help);border-radius:999px;padding:3px 10px}
+.wd-badge svg{width:14px;height:14px}
+.wd-date{font-size:12px;color:var(--muted)}
+.wd-tag{display:inline-block;font-size:11px;color:var(--c-help);border:1px solid color-mix(in srgb,var(--c-help) 40%,#fff);border-radius:999px;padding:1px 8px;background:#fff}
+.word-day h3{margin:6px 0 4px;font-size:21px;line-height:1.35}
+.word-day h3 small{display:block;font-size:12px;font-weight:400;color:var(--muted);margin-top:2px}
+.word-day p{margin:0;font-size:14px;line-height:1.75}
+.wd-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:10px}
+.wd-done{font-size:13px;color:var(--c-help);font-weight:700}
+.wd-done b{font-size:17px}
+.wd-more{font-size:13px;color:var(--c-help);text-decoration:none;font-weight:700;white-space:nowrap}
