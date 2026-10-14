@@ -116,6 +116,11 @@ body.on-auth .app{background:transparent;max-width:none}
 .pw-toggle{position:absolute;right:6px;top:50%;transform:translateY(-50%);background:#f1efe9;color:#1b231e;font-size:12px;padding:6px 10px;border-radius:8px}
 .auth-back{display:block;text-align:center;color:#a8ab9f;font-size:13px;margin-top:22px;text-decoration:none}
 .auth-back:hover{color:#e2cc9a}
+.legal-links{display:flex;flex-wrap:wrap;justify-content:center;gap:6px 16px;margin-top:14px;font-size:12px}
+.legal-links a{color:#8f9388;text-decoration:none}
+.legal-links a:hover{color:#e2cc9a}
+.legal-links.in-app{margin:22px 0 4px}
+.legal-links.in-app a{color:var(--muted,#6b7068)}
 .tabs{display:flex;gap:8px;overflow:auto;margin:16px 0}
 .tabs button{white-space:nowrap;background:var(--paper-2);color:var(--text);padding:9px 14px}
 .tabs button.active{background:var(--ink);color:var(--gold-2)}
