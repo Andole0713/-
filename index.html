@@ -6,7 +6,7 @@
 <title>All Time Golf（オルタイムゴルフ）｜オンラインゴルフレッスン</title>
 <meta name="description" content="All Time Golf（オルタイムゴルフ）は、スイング動画を送るだけで、PGAプロの診断と課題動画・練習ドリルが届くオンラインゴルフレッスンです。">
 <meta property="og:title" content="All Time Golf（オルタイムゴルフ）">
-<meta property="og:description" content="オンラインで、ゴルフレッスンをもっと自分専用に。">
+<meta property="og:description" content="PGAティーチングプロのマンツーマンレッスンを、オンラインで。愛知県初・PGA基準のオンラインゴルフレッスン。">
 <meta property="og:image" content="assets/logo.png">
 <link rel="icon" type="image/png" href="assets/logo-mark.png">
 <meta property="og:type" content="website">
@@ -141,6 +141,24 @@ section{padding:96px 0}
 .hero .operated{display:inline-flex;align-items:center;gap:10px;margin:0 0 22px;padding:8px 16px;border:1px solid var(--gold-line);border-radius:999px;background:rgba(255,255,255,.04);color:var(--on-dark);font-size:13px;letter-spacing:.04em;max-width:100%}
 .hero .operated b{color:var(--gold-2);font-weight:700}
 .hero .operated svg{width:18px;height:18px;flex:none;color:var(--gold-2)}
+.hero h1{font-size:clamp(32px,4.4vw,46px);letter-spacing:.05em}
+.hero-logo{width:min(400px,31vw)}
+.hero-points{list-style:none;display:flex;flex-wrap:wrap;gap:10px;margin:-14px 0 32px;padding:0}
+.hero-points li{display:flex;align-items:baseline;gap:6px;padding:8px 14px;border-radius:10px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);font-size:13px;color:var(--on-dark-muted)}
+.hero-points b{font-family:var(--serif);color:var(--gold-2);font-size:16px;letter-spacing:.04em}
+.strength{background:linear-gradient(180deg,var(--ink-2) 0%,var(--ink) 100%);color:var(--on-dark)}
+.strength .eyebrow{color:var(--gold)}
+.strength .h2 em{font-style:normal;color:var(--gold-2)}
+.strength .lead{color:var(--on-dark-muted)}
+.strengths{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin-top:44px}
+.strength-item{border:1px solid var(--gold-line);border-radius:var(--radius);padding:26px 24px;background:rgba(255,255,255,.03)}
+.strength-item .s-ic{width:52px;height:52px;border-radius:50%;display:grid;place-items:center;color:var(--ink);background:radial-gradient(circle at 35% 30%,#f3e2b6,var(--gold) 60%,var(--gold-deep))}
+.strength-item .s-ic svg{width:26px;height:26px}
+.strength-item b{display:block;font-family:var(--serif);font-size:19px;letter-spacing:.06em;margin:14px 0 8px;color:#fff}
+.strength-item p{margin:0;font-size:14px;color:var(--on-dark-muted);line-height:1.8}
+.strength-item p em{font-style:normal;color:var(--gold-2);font-weight:700}
+.features.four{grid-template-columns:repeat(4,1fr);gap:18px}
+.features.four .feature{padding:30px 20px}
 .operator{background:linear-gradient(160deg,var(--ink-2),var(--ink));color:var(--on-dark);padding:80px 0}
 .operator-grid{display:grid;grid-template-columns:1.1fr 1fr;gap:48px;align-items:center}
 .operator p.lead{color:var(--on-dark-muted)}
@@ -227,8 +245,12 @@ section{padding:96px 0}
   .hero{flex-direction:column;justify-content:center}
   .hero-logo{position:static;transform:none;display:block;width:min(280px,62vw);margin:0 auto 28px}
 }
+@media (max-width:1024px){
+  .features.four{grid-template-columns:repeat(2,1fr)}
+}
 @media (max-width:900px){
   .features{grid-template-columns:1fr}
+  .strengths{grid-template-columns:1fr;gap:12px}
   .operator-grid{grid-template-columns:1fr;gap:30px}
   .screens{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;gap:18px;margin:40px -20px 0;padding:0 20px 16px;scrollbar-width:none}
   .screens::-webkit-scrollbar{display:none}
@@ -255,6 +277,8 @@ section{padding:96px 0}
   .sticky-cta{display:flex}
 }
 @media (max-width:560px){
+  .features.four{grid-template-columns:1fr}
+  .hero-points{gap:6px}.hero-points li{padding:6px 10px;font-size:12px}.hero-points b{font-size:14px}
   .coach-grid{grid-template-columns:1fr;gap:12px}
   .coach-card{flex-direction:row;align-items:stretch}
   .coach-ph{width:36%;aspect-ratio:1;flex:none;align-self:center;margin-left:10px;border-radius:10px;overflow:hidden}
@@ -271,7 +295,7 @@ section{padding:96px 0}
   <div class="wrap">
     <a href="#top" class="logo" aria-label="オルタイムゴルフ トップへ"><img class="mark" src="assets/logo-mark.png" width="200" height="170" alt=""><img class="word" src="assets/logo-word.png" width="640" height="129" alt="オルタイムゴルフ"></a>
     <nav class="nav" aria-label="メインメニュー">
-      <a href="#concept">特徴</a>
+      <a href="#strength">特徴</a>
       <a href="#flow">レッスンの進め方</a>
       <a href="#members">会員ページ</a>
       <a href="#plan">料金プラン</a>
@@ -289,14 +313,15 @@ section{padding:96px 0}
 <div class="drawer" id="drawer" aria-hidden="true">
   <nav class="drawer-inner" aria-label="目次">
     <ul class="drawer-links">
-      <li><a href="#concept"><small>01</small>特徴</a></li>
-      <li><a href="#flow"><small>02</small>レッスンの進め方</a></li>
-      <li><a href="#members"><small>03</small>会員ページ</a></li>
-      <li><a href="#school"><small>04</small>運営スクール</a></li>
-      <li><a href="#plan"><small>05</small>料金プラン</a></li>
-      <li><a href="#coach"><small>06</small>コーチ紹介</a></li>
-      <li><a href="#faq"><small>07</small>よくある質問</a></li>
-      <li><a href="#contact"><small>08</small>お申し込み・ご相談</a></li>
+      <li><a href="#strength"><small>01</small>オルタイムゴルフの強み</a></li>
+      <li><a href="#concept"><small>02</small>オンラインの特徴</a></li>
+      <li><a href="#flow"><small>03</small>レッスンの進め方</a></li>
+      <li><a href="#members"><small>04</small>会員ページ</a></li>
+      <li><a href="#school"><small>05</small>運営スクール</a></li>
+      <li><a href="#plan"><small>06</small>料金プラン</a></li>
+      <li><a href="#coach"><small>07</small>コーチ紹介</a></li>
+      <li><a href="#faq"><small>08</small>よくある質問</a></li>
+      <li><a href="#contact"><small>09</small>お申し込み・ご相談</a></li>
     </ul>
     <div class="drawer-actions">
       <a class="btn btn-line" data-line href="https://lin.ee/ssvLEAZ" target="_blank" rel="noopener">LINEで相談する</a>
@@ -312,9 +337,14 @@ section{padding:96px 0}
     <img class="hero-logo" src="assets/logo.png" width="880" height="626" alt="オルタイムゴルフ IN DOOR GOLF">
     <div class="wrap">
       <div class="brand-line">ONLINE GOLF LESSON</div>
-      <p class="operated"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg><span>名古屋のインドアゴルフスクール<b>「オルタイムゴルフ」</b>が運営</span></p>
-      <h1>オンラインで、<br>ゴルフレッスンを<br>もっと<em>自分専用</em>に。</h1>
-      <p>スイング動画を送るだけ。<br>あなたの課題を分析し、練習メニューまで個別に提案。<br>レッスン履歴と成長を記録しながら、目標達成までサポートします。</p>
+      <p class="operated"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="9" r="6"/><path d="M8.5 13.8 7 22l5-3 5 3-1.5-8.2"/></svg><span><b>愛知県初</b>　PGA基準のマンツーマンレッスン</span></p>
+      <h1><em>PGAティーチングプロ</em>の<br>レッスンを、<br>オンラインで。</h1>
+      <p>スマホで撮ったスイング動画を送るだけ。<br>オルタイムゴルフ専属のPGAティーチングプロが、あなたの課題と練習メニューを一人ひとりに合わせてお届けします。<br>通う時間がなくても、自宅や練習場から、自分のペースで上達できます。</p>
+      <ul class="hero-points">
+        <li><b>PGA</b><span>基準の指導</span></li>
+        <li><b>専属プロ</b><span>がマンツーマン</span></li>
+        <li><b>スマホ</b><span>で撮って送るだけ</span></li>
+      </ul>
       <div class="actions">
         <a class="btn btn-line" data-line href="https://lin.ee/ssvLEAZ" target="_blank" rel="noopener">
           <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 3C6.5 3 2 6.6 2 11c0 3.9 3.5 7.2 8.3 7.9.3.1.8.2.9.5.1.3.1.7 0 1l-.1.9c0 .3-.2 1 .9.5s6-3.5 8.2-6.1c1.5-1.6 2.2-3.2 2.2-4.8C22.4 6.6 17.9 3 12 3z"/></svg>
@@ -323,19 +353,37 @@ section{padding:96px 0}
         <a class="btn btn-ghost" href="#plan">料金プランを見る</a>
       </div>
     </div>
-    <a class="scroll-cue" href="#concept">SCROLL</a>
+    <a class="scroll-cue" href="#strength">SCROLL</a>
   </section>
 
-  <!-- 特徴 -->
+  <!-- 強み -->
+  <section class="strength" id="strength">
+    <div class="wrap">
+      <div class="center">
+        <p class="eyebrow reveal">Why All Time Golf</p>
+        <h2 class="h2 reveal">オンラインでも、<br>教えるのは<em>PGAのプロ</em>。</h2>
+        <p class="lead reveal">オルタイムゴルフが契約するのは、PGA（日本プロゴルフ協会）のティーチングプロ、または同資格の取得を目指すコーチだけ。店舗と同じ基準のマンツーマンレッスンを、オンラインでもお届けします。</p>
+      </div>
+      <div class="strengths">
+        <div class="strength-item reveal"><span class="s-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="9" r="6"/><path d="M8.5 13.8 7 22l5-3 5 3-1.5-8.2"/></svg></span><b>PGA基準の指導</b><p>日本で最も影響力のあるゴルフ団体・PGAの基準で教えるコーチだけが担当します。<em>愛知県初</em>の取り組みです。</p></div>
+        <div class="strength-item reveal"><span class="s-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="3.5"/><path d="M5 20.5c.8-3.8 3.6-6 7-6s6.2 2.2 7 6"/></svg></span><b>専属プロがマンツーマン</b><p>グループではなく、あなた一人のスイングを見て、今いちばん取り組むべき課題を1つ程度に絞ってお伝えします。</p></div>
+        <div class="strength-item reveal"><span class="s-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10.5 12 4l9 6.5"/><path d="M5 9.5V20h14V9.5"/><path d="M10 20v-5h4v5"/></svg></span><b>名古屋の店舗のプロが担当</b><p>名古屋市港区のインドアゴルフスクール「オルタイムゴルフ」で指導しているプロが、オンラインでもあなたを担当します。</p></div>
+      </div>
+      <p class="center reveal" style="margin:30px 0 0"><a class="btn btn-ghost" href="#coach">コーチを見る</a></p>
+    </div>
+  </section>
+
+  <!-- 特徴（オンラインの良さ） -->
   <section class="concept" id="concept">
     <div class="wrap center">
-      <p class="eyebrow reveal">Concept</p>
-      <h2 class="h2 reveal">練習場でも、自宅でも。<br>上達の時間を、あなたのペースで。</h2>
-      <p class="lead reveal">All Time Golf は、スマートフォンで撮影したスイング動画をもとに、PGAプロがオンラインでレッスンを行うゴルフスクールです。自宅で、自分のペースで、着実にスキルアップできます。</p>
-      <div class="features">
-        <div class="feature reveal"><div class="num">01</div><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="5" width="8" height="14" rx="1.5"/><rect x="13.5" y="5" width="8" height="14" rx="1.5"/><path d="M6.5 9.5v5M17.5 9.5l-2 5M17.5 9.5l2 5"/></svg></div><h3>PGAプロが比較・判断</h3><p>提出いただいた動画を理想の動作と比較し、今いちばん取り組むべき課題を1つ程度に絞ってお伝えします。</p></div>
-        <div class="feature reveal"><div class="num">02</div><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="12" rx="2"/><path d="M10 8.5v5l4.5-2.5z"/><path d="M8 21h8"/></svg></div><h3>課題動画と練習ドリル</h3><p>毎月の課題動画と練習ドリルに加え、あなたの動画への添削動画もお届け。「次に何を練習するか」が明確になります。</p></div>
-        <div class="feature reveal"><div class="num">03</div><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="2.5" width="12" height="19" rx="2.5"/><path d="M10 18.5h4"/><path d="M9 7h6M9 10h6M9 13h3"/></svg></div><h3>会員ページで一括管理</h3><p>カリキュラム、課題動画、ドリル、提出動画、添削動画、お知らせまで、専用の会員ページでいつでも確認できます。</p></div>
+      <p class="eyebrow reveal">Online Lesson</p>
+      <h2 class="h2 reveal">練習場でも、自宅でも。<br>オンラインだから続けやすい。</h2>
+      <p class="lead reveal">レッスンのやり取りは、すべてスマートフォンで。通う時間や予約の手間をかけずに、PGAプロの指導を受けられます。</p>
+      <div class="features four">
+        <div class="feature reveal"><div class="num">01</div><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="2.5" width="12" height="19" rx="2.5"/><circle cx="12" cy="10" r="3"/><path d="M10 18.5h4"/></svg></div><h3>撮って送るだけ</h3><p>練習場や自宅でスイングを撮影して、会員ページから送るだけ。撮影機能付きなので、スマホひとつで始められます。</p></div>
+        <div class="feature reveal"><div class="num">02</div><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></div><h3>通う時間ゼロ</h3><p>移動も予約もいりません。仕事や家事の合間など、空いた時間で自分のペースでレッスンを受けられます。</p></div>
+        <div class="feature reveal"><div class="num">03</div><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="12" rx="2"/><path d="M10 8.5v5l4.5-2.5z"/><path d="M8 21h8"/></svg></div><h3>何度でも見返せる</h3><p>プロの解説と練習ドリルは会員ページに残ります。練習の前に、いつでも、何度でも確認できます。</p></div>
+        <div class="feature reveal"><div class="num">04</div><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 19V5"/><path d="M4 19h16"/><path d="m7 15 4-4 3 3 5-6"/></svg></div><h3>上達が記録に残る</h3><p>送った動画とレッスンが順番に並ぶので、以前の自分と比べて成長を実感できます。スコアの記録も付けられます。</p></div>
       </div>
     </div>
   </section>
