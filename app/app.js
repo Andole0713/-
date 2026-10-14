@@ -1,7 +1,7 @@
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/+esm';
 import { Upload as TusUpload } from 'https://cdn.jsdelivr.net/npm/tus-js-client@4.3.1/+esm';
 import { SUPABASE_URL, SUPABASE_ANON_KEY, SCHOOL_NAME, PLANS, CONTACT } from './config.js';
-import { helpPage, HELP_TABS } from './help.js';
+import { helpPage, HELP_TABS, wordOfDay } from './help.js';
 
 // 撮影アプリ SwingFrame（会員ページの中の swing/ に入っている。ログインなしでだれでも使える）
 // 撮影画面（SwingFrame）。#shoot を付けると、トップ画面を通らずにカメラが開く
@@ -861,6 +861,7 @@ async function viewMemberHome() {
         <div class="rm-home-foot"><span class="rm-home-days">${rmDays ? `✓ 今月の練習 <b>${rmDays}</b>日` : 'まだ練習の記録がありません'}</span>
           <span class="rm-home-btn">ドリルを見る <i aria-hidden="true">›</i></span></div></a>` : ''}
     </div>
+    <div class="blk" style="--o:3">${wordCard()}</div>
     <div class="blk" style="--o:7">
     <div class="section-title cat-lesson"><div><div class="eyebrow">Practice</div><h2>${icon('pen')}今月の課題</h2></div><span class="muted">${done}/${tasks.length}</span></div>
     ${tasks.length ? tasks.map((t) => `<button type="button" class="task${t.done ? ' done' : ''}" data-action="toggle-task" data-id="${t.id}" data-done="${t.done}" aria-pressed="${t.done}">
@@ -920,6 +921,36 @@ async function viewMemberHome() {
     </div>
   </div>
   </div>  </div>` + memberNav('home');
+}
+
+// 今日のゴルフ用語：ホームに毎日1つ。「わかった！」を押した日をこの端末に記録し、連続日数を出す
+function wordDays() {
+  try { return JSON.parse(local.get('atg-word-days') || '[]'); } catch { return []; }
+}
+function wordStreak(days) {
+  const set = new Set(days);
+  let n = 0;
+  for (const d = new Date(); set.has(ymd(d)); d.setDate(d.getDate() - 1)) n++;
+  return n;
+}
+function ymd(d) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
+function wordCard() {
+  const wd = wordOfDay();
+  const days = wordDays();
+  const got = days.includes(ymd(new Date()));
+  const streak = wordStreak(days);
+  const now = new Date();
+  return `<section class="word-day cat-help" id="word-day" aria-label="今日のゴルフ用語">
+    <div class="wd-head"><span class="wd-badge">${icon('book')}今日のゴルフ用語</span><span class="wd-date">${now.getMonth() + 1}/${now.getDate()}</span></div>
+    <span class="wd-tag c-${wd.cat}">${esc(wd.label)}</span>
+    <h3>${esc(wd.w)}${wd.kana ? `<small>${esc(wd.kana)}</small>` : ''}</h3>
+    <p>${esc(wd.d)}</p>
+    <div class="wd-foot">
+      ${got ? `<span class="wd-done">✓ チェック済み${streak > 1 ? `　<b>${streak}</b>日連続` : ''}</span>`
+        : `<button type="button" class="btn btn-sm btn-cat cat-help" data-action="word-got">わかった！</button>`}
+      <a class="wd-more" href="#/help/words">用語集を見る ›</a>
+    </div>
+  </section>`;
 }
 
 // 動画を送る：1画面ずつ順番に進む（動画 → クラブ → 撮影方向 → お悩み → 確認・送信）
@@ -2903,6 +2934,12 @@ const actions = {
     document.querySelectorAll('[data-action="font-size"]').forEach((b) => {
       const on = b === el; b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on));
     });
+  },
+  'word-got': () => {
+    const key = ymd(new Date());
+    const days = wordDays().filter((d) => d !== key).concat(key).slice(-120);
+    local.set('atg-word-days', JSON.stringify(days));
+    document.getElementById('word-day')?.replaceWith(Object.assign(document.createElement('div'), { innerHTML: wordCard() }).firstElementChild);
   },
   'dismiss-install': (el) => {
     local.set('atg-install-dismissed', '1');
