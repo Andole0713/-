@@ -26,7 +26,7 @@ table.lg tr:last-child th,table.lg tr:last-child td{border-bottom:0}
 .toc ol{margin:6px 0;columns:2;column-gap:24px}
 @media (max-width:600px){.toc ol{columns:1}}
 .todo{background:#fff1a8;color:#5c4400;border-radius:4px;padding:0 4px;font-weight:700}
-.draft{background:#fff1a8;border:1px solid #e6cf5a;color:#5c4400;border-radius:12px;padding:12px 16px;margin:0 0 20px;font-size:14px}
+.draft{background:#f3efe6;border:1px solid #e0d6c2;color:#6b5f48;border-radius:12px;padding:12px 16px;margin:0 0 20px;font-size:14px}
 .note{color:var(--muted);font-size:13.5px}
 footer{max-width:860px;margin:auto;padding:0 18px 40px;color:var(--muted);font-size:13px}
 footer nav{display:flex;flex-wrap:wrap;gap:6px 16px;margin-bottom:8px}

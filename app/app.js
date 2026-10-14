@@ -622,11 +622,14 @@ async function callFunction(name, body) {
 
 // ---------- 画面：未設定・ログイン ----------
 
+const LEGAL_LINKS = `<nav class="legal-links" aria-label="規約・ポリシー"><a href="../legal/terms.html" target="_blank" rel="noopener">利用規約</a><a href="../legal/privacy.html" target="_blank" rel="noopener">プライバシーポリシー</a><a href="../legal/tokushoho.html" target="_blank" rel="noopener">特定商取引法に基づく表記</a></nav>`;
+
 function authShell(inner) {
   return `<div class="auth-page"><div class="auth">
     <a class="auth-logo" href="../" aria-label="${esc(SCHOOL_NAME)} トップページへ"><img src="../assets/logo.png" width="880" height="626" alt="オルタイムゴルフ"><small>MEMBERS</small></a>
     <div class="auth-card">${inner}</div>
     <a class="auth-back" href="../">‹ トップページへ戻る</a>
+    ${LEGAL_LINKS}
   </div></div>`;
 }
 
@@ -669,6 +672,7 @@ function viewAuth() {
         <label for="password">パスワード（8文字以上）</label>
         <div class="pw"><input id="password" name="password" type="password" autocomplete="new-password" minlength="8" required>
           <button type="button" class="pw-toggle" data-action="toggle-password" aria-label="パスワードを表示">表示</button></div>
+        <p class="small muted" style="margin:4px 0 0">登録すると、<a href="../legal/terms.html" target="_blank" rel="noopener">利用規約</a>と<a href="../legal/privacy.html" target="_blank" rel="noopener">プライバシーポリシー</a>に同意したものとみなします。</p>
         <button class="btn-block btn-gold" type="submit">登録する</button>
       </form>`,
     reset: `<form class="form" data-form="reset">
@@ -1640,6 +1644,7 @@ function viewMenu() {
     ${group('お問い合わせ', [
       tile('menu', 'chat', 'LINEで問い合わせる', '分からないこと・ご相談はこちら', CONTACT.lineUrl, 0, true),
     ])}
+    ${LEGAL_LINKS.replace('legal-links', 'legal-links in-app')}
   </div>` + memberNav('menu');
 }
 
