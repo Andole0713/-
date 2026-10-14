@@ -1,32 +1,55 @@
-/* 法律まわりのページ（プライバシーポリシー・特定商取引法に基づく表記・利用規約）共通 */
-:root{--ink:#0f1712;--gold:#c8a96a;--gold-deep:#8a6a2c;--paper:#f7f4ee;--paper-2:#efe9de;--line:#e6dfd2;--text:#1b231e;--muted:#5d655f;
-  --serif:"Noto Serif JP",serif;--sans:"Noto Sans JP",-apple-system,BlinkMacSystemFont,sans-serif}
+/* 法律まわりのページ（利用規約・プライバシーポリシー・特定商取引法に基づく表記）共通
+   店舗ホームページ（alltime-golf.com）の規約ページの雰囲気に合わせる：
+   黒い背景・芝とボールの写真の帯にページ名・白い文字・細い白線の表 */
+:root{--bg:#000;--text:#f2f2f2;--muted:#a9a9a9;--line:rgba(255,255,255,.85);--soft:rgba(255,255,255,.16);--lime:#cfdc3a;
+  --sans:"Noto Sans JP",-apple-system,BlinkMacSystemFont,"Hiragino Kaku Gothic ProN",sans-serif}
 *{box-sizing:border-box}
-body{margin:0;font-family:var(--sans);color:var(--text);background:var(--paper);line-height:1.9;letter-spacing:.02em;-webkit-font-smoothing:antialiased}
-a{color:var(--gold-deep)}
-.lg-top{background:var(--ink);color:#ece6da;border-bottom:3px solid var(--gold)}
-.lg-top .in{max-width:860px;margin:auto;padding:14px 18px;display:flex;align-items:center;gap:14px}
-.lg-top img{height:40px;width:auto}
-.lg-top a{color:#e2cc9a;text-decoration:none;font-size:13px;margin-left:auto}
-main{max-width:860px;margin:auto;padding:28px 18px 60px}
-h1{font-family:var(--serif);font-weight:600;font-size:clamp(22px,4vw,28px);letter-spacing:.06em;margin:0 0 6px}
-.updated{color:var(--muted);font-size:13px;margin:0 0 22px}
-h2{font-family:var(--serif);font-weight:600;font-size:18px;margin:34px 0 10px;padding-left:12px;border-left:4px solid var(--gold)}
-h3{font-size:15.5px;margin:20px 0 6px}
-p,li{font-size:15px}
-ol,ul{padding-left:1.4em}
-li{margin:4px 0}
-.box{background:#fff;border:1px solid var(--line);border-radius:14px;padding:6px 18px;margin:14px 0}
-table.lg{width:100%;border-collapse:collapse;background:#fff;border:1px solid var(--line);border-radius:14px;overflow:hidden;font-size:14.5px}
-table.lg th,table.lg td{padding:12px 14px;border-bottom:1px solid var(--line);vertical-align:top;text-align:left;line-height:1.8}
-table.lg th{width:30%;background:var(--paper-2);font-weight:700}
-table.lg tr:last-child th,table.lg tr:last-child td{border-bottom:0}
-@media (max-width:600px){table.lg th,table.lg td{display:block;width:100%}table.lg th{border-bottom:0;padding-bottom:4px}}
-.toc{background:#fff;border:1px solid var(--line);border-radius:14px;padding:12px 18px;font-size:14px}
+html{background:var(--bg)}
+body{margin:0;font-family:var(--sans);color:var(--text);background:var(--bg);line-height:2;letter-spacing:.04em;-webkit-font-smoothing:antialiased}
+a{color:var(--lime)}
+/* 上のバー（店舗サイトと同じ、半透明のグレー） */
+.lg-top{position:sticky;top:0;z-index:10;background:rgba(98,98,98,.88);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}
+.lg-top .in{max-width:1180px;margin:auto;padding:10px 18px;display:flex;align-items:center;gap:18px}
+.lg-logo{display:flex;align-items:center;gap:6px;text-decoration:none;flex:none}
+.lg-logo .mark{height:34px;width:auto}.lg-logo .word{height:22px;width:auto}
+.lg-nav{margin-left:auto;display:flex;gap:22px;overflow-x:auto;scrollbar-width:none}
+.lg-nav::-webkit-scrollbar{display:none}
+.lg-nav a{color:#fff;text-decoration:none;font-size:13.5px;font-weight:700;line-height:1.35;text-align:center;white-space:nowrap}
+.lg-nav a small{display:block;font-size:10px;font-weight:400;color:#d6d6d6;letter-spacing:.06em}
+.lg-nav a[aria-current="page"]{color:var(--lime)}
+/* ページ名の帯 */
+.lg-hero{height:180px;display:flex;align-items:flex-start;background:#0b1a0e url(hero.jpg) center/cover no-repeat}
+.lg-hero h1{margin:0;padding:44px 26px 0;font-size:clamp(20px,3vw,24px);font-weight:700;letter-spacing:.06em;color:#fff;text-shadow:0 2px 8px rgba(0,0,0,.6)}
+main{max-width:900px;margin:auto;padding:56px 18px 70px}
+.updated{color:var(--muted);font-size:13px;margin:0 0 30px}
+h2{font-size:17px;font-weight:700;margin:56px 0 20px;color:#fff;letter-spacing:.04em}
+h3{font-size:15px;margin:24px 0 8px;color:#fff}
+p,li{font-size:14px}
+main>p,main>ol,main>ul,main>.box,main>table{margin-left:10px}
+ol,ul{padding-left:1.5em}
+li{margin:6px 0}
+.box{border:1px solid var(--line);padding:8px 20px;margin:16px 0}
+/* 表（店舗サイトと同じ細い白線） */
+table.lg{width:100%;border-collapse:collapse;font-size:14px}
+table.lg th,table.lg td{padding:10px 12px;border:1px solid var(--line);vertical-align:top;text-align:left;line-height:1.85}
+table.lg th{width:24%;min-width:120px;font-weight:400}
+@media (max-width:600px){table.lg th{width:34%;min-width:0}}
+.toc{border:1px solid var(--soft);padding:14px 20px;font-size:13.5px}
+.toc b{color:#fff}
 .toc ol{margin:6px 0;columns:2;column-gap:24px}
+.toc a{color:var(--text);text-decoration:none}.toc a:hover{color:var(--lime)}
 @media (max-width:600px){.toc ol{columns:1}}
 .todo{background:#fff1a8;color:#5c4400;border-radius:4px;padding:0 4px;font-weight:700}
-.draft{background:#f3efe6;border:1px solid #e0d6c2;color:#6b5f48;border-radius:12px;padding:12px 16px;margin:0 0 20px;font-size:14px}
-.note{color:var(--muted);font-size:13.5px}
-footer{max-width:860px;margin:auto;padding:0 18px 40px;color:var(--muted);font-size:13px}
-footer nav{display:flex;flex-wrap:wrap;gap:6px 16px;margin-bottom:8px}
+.draft{border:1px solid var(--soft);background:#141414;color:#d8d8d8;padding:12px 16px;margin:0 0 26px;font-size:13.5px}
+.note{color:var(--muted);font-size:13px}
+footer{border-top:1px solid var(--soft);max-width:none;margin:0;padding:26px 18px 40px;color:var(--muted);font-size:12.5px;text-align:center}
+footer nav{display:flex;flex-wrap:wrap;justify-content:center;gap:6px 18px;margin-bottom:10px}
+footer a{color:#fff;text-decoration:none}footer a:hover{color:var(--lime)}
+@media (max-width:720px){
+  .lg-hero{height:120px}.lg-hero h1{padding:30px 18px 0}
+  .lg-logo .word{display:none}
+  .lg-nav{gap:12px}.lg-nav a{font-size:12px}.lg-nav a small{font-size:9px}
+  .lg-top .in{padding:8px 12px;gap:10px}.lg-logo .mark{height:30px}
+  main{padding-top:36px}
+  main>p,main>ol,main>ul,main>.box,main>table{margin-left:0}
+}
