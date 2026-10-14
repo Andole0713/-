@@ -1272,3 +1272,31 @@ body.wiz-open{overflow:hidden}
 .wd-done{font-size:13px;color:var(--c-help);font-weight:700}
 .wd-done b{font-size:17px}
 .wd-more{font-size:13px;color:var(--c-help);text-decoration:none;font-weight:700;white-space:nowrap}
+
+.wd-keep{font-size:12px;color:var(--muted);margin-right:auto;margin-left:8px}
+/* バッジ */
+.badge-now{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:0 0 18px}
+.badge-now div{background:#fff;border:1px solid color-mix(in srgb,var(--c-celebrate) 30%,#fff);border-radius:14px;padding:10px;text-align:center}
+.badge-now span{display:block;font-size:12px;color:var(--muted)}
+.badge-now b{font-size:24px;color:var(--c-celebrate)}
+.badge-now small{font-size:12px;margin-left:2px;color:var(--muted)}
+.badge-h{font-size:16px;margin:18px 0 10px}
+.badge-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+.badge-item{background:#fff;border:1px dashed #d9d4c8;border-radius:16px;padding:14px 10px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:4px}
+.badge-item .bi-medal{width:64px;height:64px;border-radius:50%;display:grid;place-items:center;font-size:30px;background:#eeeae1;filter:grayscale(1);opacity:.45}
+.badge-item b{font-size:14px}
+.badge-item small{font-size:11.5px;color:var(--muted);line-height:1.5}
+.badge-item em{font-style:normal;font-size:11.5px;color:var(--muted);margin-top:2px}
+.badge-item.got{border:1px solid color-mix(in srgb,var(--c-celebrate) 45%,#fff);background:color-mix(in srgb,var(--c-celebrate) 6%,#fff)}
+.badge-item.got .bi-medal{filter:none;opacity:1;background:radial-gradient(circle at 35% 30%,#fff3cf,#e2cc9a 55%,#c8a96a);box-shadow:0 6px 16px -6px rgba(138,106,44,.6)}
+.badge-item.got em{color:var(--c-celebrate);font-weight:700}
+.badge-pop{position:fixed;inset:0;z-index:90;display:grid;place-items:center;background:rgba(15,23,18,.45);animation:bpIn .2s ease}
+.bp-card{background:#fff;border-radius:20px;padding:22px 28px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:6px;box-shadow:0 20px 50px -20px rgba(0,0,0,.5);animation:bpPop .35s cubic-bezier(.2,1.4,.4,1)}
+.bp-medal{width:84px;height:84px;border-radius:50%;display:grid;place-items:center;font-size:42px;background:radial-gradient(circle at 35% 30%,#fff3cf,#e2cc9a 55%,#c8a96a);box-shadow:0 8px 20px -8px rgba(138,106,44,.7)}
+.bp-card b{font-size:20px;margin-top:6px}
+.bp-card span{color:var(--muted);font-size:14px;margin-bottom:8px}
+.bp-card .bp-medal{font-size:42px;margin:0;color:inherit}
+.bp-card .btn{display:inline-flex;align-items:center;justify-content:center}
+@keyframes bpIn{from{opacity:0}}
+@keyframes bpPop{from{transform:scale(.7);opacity:0}}
+@media (prefers-reduced-motion:reduce){.badge-pop,.bp-card{animation:none}}

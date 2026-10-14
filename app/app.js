@@ -541,7 +541,7 @@ function go(path) {
 // ページの種類（色分け）：今開いているページから決める
 const PAGE_CAT = {
   home: 'home', submit: 'video', submission: 'video', history: 'lesson', lesson: 'lesson', drills: 'drill', scores: 'score',
-  celebrations: 'celebrate', help: 'help', menu: 'menu', account: 'menu', guide: 'help', install: 'help', plans: 'menu',
+  celebrations: 'celebrate', badges: 'celebrate', help: 'help', menu: 'menu', account: 'menu', guide: 'help', install: 'help', plans: 'menu',
   'admin/dashboard': 'home', 'admin/inbox': 'video', 'admin/lesson': 'video', 'admin/meetings': 'meeting', 'admin/prep': 'meeting',
   'admin/members': 'member', 'admin/member': 'member', 'admin/roadmap': 'drill', 'admin/drills': 'drill', 'admin/drill': 'drill',
   'admin/report': 'home', 'admin/templates': 'video',
@@ -584,6 +584,7 @@ const ICON = {
   chat: '<path d="M4 5h16v11H9l-5 4z"/><path d="M8 9.5h8M8 12.5h5"/>',
   gear: '<circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/>',
   pen: '<path d="M4 20l4-1 11-11-3-3L5 16z"/><path d="M14 6l3 3"/>',
+  star: '<circle cx="12" cy="9" r="6"/><path d="M8.5 13.8 7 22l5-3 5 3-1.5-8.2"/>',
 };
 const icon = (name) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[name]}</svg>`;
 function nav(items, active) {
@@ -828,6 +829,7 @@ async function viewMemberHome() {
   const rmPractice = rmNow ? await must(sb.from('roadmap_practice').select('practiced_on').eq('item_id', rmNow.id)) : [];
   const rmDays = rmPractice.length;
   const practicedToday = rmPractice.some((x) => x.practiced_on === today());
+  await loadWordDays();
   const latest = lessons[0];
   const done = tasks.filter((t) => t.done).length;
   const plan = planOf(p.plan);
@@ -849,7 +851,8 @@ async function viewMemberHome() {
       <h1>${esc(p.name)}さん、おかえりなさい。</h1>
       <div class="muted">現在の目標</div><h2 style="margin:4px 0 0;font-size:24px">${esc(p.goal || '未設定')}</h2>
       ${p.theme ? `<div style="margin-top:12px">今月のテーマ：${esc(p.theme)}</div>` : ''}
-      ${celes.length ? `<a class="hero-cele" href="#/celebrations">🏆 これまでのお祝い <b>${celes.length}</b>件 ›</a>` : ''}</div>
+      ${celes.length ? `<a class="hero-cele" href="#/celebrations">🏆 これまでのお祝い <b>${celes.length}</b>件 ›</a>` : ''}
+      <a class="hero-cele" href="#/badges">🏅 バッジを見る ›</a></div>
     </div>
     <div class="blk" style="--o:3">
     ${rmNow ? `<a class="rm-home cat-drill" href="#/drills">
@@ -923,22 +926,85 @@ async function viewMemberHome() {
   </div>  </div>` + memberNav('home');
 }
 
-// 今日のゴルフ用語：ホームに毎日1つ。「わかった！」を押した日をこの端末に記録し、連続日数を出す
-function wordDays() {
+// 今日のゴルフ用語：ホームに毎日1つ。「わかった！」を押した日を記録し、連続日数とバッジに使う
+// 記録は会員ごとにサーバーへ（端末を変えても続く）。この端末の記録も合わせて数える
+function localWordDays() {
   try { return JSON.parse(local.get('atg-word-days') || '[]'); } catch { return []; }
 }
-function wordStreak(days) {
-  const set = new Set(days);
-  let n = 0;
-  for (const d = new Date(); set.has(ymd(d)); d.setDate(d.getDate() - 1)) n++;
-  return n;
+async function loadWordDays() {
+  let server = [];
+  try { server = (await must(sb.from('word_checks').select('checked_on').eq('member_id', state.profile.id))).map((x) => x.checked_on); } catch { /* 未設定でも端末の記録で動く */ }
+  state.wordDays = [...new Set([...server, ...localWordDays()])].sort();
+  return state.wordDays;
 }
 function ymd(d) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
+// 今日（まだなら昨日）までさかのぼって続いている日数
+function currentStreak(days) {
+  const set = new Set(days);
+  const d = new Date();
+  if (!set.has(ymd(d))) d.setDate(d.getDate() - 1);
+  let n = 0;
+  for (; set.has(ymd(d)); d.setDate(d.getDate() - 1)) n++;
+  return n;
+}
+// これまでの最長の連続と、それぞれの日数に初めて届いた日
+function streakHistory(days) {
+  const list = [...new Set(days)].sort();
+  const reached = {};
+  let run = 0, prev = null, best = 0;
+  for (const s of list) {
+    const d = new Date(`${s}T00:00:00`);
+    run = prev && (d - prev) / 864e5 === 1 ? run + 1 : 1;
+    prev = d;
+    best = Math.max(best, run);
+    if (!reached[run]) reached[run] = s;
+  }
+  return { best, reached };
+}
+
+// バッジ：続けた日数で増えていく
+const BADGES = [
+  { id: 'word7', kind: 'word', n: 7, ic: '📖', title: '用語 7日連続', desc: '今日のゴルフ用語を7日続けてチェック' },
+  { id: 'word30', kind: 'word', n: 30, ic: '📚', title: '用語 30日連続', desc: '今日のゴルフ用語を30日続けてチェック' },
+  { id: 'word100', kind: 'word', n: 100, ic: '🎓', title: '用語 100日連続', desc: '今日のゴルフ用語を100日続けてチェック' },
+  { id: 'drill7', kind: 'drill', n: 7, ic: '🔥', title: '練習 7日連続', desc: 'ドリルの練習を7日続けて記録' },
+  { id: 'drill30', kind: 'drill', n: 30, ic: '🏅', title: '練習 30日連続', desc: 'ドリルの練習を30日続けて記録' },
+];
+async function loadBadges() {
+  const [wordDays, practice] = await Promise.all([
+    state.wordDays ? Promise.resolve(state.wordDays) : loadWordDays(),
+    sb.from('roadmap_practice').select('practiced_on').eq('member_id', state.profile.id).then((r) => (r.data || []).map((x) => x.practiced_on)),
+  ]);
+  const src = { word: wordDays, drill: practice };
+  const hist = { word: streakHistory(wordDays), drill: streakHistory(practice) };
+  const now = { word: currentStreak(wordDays), drill: currentStreak(practice) };
+  return {
+    now, src,
+    list: BADGES.map((b) => ({ ...b, got: hist[b.kind].best >= b.n, on: hist[b.kind].reached[b.n] || null, best: hist[b.kind].best })),
+  };
+}
+// 新しく取れたバッジを知らせる（この端末で一度知らせたものは出さない）
+async function checkNewBadges() {
+  const { list } = await loadBadges();
+  let seen = [];
+  try { seen = JSON.parse(local.get('atg-badges-seen') || '[]'); } catch { /* noop */ }
+  const fresh = list.filter((b) => b.got && !seen.includes(b.id));
+  if (!fresh.length) return;
+  local.set('atg-badges-seen', JSON.stringify([...seen, ...fresh.map((b) => b.id)]));
+  const b = fresh[fresh.length - 1];
+  const box = Object.assign(document.createElement('div'), { className: 'badge-pop', role: 'status' });
+  box.innerHTML = `<div class="bp-card"><span class="bp-medal">${b.ic}</span><b>バッジ獲得！</b><span>${esc(b.title)}</span>
+    <a class="btn btn-sm btn-gold" href="#/badges">バッジを見る</a></div>`;
+  box.addEventListener('click', (e) => { if (e.target === box || e.target.closest('a')) box.remove(); });
+  document.body.appendChild(box);
+  window.addEventListener('hashchange', () => box.remove(), { once: true });
+  setTimeout(() => box.remove(), 6000);
+}
 function wordCard() {
   const wd = wordOfDay();
-  const days = wordDays();
+  const days = state.wordDays || localWordDays();
   const got = days.includes(ymd(new Date()));
-  const streak = wordStreak(days);
+  const streak = currentStreak(days);
   const now = new Date();
   return `<section class="word-day cat-help" id="word-day" aria-label="今日のゴルフ用語">
     <div class="wd-head"><span class="wd-badge">${icon('book')}今日のゴルフ用語</span><span class="wd-date">${now.getMonth() + 1}/${now.getDate()}</span></div>
@@ -947,10 +1013,31 @@ function wordCard() {
     <p>${esc(wd.d)}</p>
     <div class="wd-foot">
       ${got ? `<span class="wd-done">✓ チェック済み${streak > 1 ? `　<b>${streak}</b>日連続` : ''}</span>`
-        : `<button type="button" class="btn btn-sm btn-cat cat-help" data-action="word-got">わかった！</button>`}
+        : `<button type="button" class="btn btn-sm btn-cat cat-help" data-action="word-got">わかった！</button>${streak ? `<span class="wd-keep">${streak}日連続中</span>` : ''}`}
       <a class="wd-more" href="#/help/words">用語集を見る ›</a>
     </div>
   </section>`;
+}
+async function viewBadges() {
+  const { list, now } = await loadBadges();
+  const got = list.filter((b) => b.got).length;
+  const medal = (b) => `<div class="badge-item${b.got ? ' got' : ''}">
+      <span class="bi-medal" aria-hidden="true">${b.ic}</span>
+      <b>${esc(b.title)}</b><small>${esc(b.desc)}</small>
+      <em>${b.got ? `${fmtDate(b.on)} 獲得` : `あと ${Math.max(1, b.n - Math.max(b.best, 0))}日（最長 ${b.best}日）`}</em></div>`;
+  return header('バッジ', 'menu') + `<div class="content">
+    <p class="page-lead">毎日の「今日のゴルフ用語」と、ドリルの練習を続けるともらえます。</p>
+    <div class="badge-now">
+      <div><span>用語の連続</span><b>${now.word}<small>日</small></b></div>
+      <div><span>練習の連続</span><b>${now.drill}<small>日</small></b></div>
+      <div><span>バッジ</span><b>${got}<small>/${list.length}</small></b></div>
+    </div>
+    <h2 class="badge-h">今日のゴルフ用語</h2>
+    <div class="badge-grid">${list.filter((b) => b.kind === 'word').map(medal).join('')}</div>
+    <h2 class="badge-h">ドリルの練習</h2>
+    <div class="badge-grid">${list.filter((b) => b.kind === 'drill').map(medal).join('')}</div>
+    <p class="muted small">連続は、1日でも空くと0から数え直しになります。一度もらったバッジはなくなりません。</p>
+  </div>` + memberNav('menu');
 }
 
 // 動画を送る：1画面ずつ順番に進む（動画 → クラブ → 撮影方向 → お悩み → 確認・送信）
@@ -1664,6 +1751,7 @@ function viewMenu() {
     ${group('記録・お祝い', [
       tile('score', 'flag', 'スコア記録', 'ラウンドのスコアを記録。ベスト・平均を自動計算', '#/scores'),
       tile('celebrate', 'trophy', 'お祝い', 'コーチから届いたお祝いメッセージ', '#/celebrations', state.celebrateUnread),
+      tile('celebrate', 'star', 'バッジ', '用語チェック・ドリル練習の連続でもらえる', '#/badges'),
     ])}
     ${group('はじめての方へ・使い方', [
       tile('help', 'help', 'はじめての方へ', 'アプリの使い方とゴルフの基本', '#/help'),
@@ -2867,6 +2955,7 @@ async function render() {
     state.drillUnread = unreadDrills.count || 0;
     if (r[0] === 'menu') return paint(viewMenu());
     if (r[0] === 'celebrations') return paint(await viewCelebrations());
+    if (r[0] === 'badges') return paint(await viewBadges());
     if (r[0] === 'submit') {
       paint(await viewSubmit());
       if (r[1] === 'swingframe' && state.handoff) openWizard();
@@ -2935,11 +3024,13 @@ const actions = {
       const on = b === el; b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on));
     });
   },
-  'word-got': () => {
+  'word-got': async () => {
     const key = ymd(new Date());
-    const days = wordDays().filter((d) => d !== key).concat(key).slice(-120);
-    local.set('atg-word-days', JSON.stringify(days));
+    local.set('atg-word-days', JSON.stringify(localWordDays().filter((d) => d !== key).concat(key).slice(-120)));
+    state.wordDays = [...new Set([...(state.wordDays || []), key])].sort();
     document.getElementById('word-day')?.replaceWith(Object.assign(document.createElement('div'), { innerHTML: wordCard() }).firstElementChild);
+    await sb.from('word_checks').upsert({ member_id: state.profile.id, checked_on: key }, { onConflict: 'member_id,checked_on', ignoreDuplicates: true }).then(() => {}, () => {});
+    checkNewBadges();
   },
   'dismiss-install': (el) => {
     local.set('atg-install-dismissed', '1');
@@ -3310,7 +3401,7 @@ const actions = {
       el.setAttribute('aria-pressed', String(on));
       el.textContent = on ? '✓ 今日は練習済み' : '今日練習した';
       el.classList.toggle('btn-gold', !on); el.classList.toggle('btn-sub', on);
-      if (on) toast('ナイス練習！記録しました⛳');
+      if (on) { toast('ナイス練習！記録しました⛳'); checkNewBadges(); }
     } catch (e) { toast('記録できませんでした', true); }
     el.disabled = false;
   },
