@@ -1300,3 +1300,6 @@ body.wiz-open{overflow:hidden}
 @keyframes bpIn{from{opacity:0}}
 @keyframes bpPop{from{transform:scale(.7);opacity:0}}
 @media (prefers-reduced-motion:reduce){.badge-pop,.bp-card{animation:none}}
+
+.zt .zt-ex{display:block;margin-top:4px;white-space:nowrap;color:var(--text)}
+.zt .zt-ex b{font-size:14px}
