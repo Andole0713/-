@@ -864,45 +864,7 @@ async function viewMemberHome() {
         <div class="rm-home-foot"><span class="rm-home-days">${rmDays ? `✓ 今月の練習 <b>${rmDays}</b>日` : 'まだ練習の記録がありません'}</span>
           <span class="rm-home-btn">ドリルを見る <i aria-hidden="true">›</i></span></div></a>` : ''}
     </div>
-    <div class="blk" style="--o:3">${wordCard()}</div>
-    <div class="blk" style="--o:7">
-    <div class="section-title cat-lesson"><div><div class="eyebrow">Practice</div><h2>${icon('pen')}今月の課題</h2></div><span class="muted">${done}/${tasks.length}</span></div>
-    ${tasks.length ? tasks.map((t) => `<button type="button" class="task${t.done ? ' done' : ''}" data-action="toggle-task" data-id="${t.id}" data-done="${t.done}" aria-pressed="${t.done}">
-        <span class="check">${t.done ? '✓' : ''}</span><span><b>${esc(t.title)}</b><div class="muted">${esc(t.detail)}</div></span></button>`).join('')
-      : '<div class="empty">コーチから課題が届くとここに表示されます</div>'}
-    </div>
-    <div class="blk" style="--o:8">
-    <div class="section-title cat-lesson"><div><div class="eyebrow">Lesson</div><h2>${icon('book')}最新のレッスン</h2></div>${latest ? '<a href="#/history">すべて見る</a>' : ''}</div>
-    ${latest ? `<a class="lesson-feature cat-lesson" href="#/lesson/${latest.id}">
-        <span class="date">${fmtDate(latest.lesson_date)}</span>${newBadge(latest)}
-        <h3>${esc(latest.title)}</h3>
-        ${latest.point ? `<div class="point"><span>今回のポイント</span><p>${esc(latest.point)}</p></div>` : ''}
-        ${practiceProgress(latest)}
-        <span class="go">レッスンを見る <i aria-hidden="true">›</i></span></a>`
-      : '<div class="empty">まだレッスンはありません。まずは動画を送りましょう。</div>'}
-    ${subs.length ? `<div class="notice">確認待ちの動画が ${subs.length} 件あります。コーチからのレッスンをお待ちください。
-        <a href="#/submission/${subs[0].id}">間違えて送った場合はこちら</a></div>` : ''}
-    <a class="btn btn-block btn-cat cat-video" href="#/submit">${icon('video')} スイング動画を送る</a>
-    </div>
-  </div>
-  <div class="col-side">
     <div class="blk" style="--o:4">
-    <div class="section-title cat-score" style="margin-top:0"><div><div class="eyebrow">Score</div><h2>${icon('flag')}スコア</h2></div></div>
-    <div class="grid cat-score">
-      <a class="stat stat-link" href="#/scores"><div class="label">ベストスコア</div><b>${esc(st.best ?? '—')}</b></a>
-      <a class="stat stat-link" href="#/scores"><div class="label">平均スコア${st.count ? `<small>直近${st.recent}R</small>` : ''}</div><b>${esc(st.avg ?? '—')}</b></a>
-    </div>
-    <a class="score-add" href="#/scores"><span class="sa-txt">⛳ ラウンドのスコアを記録する${st.count ? `<small>${st.count}ラウンド記録済み</small>` : ''}</span><i aria-hidden="true">›</i></a>
-    </div>
-    <div class="blk" style="--o:5">
-    <a class="beginner-card cat-help" href="#/help"><span class="bc-ic">${icon('help')}</span>
-      <span><b>はじめての方へ・用語集</b><small>アプリの使い方、ゴルフの言葉が分からないときはこちら</small></span><i aria-hidden="true">›</i></a>
-    ${!isStandalone() && !local.get('atg-install-dismissed') ? `<div class="install-banner">
-        <div><b>ホーム画面に追加しませんか？</b><span>アプリのようにワンタップで開けます</span></div>
-        <a class="btn btn-sm btn-gold" href="#/install">やり方</a>
-        <button type="button" class="install-close" data-action="dismiss-install" aria-label="閉じる">×</button></div>` : ''}
-    </div>
-    <div class="blk" style="--o:6">
     <div class="section-title cat-meeting"><div><div class="eyebrow">This Month</div><h2>${icon('calendar')}今月のサポート</h2></div></div>
     <div class="card cat-meeting card-cat">
       <div class="support">
@@ -921,6 +883,44 @@ async function viewMemberHome() {
         ${lineBtn('LINEで面談を予約する')}
       </div>
     </div>
+    </div>
+    <div class="blk" style="--o:5">
+    <div class="section-title cat-lesson"><div><div class="eyebrow">Lesson</div><h2>${icon('book')}最新のレッスン</h2></div>${latest ? '<a href="#/history">すべて見る</a>' : ''}</div>
+    ${latest ? `<a class="lesson-feature cat-lesson" href="#/lesson/${latest.id}">
+        <span class="date">${fmtDate(latest.lesson_date)}</span>${newBadge(latest)}
+        <h3>${esc(latest.title)}</h3>
+        ${latest.point ? `<div class="point"><span>今回のポイント</span><p>${esc(latest.point)}</p></div>` : ''}
+        ${practiceProgress(latest)}
+        <span class="go">レッスンを見る <i aria-hidden="true">›</i></span></a>`
+      : '<div class="empty">まだレッスンはありません。まずは動画を送りましょう。</div>'}
+    ${subs.length ? `<div class="notice">確認待ちの動画が ${subs.length} 件あります。コーチからのレッスンをお待ちください。
+        <a href="#/submission/${subs[0].id}">間違えて送った場合はこちら</a></div>` : ''}
+    <a class="btn btn-block btn-cat cat-video" href="#/submit">${icon('video')} スイング動画を送る</a>
+    </div>
+    <div class="blk" style="--o:6">
+    <div class="section-title cat-lesson"><div><div class="eyebrow">Practice</div><h2>${icon('pen')}今月の課題</h2></div><span class="muted">${done}/${tasks.length}</span></div>
+    ${tasks.length ? tasks.map((t) => `<button type="button" class="task${t.done ? ' done' : ''}" data-action="toggle-task" data-id="${t.id}" data-done="${t.done}" aria-pressed="${t.done}">
+        <span class="check">${t.done ? '✓' : ''}</span><span><b>${esc(t.title)}</b><div class="muted">${esc(t.detail)}</div></span></button>`).join('')
+      : '<div class="empty">コーチから課題が届くとここに表示されます</div>'}
+    </div>
+    <div class="blk" style="--o:7">${wordCard()}</div>
+    <div class="blk" style="--o:8">
+    <div class="section-title cat-score"><div><div class="eyebrow">Score</div><h2>${icon('flag')}スコア</h2></div></div>
+    <div class="grid cat-score">
+      <a class="stat stat-link" href="#/scores"><div class="label">ベストスコア</div><b>${esc(st.best ?? '—')}</b></a>
+      <a class="stat stat-link" href="#/scores"><div class="label">平均スコア${st.count ? `<small>直近${st.recent}R</small>` : ''}</div><b>${esc(st.avg ?? '—')}</b></a>
+    </div>
+    <a class="score-add" href="#/scores"><span class="sa-txt">⛳ ラウンドのスコアを記録する${st.count ? `<small>${st.count}ラウンド記録済み</small>` : ''}</span><i aria-hidden="true">›</i></a>
+    </div>
+  </div>
+  <div class="col-side">
+    <div class="blk" style="--o:9">
+    <a class="beginner-card cat-help" href="#/help"><span class="bc-ic">${icon('help')}</span>
+      <span><b>はじめての方へ・用語集</b><small>アプリの使い方、ゴルフの言葉が分からないときはこちら</small></span><i aria-hidden="true">›</i></a>
+    ${!isStandalone() && !local.get('atg-install-dismissed') ? `<div class="install-banner">
+        <div><b>ホーム画面に追加しませんか？</b><span>アプリのようにワンタップで開けます</span></div>
+        <a class="btn btn-sm btn-gold" href="#/install">やり方</a>
+        <button type="button" class="install-close" data-action="dismiss-install" aria-label="閉じる">×</button></div>` : ''}
     </div>
   </div>
   </div>  </div>` + memberNav('home');
