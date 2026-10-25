@@ -1332,7 +1332,7 @@ body.wiz-open{overflow:hidden}
 .empty-ill p{margin:0 0 4px;line-height:1.8}
 .empty-ill .btn{display:inline-flex;margin-top:10px;width:auto}
 /* はじめの一歩 */
-.first-steps{position:relative;margin-top:12px;border:1px solid var(--gold-line);padding:16px 16px 10px}
+.first-steps{position:relative;margin:0 0 12px;border:1px solid var(--gold-line);padding:16px 16px 10px}
 .first-steps h2{margin:2px 0 8px;font-size:18px;font-family:var(--serif)}
 .first-steps h2 small{font-family:inherit;font-size:13px;color:var(--muted);margin-left:6px}
 .fs-close{position:absolute;top:8px;right:8px;width:34px;height:34px;min-height:0;padding:0;border-radius:50%;background:transparent;color:var(--muted);font-size:18px;box-shadow:none;margin:0}

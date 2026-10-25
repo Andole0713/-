@@ -784,15 +784,16 @@ function viewPlans() {
 const emptyBox = (ic, text, href = '', btn = '') => `<div class="empty empty-ill"><span class="em-ic" aria-hidden="true">${ic}</span><p>${text}</p>${href ? `<a class="btn btn-sm btn-sub" href="${href}">${btn} ›</a>` : ''}</div>`;
 
 // はじめの一歩：入会したばかりの人向けのチェックリスト（全部終わるか、閉じると出なくなる）
-function firstSteps({ subCount, latest }) {
+// 練習は「レッスンの練習チェック」「ドリルの練習の記録」「今月の課題のチェック」のどれかをしたら完了
+function firstSteps({ subCount, latest, readCount, practiced }) {
   if (local.get('atg-firststeps-hide')) return '';
   const p = state.profile;
   const steps = [
     ['使い方ガイドを見る', true, '#/guide'],
     ['Myクラブを登録する', !!(p.clubs || []).length, '#/account/clubs'],
     ['はじめての動画を送る', subCount > 0, '#/submit'],
-    ['届いたレッスンを見る', !!latest?.read_at, latest ? `#/lesson/${latest.id}` : ''],
-    ['練習をチェックする', !!(latest?.practice_done || []).length, latest ? `#/lesson/${latest.id}` : ''],
+    ['届いたレッスンを見る', readCount > 0 || !!latest?.read_at, latest ? `#/lesson/${latest.id}` : ''],
+    ['練習をチェックする', practiced, latest?.practice ? `#/lesson/${latest.id}` : '#/drills'],
     ['ホーム画面に追加する', isStandalone() || !!local.get('atg-install-dismissed'), '#/install'],
   ];
   const done = steps.filter((x) => x[1]).length;
@@ -845,11 +846,15 @@ async function viewMemberHome() {
     must(sb.from('lessons').select('id').eq('member_id', p.id).gte('created_at', since)),
     must(sb.from('roadmap_items').select('id, publish_on, theme, published_at, hidden, seen_at, drills(title)').eq('member_id', p.id).order('publish_on')),
   ]);
-  const [rounds, myMeetings, subCount] = await Promise.all([
+  const headCount = (q) => q.then((r) => r.count || 0, () => 0);
+  const [rounds, myMeetings, subCount, readCount, checkedLessons, practiceLogs] = await Promise.all([
     must(sb.from('rounds').select('played_on, score, holes').eq('member_id', p.id)),
     sb.from('meetings').select('scheduled_at, summary').eq('member_id', p.id).eq('status', 'done').neq('summary', '').order('scheduled_at', { ascending: false }).limit(1)
       .then((r) => r.data || []),
     sb.from('submissions').select('id', { count: 'exact', head: true }).eq('member_id', p.id).then((r) => r.count || 0),
+    headCount(sb.from('lessons').select('id', { count: 'exact', head: true }).eq('member_id', p.id).not('read_at', 'is', null)),
+    headCount(sb.from('lessons').select('id', { count: 'exact', head: true }).eq('member_id', p.id).neq('practice_done', '{}')),
+    headCount(sb.from('roadmap_practice').select('item_id', { count: 'exact', head: true }).eq('member_id', p.id)),
   ]);
   const lastMeeting = myMeetings[0];
   const celes = await sb.from('celebrations').select('*').eq('member_id', p.id).order('created_at', { ascending: false }).limit(20).then((r) => r.data || []);
@@ -880,7 +885,6 @@ async function viewMemberHome() {
     </div>` : ''}
     <div class="blk" style="--o:1">
     ${nextAction({ latest, rmNow, practicedToday, cr, pending: subs, tasks, done })}
-    ${firstSteps({ subCount, latest })}
     ${askCards(asks)}
     </div>
     <div class="blk" style="--o:2">
@@ -953,6 +957,7 @@ async function viewMemberHome() {
     <a class="score-add" href="#/scores"><span class="sa-txt">⛳ ラウンドのスコアを記録する${st.count ? `<small>${st.count}ラウンド記録済み</small>` : ''}</span><i aria-hidden="true">›</i></a>
     </div>
     <div class="blk" style="--o:9">
+    ${firstSteps({ subCount, latest, readCount, practiced: checkedLessons > 0 || practiceLogs > 0 || done > 0 || !!(latest?.practice_done || []).length })}
     <a class="beginner-card cat-help" href="#/help"><span class="bc-ic">${icon('help')}</span>
       <span><b>はじめての方へ・用語集</b><small>アプリの使い方、ゴルフの言葉が分からないときはこちら</small></span><i aria-hidden="true">›</i></a>
     ${!isStandalone() && !local.get('atg-install-dismissed') ? `<div class="install-banner">
