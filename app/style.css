@@ -1543,9 +1543,9 @@ button:not(:disabled):active,.btn:active,.next-action:active,.lesson-feature:act
 .blk>.section-title[class*="cat-"] h2::after{display:none}
 .blk>.section-title[class*="cat-"] a,.blk>.section-title[class*="cat-"]>span{color:color-mix(in srgb,var(--cat) 70%,#000)}
 .blk>.section-title[class*="cat-"] h2 svg{width:30px;height:30px;padding:6px;border-radius:50%;background:var(--cat);color:#fff}
-.card-cat.cat-meeting{background:color-mix(in srgb,var(--c-meeting) 6%,#fff);border-color:color-mix(in srgb,var(--c-meeting) 25%,#fff)}
+.card-cat.cat-meeting{background:color-mix(in srgb,var(--c-meeting) 10%,#fff);border-color:color-mix(in srgb,var(--c-meeting) 32%,#fff)}
 .card-cat.cat-meeting .support>div{background:#fff}
-.lesson-feature.cat-lesson{background:color-mix(in srgb,var(--c-lesson) 6%,#fff);border-color:color-mix(in srgb,var(--c-lesson) 28%,#fff)}
+.lesson-feature.cat-lesson{background:color-mix(in srgb,var(--c-lesson) 10%,#fff);border-color:color-mix(in srgb,var(--c-lesson) 34%,#fff)}
 .lesson-feature.cat-lesson .point{background:#fff}
-.blk .task{background:color-mix(in srgb,var(--c-drill) 6%,#fff);border-color:color-mix(in srgb,var(--c-drill) 25%,#fff)}
-.grid.cat-score .stat,.score-add{background:color-mix(in srgb,var(--c-score) 6%,#fff);border-color:color-mix(in srgb,var(--c-score) 25%,#fff)}
+.blk .task{background:color-mix(in srgb,var(--c-drill) 10%,#fff);border-color:color-mix(in srgb,var(--c-drill) 32%,#fff)}
+.grid.cat-score .stat,.score-add{background:color-mix(in srgb,var(--c-score) 10%,#fff);border-color:color-mix(in srgb,var(--c-score) 32%,#fff)}
