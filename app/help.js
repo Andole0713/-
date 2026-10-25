@@ -645,8 +645,14 @@ function wordsPage() {
       ${WORD_CATS.map(([k, l]) => `<button type="button" class="gl-cat c-${k}" data-action="glossary-cat" data-cat="${k}">${l}</button>`).join('')}
     </div>
   </div>
-  <dl class="gl-list">${WORDS.map(([c, w, kana, d]) => `<div class="gl-item c-${c}" data-cat="${c}" data-key="${w} ${kana} ${d}">
-    <dt><span class="gl-tag">${WORD_CATS.find((x) => x[0] === c)[1]}</span>${w}</dt><dd>${d}</dd></div>`).join('')}</dl>
+  <div class="gl-list">${WORD_CATS.map(([k, l]) => {
+    // 分類ごとにたためるようにする（最初は見出しだけ。検索・分類を選ぶと開く）
+    const items = WORDS.filter(([c]) => c === k);
+    if (!items.length) return '';
+    return `<details class="gl-group c-${k}" data-cat="${k}"><summary><span class="gl-tag">${l}</span><span class="gl-count" data-total="${items.length}">${items.length}語</span></summary>
+    <dl>${items.map(([c, w, kana, d]) => `<div class="gl-item c-${c}" data-cat="${c}" data-key="${w} ${kana} ${d}">
+    <dt><span class="gl-tag">${l}</span>${w}</dt><dd>${d}</dd></div>`).join('')}</dl></details>`;
+  }).join('')}</div>
   <p class="empty gl-none" hidden>見つかりませんでした。LINEでコーチに聞いてみてください。</p>`;
 }
 
