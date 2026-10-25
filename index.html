@@ -97,7 +97,7 @@ section{padding:96px 0}
 .feature{position:relative}
 .feature .ico{width:64px;height:64px;margin:0 auto;border-radius:50%;background:var(--ink);color:var(--gold-2);display:grid;place-items:center;box-shadow:0 8px 20px rgba(15,23,18,.15)}
 .feature .ico svg{width:30px;height:30px}
-.feature .num{position:absolute;top:16px;right:20px;font-family:var(--latin);font-size:22px;color:var(--gold-deep);line-height:1;font-weight:600}
+.feature .num{position:absolute;top:16px;right:20px;font-family:var(--sans);font-variant-numeric:lining-nums tabular-nums;font-size:20px;color:var(--gold-deep);line-height:1;font-weight:700;letter-spacing:.04em}
 .feature h3{font-family:var(--serif);font-size:19px;margin:14px 0 10px;letter-spacing:.06em}
 .feature p{margin:0;color:var(--muted);font-size:14.5px}
 
@@ -107,7 +107,7 @@ section{padding:96px 0}
 .flow .lead{color:var(--on-dark-muted)}
 .steps{list-style:none;padding:0;margin:52px 0 0;display:grid;grid-template-columns:repeat(4,1fr);gap:18px;counter-reset:step}
 .step{border:1px solid var(--gold-line);border-radius:var(--radius);padding:28px 22px;position:relative;background:linear-gradient(180deg,rgba(255,255,255,.02),transparent)}
-.step::before{counter-increment:step;content:"STEP " counter(step,decimal-leading-zero);font-family:var(--latin);letter-spacing:.2em;color:var(--gold-2);font-size:15px;font-weight:600}
+.step::before{counter-increment:step;content:"STEP " counter(step,decimal-leading-zero);font-family:var(--sans);font-variant-numeric:lining-nums tabular-nums;letter-spacing:.16em;color:var(--gold-2);font-size:14px;font-weight:700}
 .step h3{font-family:var(--serif);font-size:18px;margin:10px 0 8px;color:#fff}
 .step p{margin:0;font-size:14px;color:var(--on-dark-muted)}
 .who{position:absolute;top:24px;right:18px;font-size:11px;letter-spacing:.1em;padding:2px 10px;border-radius:999px}
@@ -213,9 +213,9 @@ section{padding:96px 0}
 .cs-dots button{width:26px;height:4px;border:0;border-radius:2px;background:rgba(255,255,255,.25);padding:0;cursor:pointer;position:relative;overflow:hidden}
 .cs-dots button::after{content:'';position:absolute;inset:0;width:0;background:var(--gold)}
 .cs-dots button.on::after{width:100%}
-.cs.playing .cs-dots button.on::after{width:0;animation:cs-prog 5s linear forwards}
+.cs.playing .cs-dots button.on::after{width:0;animation:cs-prog 3s linear forwards}
 @keyframes cs-prog{to{width:100%}}
-.cs-count{font-family:var(--latin);font-size:13px;color:var(--on-dark-muted);letter-spacing:.1em;min-width:56px}
+.cs-count{font-family:var(--sans);font-variant-numeric:lining-nums tabular-nums;font-size:13px;color:var(--on-dark-muted);letter-spacing:.1em;min-width:56px}
 .cs-count b{color:#fff;font-size:18px}
 @media (prefers-reduced-motion:reduce){.cs-track{scroll-behavior:auto}.cs-slide .coach-ph img{transition:none}.cs-slide.on .coach-ph img{transform:none}}
 /* 運営スクールのロゴ */
@@ -227,6 +227,23 @@ section{padding:96px 0}
 
 /* FAQ */
 .faq-list{max-width:760px;margin:44px auto 0}
+/* たためる部分（優先度が低いもの） */
+.fold{margin-top:30px}
+.fold>summary{list-style:none}
+.fold>summary::-webkit-details-marker{display:none}
+.fold-btn{display:flex;align-items:center;justify-content:center;gap:10px;width:fit-content;margin:0 auto;cursor:pointer;border:1px solid var(--gold);border-radius:999px;padding:11px 26px;font-weight:700;font-size:14.5px;color:var(--gold-deep);background:rgba(255,255,255,.6);transition:background .2s}
+.fold-btn::after{content:"";width:8px;height:8px;border-right:1.5px solid currentColor;border-bottom:1.5px solid currentColor;transform:translateY(-2px) rotate(45deg);transition:transform .2s}
+.fold[open]>.fold-btn::after{transform:translateY(2px) rotate(-135deg)}
+.fold-btn:hover{background:#fff}
+.fold-btn .fc,.fold[open]>.fold-btn .fo{display:none}
+.fold[open]>.fold-btn .fc{display:inline}
+.fold[open]>.fold-btn{margin-bottom:6px}
+.flow .fold-btn{color:var(--gold-2);background:transparent}
+.flow .fold-btn:hover{background:rgba(200,169,106,.12)}
+.fold-sm{margin:14px 0 18px;text-align:left}
+.fold-sm>.fold-btn{padding:8px 18px;font-size:13.5px}
+.fold .steps,.fold .features{margin-top:30px}
+.plan .fold-sm{flex:1}.plan .fold-sm>.fold-btn{margin:0}.plan .fold-sm ul{margin-top:14px}
 .faq-list details{border-bottom:1px solid var(--paper-2);padding:6px 0}
 .faq-list summary{list-style:none;cursor:pointer;padding:18px 40px 18px 0;font-weight:700;position:relative;font-size:15px}
 .faq-list summary::-webkit-details-marker{display:none}
@@ -395,12 +412,13 @@ section{padding:96px 0}
       <p class="eyebrow reveal">Online Lesson</p>
       <h2 class="h2 reveal">練習場でも、自宅でも。<br>オンラインだから続けやすい。</h2>
       <p class="lead reveal">レッスンのやり取りは、すべてスマートフォンで。通う時間や予約の手間をかけずに、PGAプロの指導を受けられます。</p>
+      <details class="fold reveal"><summary class="fold-btn"><span class="fo">4つの特徴を見る</span><span class="fc">閉じる</span></summary>
       <div class="features four">
         <div class="feature reveal"><div class="num">01</div><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="2.5" width="12" height="19" rx="2.5"/><circle cx="12" cy="10" r="3"/><path d="M10 18.5h4"/></svg></div><h3>撮って送るだけ</h3><p>練習場や自宅でスイングを撮影して、会員ページから送るだけ。撮影機能付きなので、スマホひとつで始められます。</p></div>
         <div class="feature reveal"><div class="num">02</div><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></div><h3>通う時間ゼロ</h3><p>移動も予約もいりません。仕事や家事の合間など、空いた時間で自分のペースでレッスンを受けられます。</p></div>
         <div class="feature reveal"><div class="num">03</div><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="12" rx="2"/><path d="M10 8.5v5l4.5-2.5z"/><path d="M8 21h8"/></svg></div><h3>何度でも見返せる</h3><p>プロの解説と練習ドリルは会員ページに残ります。練習の前に、いつでも、何度でも確認できます。</p></div>
         <div class="feature reveal"><div class="num">04</div><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 19V5"/><path d="M4 19h16"/><path d="m7 15 4-4 3 3 5-6"/></svg></div><h3>上達が記録に残る</h3><p>送った動画とレッスンが順番に並ぶので、以前の自分と比べて成長を実感できます。スコアの記録も付けられます。</p></div>
-      </div>
+      </div></details>
     </div>
   </section>
 
@@ -410,12 +428,13 @@ section{padding:96px 0}
       <p class="eyebrow reveal">Lesson Flow</p>
       <h2 class="h2 reveal">レッスンの進め方</h2>
       <p class="lead reveal">この流れをくり返しながら、一つずつ課題をクリアしていきます。</p>
+      <details class="fold reveal"><summary class="fold-btn"><span class="fo">レッスンの流れを見る</span><span class="fc">閉じる</span></summary>
       <ol class="steps">
         <li class="step reveal"><span class="who you">受講者</span><h3>スイング動画を撮影・送信</h3><p>スイング動画を撮影して送信。気になっていることやお悩みも、文章でお送りください。</p></li>
         <li class="step reveal"><span class="who coach">運営側</span><h3>チェック・解説動画を送付</h3><p>提出動画をチェックし、課題や練習法を解説する動画を作成してお届けします。</p></li>
         <li class="step reveal"><span class="who you">受講者</span><h3>内容を確認して練習</h3><p>解説動画の内容を確認し、練習に取り組みます。</p></li>
         <li class="step reveal"><span class="who you">受講者</span><h3>再度動画を撮影・送信</h3><p>練習の達成度合いを確認するため、もう一度動画を送信。新たな課題の質問などもお送りください。</p></li>
-      </ol>
+      </ol></details>
     </div>
   </section>
 
@@ -425,21 +444,22 @@ section{padding:96px 0}
       <p class="eyebrow reveal">Member's Page</p>
       <h2 class="h2 reveal">レッスンは、専用の会員ページに届きます。</h2>
       <p class="lead reveal">スマートフォンでいつでも確認。送った動画、コーチの解説、練習メニューまで、すべてここにまとまります。</p>
-      <div class="screens reveal">
+      <details class="fold reveal"><summary class="fold-btn"><span class="fo">会員ページの画面を見る</span><span class="fc">閉じる</span></summary>
+      <div class="screens">
         <figure class="screen">
-          <div class="phone"><img src="assets/screens/home.webp" width="540" height="1080" loading="lazy" alt="マイページの画面。目標、スコア、今月の動画提出数と次回の面談日時が表示されている"></div>
-          <figcaption><b>マイページ</b><span>今月の提出数や次回の面談が、ひと目で分かります。</span></figcaption>
+          <div class="phone"><img src="assets/screens/home.webp" width="540" height="1080" loading="lazy" alt="マイページの画面。次にやること、目標、今月のドリルが表示されている"></div>
+          <figcaption><b>マイページ</b><span>次にやることや今月のドリルが、ひと目で分かります。</span></figcaption>
         </figure>
         <figure class="screen">
-          <div class="phone"><img src="assets/screens/lesson.webp" width="540" height="1080" loading="lazy" alt="レッスン詳細の画面。今回の診断とコーチの解説動画が表示されている"></div>
+          <div class="phone"><img src="assets/screens/lesson.webp" width="540" height="1080" loading="lazy" alt="レッスン詳細の画面。今回の診断と、解説動画・フィードバック・練習へのボタンが表示されている"></div>
           <figcaption><b>レッスン</b><span>診断・解説動画・練習メニューがまとめて届きます。</span></figcaption>
         </figure>
         <figure class="screen">
-          <div class="phone"><img src="assets/screens/history.webp" width="540" height="1080" loading="lazy" alt="レッスン履歴の画面。送った動画とその解説が月ごとに並んでいる"></div>
+          <div class="phone"><img src="assets/screens/history.webp" width="540" height="1080" loading="lazy" alt="レッスンと送った動画の画面。送った動画とその解説が月ごとに並んでいる"></div>
           <figcaption><b>履歴</b><span>送った動画と解説をセットで、いつでも振り返れます。</span></figcaption>
         </figure>
       </div>
-      <p class="screens-note">※ 画面はイメージです。</p>
+      <p class="screens-note">※ 画面はイメージです。</p></details>
     </div>
   </section>
 
@@ -479,13 +499,14 @@ section{padding:96px 0}
             <div><dt>面談</dt><dd>月1回・25分のオンライン面談</dd></div>
           </dl>
           <div class="price">料金は近日公開<small>詳しくはお問い合わせください</small></div>
+          <details class="fold fold-sm"><summary class="fold-btn"><span class="fo">プランの内容を見る</span><span class="fc">閉じる</span></summary>
           <ul>
             <li>初回カウンセリングでスイングチェック</li>
             <li>簡易カルテでスイングレベルと課題を数値で見える化</li>
             <li>課題動画 毎月2本・練習ドリル 毎月2本</li>
             <li>AI見本動画</li>
             <li>月1回の面談で、悩み相談・進捗確認・今後のアドバイス</li>
-          </ul>
+          </ul></details>
           <a class="btn btn-gold" href="#contact">このプランを相談する</a>
         </div>
         <div class="plan reveal">
@@ -500,13 +521,14 @@ section{padding:96px 0}
             <div><dt>面談</dt><dd>年4回程度のオンライン面談</dd></div>
           </dl>
           <div class="price">料金は近日公開<small>詳しくはお問い合わせください</small></div>
+          <details class="fold fold-sm"><summary class="fold-btn"><span class="fo">プランの内容を見る</span><span class="fc">閉じる</span></summary>
           <ul>
             <li>毎月の課題動画・練習ドリル</li>
             <li>提出動画へのPGAプロの添削</li>
             <li>自分のペースで進められる（受講期限あり）</li>
             <li>面談では疑問の相談・進捗と今後の課題を確認</li>
             <li>追加の面談も可能（別途料金）</li>
-          </ul>
+          </ul></details>
           <a class="btn btn-gold" href="#contact">このプランを相談する</a>
         </div>
       </div>
@@ -695,7 +717,7 @@ function onScroll() {
 window.addEventListener('scroll', onScroll, { passive: true });
 onScroll();
 
-// コーチ紹介のスライド（5秒ごとに自動で次へ。触っている間・動きを減らす設定のときは止める）
+// コーチ紹介のスライド（3秒ごとに自動で次へ。触っている間・動きを減らす設定のときは止める）
 (() => {
   const track = document.getElementById('coachTrack');
   if (!track) return;
@@ -735,7 +757,7 @@ onScroll();
     clearInterval(timer); box.classList.remove('playing');
     if (reduce || held) return;
     void box.offsetWidth; box.classList.add('playing');
-    timer = setInterval(() => go(cur + 1), 5000);
+    timer = setInterval(() => go(cur + 1), 3000);
   }
   // 指でスクロールしたときも、いま見えている人に合わせる
   let st;
