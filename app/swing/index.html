@@ -2118,17 +2118,23 @@ function canShare(file){
 /* Hand a finished video to the online-lesson submit screen of the All Time Golf
    app. Both pages live on the same site, so the file is parked in a small
    IndexedDB store that the submit screen reads. */
-function handoffToCoach(blob,name,note){
-  return new Promise(function(res,rej){
+/* takes = how many swings were recorded today (for the coach-side statistics),
+   edited = the video was trimmed or drawn on before sending */
+function handoffToCoach(blob,name,note,edited){
+  var dayStart=new Date();dayStart.setHours(0,0,0,0);
+  return listClips().catch(function(){return []}).then(function(all){
+    var takes=all.filter(function(c){return c.id>=dayStart.getTime()}).length;
+    return new Promise(function(res,rej){
     var rq=indexedDB.open('atg-handoff',1);
     rq.onupgradeneeded=function(){rq.result.createObjectStore('files')};
     rq.onerror=function(){rej(rq.error)};
     rq.onsuccess=function(){
       var db=rq.result,tx=db.transaction('files','readwrite');
-      tx.objectStore('files').put({blob:blob,name:name,type:blob.type,note:note||'',ts:Date.now()},'swing');
+      tx.objectStore('files').put({blob:blob,name:name,type:blob.type,note:note||'',ts:Date.now(),takes:takes,edited:!!edited},'swing');
       tx.oncomplete=function(){db.close();res()};
       tx.onerror=function(){db.close();rej(tx.error)};
     };
+    });
   }).then(function(){
     toast('提出画面を開きます');
     location.href='../#/submit/swingframe';
@@ -2146,7 +2152,7 @@ function setDest(d){
 function saveTo(blob,name,kind,meta){
   if(dest==='coach'){
     if(kind!=='video'){ toast('コーチに送れるのは動画だけです'); return Promise.resolve(); }
-    return handoffToCoach(blob,name,meta&&meta.note);
+    return handoffToCoach(blob,name,meta&&meta.note,!(meta&&meta.original));
   }
   if(dest==='app'){
     /* Every recording already lands in the library the moment it stops, so

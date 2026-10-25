@@ -782,6 +782,37 @@ onScroll();
   mark(0);
 })();
 
+// 統計用：どこから来たか（リンクの ?from=instagram など）と、表示・ボタンが押された回数を記録する
+// 個人を特定する情報は送らない。記録できなくてもページはそのまま使える
+(() => {
+  const safe = (f) => { try { return f(); } catch { return null; } };
+  const from = (new URLSearchParams(location.search).get('from') || '').toLowerCase().replace(/[^a-z0-9_-]/g, '').slice(0, 40);
+  // はじめて来たときのきっかけを残す（会員登録したときに、アプリがこれを記録する）
+  if (from && !safe(() => localStorage.getItem('atg-from'))) safe(() => localStorage.setItem('atg-from', JSON.stringify({ source: from, ts: Date.now() })));
+  const source = from || safe(() => JSON.parse(localStorage.getItem('atg-from') || 'null')?.source) || '';
+  let cfg = null;
+  const send = async (kind) => {
+    try {
+      cfg = cfg || await import('./app/config.js');
+      if (!cfg.SUPABASE_URL || /mock|YOUR/.test(cfg.SUPABASE_URL)) return;
+      await fetch(`${cfg.SUPABASE_URL}/rest/v1/site_events`, {
+        method: 'POST', keepalive: true,
+        headers: { apikey: cfg.SUPABASE_ANON_KEY, authorization: `Bearer ${cfg.SUPABASE_ANON_KEY}`, 'content-type': 'application/json', prefer: 'return=minimal' },
+        body: JSON.stringify({ kind, source }),
+      });
+    } catch { /* 記録できなくても何もしない */ }
+  };
+  if (!safe(() => sessionStorage.getItem('atg-viewed'))) { safe(() => sessionStorage.setItem('atg-viewed', '1')); send('view'); }
+  document.addEventListener('click', (e) => {
+    const a = e.target.closest('a');
+    if (!a) return;
+    const kind = a.hasAttribute('data-line') ? 'line' : a.hasAttribute('data-tel') ? 'tel'
+      : /(^|\/)app\/swing\//.test(a.getAttribute('href') || '') ? 'shoot' : /(^|\/)app\/?$/.test(a.getAttribute('href') || '') ? 'login'
+      : a.closest('.plan') && a.getAttribute('href') === '#contact' ? 'plan' : '';
+    if (kind) send(kind);
+  });
+})();
+
 // スクロールでふわっと表示
 if ('IntersectionObserver' in window) {
   const io = new IntersectionObserver((entries) => {
