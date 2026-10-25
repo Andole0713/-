@@ -3122,32 +3122,47 @@ function statsMore(d) {
       <p class="muted small">1日あたりの練習の記録の数です。雨の日に減るなら、雨の日向けの自宅練習ドリルを用意すると続けやすくなります。</p>` : '<p class="muted small">天気のデータを取得できませんでした（期間が短すぎるか、通信の問題です）</p>'}</div>`;
 }
 
+// 統計をプランごとに見る（会員の今のプランで分ける。退会した人は最後のプラン）
+const PLAN_NONE = 'none';
+function statsPlanIds(people) {
+  const plan = state.statsPlan || '';
+  if (!plan) return null;
+  return new Set(people.filter((p) => (p.plan || PLAN_NONE) === plan).map((p) => p.id));
+}
+function planChips(people) {
+  const cur = state.statsPlan || '';
+  const counts = countBy(people, (p) => p.plan || PLAN_NONE);
+  const opts = [['', 'すべてのプラン', people.length], ...PLANS.filter((pl) => counts.get(pl.id)).map((pl) => [pl.id, pl.name, counts.get(pl.id)]), ...(counts.get(PLAN_NONE) ? [[PLAN_NONE, 'プラン未設定', counts.get(PLAN_NONE)]] : [])];
+  return `<div class="filter-chips st-plan" role="group" aria-label="プランで分ける">${opts.map(([k, l, n]) => `<button type="button" data-action="stats-plan" data-plan="${k}" class="${cur === k ? 'on' : ''}" aria-pressed="${cur === k}">${esc(l)}<small>${n}名</small></button>`).join('')}</div>
+    ${cur ? '<p class="muted small" style="margin:-4px 0 10px">選んだプランの会員（今のプラン。退会した人は最後のプラン）だけで集計しています。ホームページの表示・広告費は全体の数字です。</p>' : ''}`;
+}
+
 async function viewStats() {
   const range = STATS_RANGES.some(([k]) => k === state.statsRange) ? state.statsRange : '6m';
   const sinceD = range === 'all' ? new Date(2000, 0, 1) : new Date(new Date().getFullYear(), new Date().getMonth() - { '3m': 2, '6m': 5, '12m': 11 }[range], 1);
   const since = sinceD.toISOString(); const sinceYmd = sinceD.toLocaleDateString('sv-SE');
   const soft = (q) => q.then((r) => (r.error ? null : r.data || []));
-  const [people, events, credits, subs, drillLinks, rounds, surveys, ratings, nps, exits, lessons] = await Promise.all([
+  let [people, events, credits, subs, drillLinks, rounds, surveys, ratings, nps, exits, lessons] = await Promise.all([
     must(sb.from('profiles').select('id, name, plan, goal, created_at, subscription_status, access_until, cancel_at, last_seen_at').neq('role', 'admin')),
     must(sb.from('membership_events').select('member_id, kind, created_at').order('created_at')),
     must(sb.from('credits').select('member_id, kind, source, granted_on, expires_on, used_at').gte('granted_on', sinceYmd)),
     must(sb.from('submissions').select('member_id, club, angle, created_at').gte('created_at', since)),
-    must(sb.from('lesson_drills').select('drills(title, tags), lessons!inner(created_at)').gte('lessons.created_at', since)),
+    must(sb.from('lesson_drills').select('drills(title, tags), lessons!inner(created_at, member_id)').gte('lessons.created_at', since)),
     must(sb.from('rounds').select('member_id, played_on, score, holes').eq('holes', 18).order('played_on')),
     soft(sb.from('member_survey').select('*')),
     soft(sb.from('lesson_ratings').select('lesson_id, member_id, rating, comment, created_at').gte('created_at', since).order('created_at', { ascending: false })),
     soft(sb.from('nps_responses').select('member_id, month, score, comment, created_at').gte('month', sinceYmd).order('month', { ascending: false })),
-    soft(sb.from('exit_reasons').select('reasons, comment, source, created_at').gte('created_at', since).order('created_at', { ascending: false })),
+    soft(sb.from('exit_reasons').select('member_id, reasons, comment, source, created_at').gte('created_at', since).order('created_at', { ascending: false })),
     sb.from('lessons').select('id', { count: 'exact', head: true }).gte('created_at', since).then((r) => r.count ?? null),
   ]);
   // その2：時間帯・季節・練習・集客・機能の利用など
   const y1 = new Date(new Date().getFullYear(), new Date().getMonth() - 11, 1);
-  const [lessonTimes, diagRows, subMeta, practiceAll, subs12, srcRows, siteEv, adRows, appEv] = await Promise.all([
-    must(sb.from('lessons').select('created_at, read_at').gte('created_at', since)),
-    soft(sb.from('lessons').select('diag_tags').gte('created_at', since)),
-    soft(sb.from('submissions').select('created_at, capture_source, takes, edited, upload_ms, file_mb').gte('created_at', since)),
+  let [lessonTimes, diagRows, subMeta, practiceAll, subs12, srcRows, siteEv, adRows, appEv] = await Promise.all([
+    must(sb.from('lessons').select('member_id, created_at, read_at').gte('created_at', since)),
+    soft(sb.from('lessons').select('member_id, diag_tags').gte('created_at', since)),
+    soft(sb.from('submissions').select('member_id, created_at, capture_source, takes, edited, upload_ms, file_mb').gte('created_at', since)),
     must(sb.from('roadmap_practice').select('member_id, practiced_on').gte('practiced_on', new Date(Math.max(sinceD, Date.now() - 365 * 86400000)).toLocaleDateString('sv-SE'))),
-    must(sb.from('submissions').select('created_at').gte('created_at', y1.toISOString())),
+    must(sb.from('submissions').select('member_id, created_at').gte('created_at', y1.toISOString())),
     soft(sb.from('signup_sources').select('member_id, source, created_at')),
     soft(sb.from('site_events').select('kind, source, created_at').gte('created_at', since).limit(50000)),
     soft(sb.from('ad_spend').select('*').order('month', { ascending: false })),
@@ -3156,6 +3171,15 @@ async function viewStats() {
   const weather = await nagoyaWeather(range === 'all' || sinceD < new Date(Date.now() - 365 * 86400000) ? new Date(Date.now() - 365 * 86400000) : sinceD);
   const needSql = [surveys, ratings, nps, exits].some((x) => x === null);
   const needSql2 = [diagRows, subMeta, srcRows, siteEv, adRows, appEv].some((x) => x === null);
+  const allPeople = people;
+  const ids = statsPlanIds(people);
+  if (ids) {
+    const F = (a) => (a ? a.filter((x) => ids.has(x.member_id)) : a);
+    people = people.filter((p) => ids.has(p.id));
+    [events, credits, subs, rounds, surveys, ratings, nps, exits, lessonTimes, diagRows, subMeta, practiceAll, subs12, srcRows, appEv] = [events, credits, subs, rounds, surveys, ratings, nps, exits, lessonTimes, diagRows, subMeta, practiceAll, subs12, srcRows, appEv].map(F);
+    drillLinks = drillLinks.filter((x) => ids.has(x.lessons?.member_id));
+    lessons = lessonTimes.length;
+  }
   const nameOf = Object.fromEntries(people.map((p) => [p.id, p.name || '（名前なし）']));
   const active = people.filter(isActive);
   const now = new Date();
@@ -3250,6 +3274,7 @@ async function viewStats() {
   return header('統計') + `<div class="content wide stats">
     ${statsTabs('stats')}
     <p class="page-lead">会員の動きを期間でまとめて、事業の判断に使うページです。1か月ごとの数字は「月のまとめ」にあります。</p>
+    ${planChips(allPeople)}
     <div class="filter-chips st-range" role="group" aria-label="集計する期間">${STATS_RANGES.map(chip).join('')}<span class="muted small">期間：${range === 'all' ? 'これまですべて' : `${fmtDate(sinceYmd)} から今日まで`}</span></div>
     ${needSql ? '<div class="notice">アンケート・評価・すすめたい度・退会理由の集計には、データベースの更新（supabase/migrations/20261026000000_stats.sql の実行）が必要です。</div>' : ''}
 
@@ -3314,15 +3339,22 @@ async function viewReport(ym) {
   const [y, mo] = /^\d{4}-\d{2}$/.test(ym || '') ? ym.split('-').map(Number) : [now.getFullYear(), now.getMonth() + 1];
   const from = new Date(y, mo - 1, 1); const to = new Date(y, mo, 1); const pFrom = new Date(y, mo - 2, 1);
   const key = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-  const [people, events, subs, lessons, meetings, practice, rounds] = await Promise.all([
+  let [people, events, subs, lessons, meetings, practice, rounds] = await Promise.all([
     must(sb.from('profiles').select('id, role, plan, created_at, subscription_status, access_until, best_score, avg_score').neq('role', 'admin')),
     must(sb.from('membership_events').select('member_id, kind, created_at')),
-    must(sb.from('submissions').select('created_at, reviewed_at, status').gte('created_at', pFrom.toISOString()).lt('created_at', to.toISOString())),
-    must(sb.from('lessons').select('created_at, read_at').gte('created_at', pFrom.toISOString()).lt('created_at', to.toISOString())),
+    must(sb.from('submissions').select('member_id, created_at, reviewed_at, status').gte('created_at', pFrom.toISOString()).lt('created_at', to.toISOString())),
+    must(sb.from('lessons').select('member_id, created_at, read_at').gte('created_at', pFrom.toISOString()).lt('created_at', to.toISOString())),
     must(sb.from('meetings').select('member_id, status, scheduled_at').gte('scheduled_at', pFrom.toISOString()).lt('scheduled_at', to.toISOString())),
     must(sb.from('roadmap_practice').select('member_id, practiced_on').gte('practiced_on', pFrom.toLocaleDateString('sv-SE')).lt('practiced_on', to.toLocaleDateString('sv-SE'))),
     must(sb.from('rounds').select('id, member_id, played_on, created_at, score, holes')),
   ]);
+  const allPeople = people;
+  const ids = statsPlanIds(people);
+  if (ids) {
+    const F = (a) => a.filter((x) => ids.has(x.member_id));
+    people = people.filter((p) => ids.has(p.id));
+    [events, subs, lessons, meetings, practice, rounds] = [events, subs, lessons, meetings, practice, rounds].map(F);
+  }
   const ms = (iso) => new Date(iso).getTime();
   const subActive = (p) => ['active', 'trialing'].includes(p.subscription_status);
   // 利用期限が切れた会員は、期限の翌日に「終了」したものとして数える
@@ -3379,6 +3411,7 @@ async function viewReport(ym) {
   const recent = Array.from({ length: 12 }, (_, i) => key(new Date(now.getFullYear(), now.getMonth() - i, 1)));
   return header('統計') + `<div class="content wide">
     ${statsTabs('report')}
+    ${planChips(allPeople)}
     <div class="rp-pick">
       <label class="rp-pick-in">月を選ぶ<input type="month" data-report-month value="${key(from)}" max="${curKey}" aria-label="見たい月を選ぶ"></label>
       <div class="rp-chips" role="group" aria-label="最近の月">${recent.map((k) => `<a href="#/admin/report/${k}" class="${k === key(from) ? 'on' : ''}"${k === key(from) ? ' aria-current="true"' : ''}>${k.slice(0, 4) !== String(now.getFullYear()) ? `${k.slice(2, 4)}年` : ''}${Number(k.slice(5))}月</a>`).join('')}</div>
@@ -3756,6 +3789,7 @@ const actions = {
     checkNewBadges();
   },
   'stats-range': (el) => { state.statsRange = el.dataset.range; render(); },
+  'stats-plan': (el) => { state.statsPlan = el.dataset.plan; render(); },
   'copy-text': async (el) => {
     try { await navigator.clipboard.writeText(el.dataset.text); toast('コピーしました'); } catch { toast('コピーできませんでした。長押しで選んでコピーしてください', true); }
   },
