@@ -1240,7 +1240,7 @@ async function viewSubmit() {
     <a class="shoot-cta" href="${SWINGFRAME_URL}"><span class="ico" aria-hidden="true">●</span>
       <span><b>SwingFrame で撮影する</b><small>ガイドに合わせて自動で録画。撮ったあと再生画面の「⛳ コーチへ」を押すと、そのままここに届きます</small></span><i aria-hidden="true">›</i></a>
     <div class="notice">正面または後方から、全身とクラブが入るように撮影してください。<a href="#/guide">撮り方ガイドを見る</a><br>送った動画は<b>${RETENTION_LABEL}</b>保存され、その後自動で削除されます。</div>
-    <button type="button" class="btn-block btn-cat cat-video send-start" data-action="wiz-open">${icon('video')} 動画を送る</button>
+    <button type="button" class="btn-block btn-gold send-start" data-action="wiz-open">${icon('video')} 動画を送る</button>
     ${submitWizard(myClubs)}
   </div>` + memberNav('submit');
 }
@@ -1612,6 +1612,34 @@ function scoreStats(rounds, p = {}) {
   return { best: Math.min(...full.map((r) => r.score)), avg: Math.round(avg * 10) / 10, count: full.length, recent: recent.length };
 }
 
+// スコアの推移（18ホールのみ・古い順）。上に行くほど良いスコア
+function scoreChart(rounds) {
+  const list = rounds.filter((r) => r.holes === 18).slice().sort((p, q) => (p.played_on < q.played_on ? -1 : p.played_on > q.played_on ? 1 : 0)).slice(-20);
+  if (list.length < 2) return '';
+  const W = 320, H = 150, L = 42, R = 14, T = 18, B = 26;
+  const scores = list.map((r) => r.score);
+  const lo = Math.min(...scores), hi = Math.max(...scores);
+  const pad = Math.max(2, Math.round((hi - lo) * 0.15));
+  const min = lo - pad, max = hi + pad;
+  const x = (i) => L + (i * (W - L - R)) / (list.length - 1);
+  const y = (v) => T + ((v - min) / (max - min || 1)) * (H - T - B);
+  const pts = list.map((r, i) => `${x(i).toFixed(1)},${y(r.score).toFixed(1)}`).join(' ');
+  const best = Math.min(...scores);
+  const md = (d) => { const [, m, dd] = d.split('-'); return `${Number(m)}/${Number(dd)}`; };
+  return `<section class="card score-chart" aria-label="スコアの推移">
+    <div class="between"><b>スコアの推移</b><span class="muted small">上に行くほど良いスコア</span></div>
+    <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="直近${list.length}ラウンドのスコア。最初 ${scores[0]}、最新 ${scores[scores.length - 1]}、ベスト ${best}">
+      ${[lo, hi].map((v) => `<line x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}" class="sc-grid"/><text x="${L - 6}" y="${y(v) + 4}" class="sc-ax" text-anchor="end">${v}</text>`).join('')}
+      <polyline points="${pts}" class="sc-line"/>
+      ${list.map((r, i) => `<circle cx="${x(i)}" cy="${y(r.score)}" r="${r.score === best ? 5.5 : 4}" class="sc-dot${r.score === best ? ' best' : ''}"><title>${md(r.played_on)} ${esc(r.course_name)}：${r.score}</title></circle>`).join('')}
+      <text x="${x(0)}" y="${H - 6}" class="sc-ax" text-anchor="start">${md(list[0].played_on)}</text>
+      <text x="${x(list.length - 1)}" y="${H - 6}" class="sc-ax" text-anchor="end">${md(list[list.length - 1].played_on)}</text>
+      <text x="${x(list.length - 1)}" y="${y(scores[scores.length - 1]) - 9}" class="sc-last" text-anchor="end">${scores[scores.length - 1]}</text>
+    </svg>
+    <p class="muted small" style="margin:4px 0 0">● 大きい点がベストスコア（${best}）。点を長押しすると日付とゴルフ場が出ます。</p>
+  </section>`;
+}
+
 async function viewScores() {
   const p = state.profile;
   const rounds = await must(sb.from('rounds').select('*').eq('member_id', p.id).order('played_on', { ascending: false }).order('created_at', { ascending: false }));
@@ -1624,6 +1652,7 @@ async function viewScores() {
       <div class="stat"><div class="label">平均スコア${st.count ? `<small>直近${st.recent}R</small>` : ''}</div><b>${esc(st.avg ?? '—')}</b></div>
     </div>
     <p class="muted small" style="margin:6px 0 0">18ホールのラウンドから自動で計算します（ベストは全ラウンド、平均は直近${AVG_ROUNDS}ラウンド）。${st.count ? `記録：${st.count}ラウンド` : ''}</p>
+    ${scoreChart(rounds)}
 
     <form class="card form" data-form="round">
       <b>ラウンドのスコアを記録</b>
@@ -1839,6 +1868,14 @@ function filterGlossary() {
   document.querySelectorAll('.gl-item').forEach((it) => {
     const show = (!cat || it.dataset.cat === cat) && (!q || it.dataset.key.toLowerCase().includes(q));
     it.hidden = !show; if (show) n++;
+  });
+  // 分類ごとのまとまり：探している間は当てはまる分類だけ開く。何も指定しないときはたたむ
+  document.querySelectorAll('.gl-group').forEach((g) => {
+    const vis = g.querySelectorAll('.gl-item:not([hidden])').length;
+    g.hidden = vis === 0;
+    g.open = !!(q || cat) && vis > 0;
+    const c = g.querySelector('.gl-count');
+    if (c) c.textContent = q ? `${vis}語が見つかりました` : `${c.dataset.total}語`;
   });
   const none = document.querySelector('.gl-none');
   if (none) none.hidden = n > 0;

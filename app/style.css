@@ -1549,3 +1549,50 @@ button:not(:disabled):active,.btn:active,.next-action:active,.lesson-feature:act
 .lesson-feature.cat-lesson .point{background:#fff}
 .blk .task{background:color-mix(in srgb,var(--c-drill) 10%,#fff);border-color:color-mix(in srgb,var(--c-drill) 32%,#fff)}
 .grid.cat-score .stat,.score-add{background:color-mix(in srgb,var(--c-score) 10%,#fff);border-color:color-mix(in srgb,var(--c-score) 32%,#fff)}
+/* ===== 会員ページ全体：区切りを機能の色で分かりやすく ===== */
+/* レッスン詳細：解説動画・送った動画＝青、フィードバック＝緑、ドリル・練習＝紫 */
+#ls-video,#ls-mine{--cat:var(--c-video)} #ls-fb{--cat:var(--c-lesson)} #ls-practice,.lesson-sec:has(.drill-card){--cat:var(--c-drill)}
+.lesson-sec[id],.lesson-sec:has(.drill-card){padding-top:0;overflow:hidden}
+.lesson-sec[id] .sec-h,.lesson-sec:has(.drill-card) .sec-h{margin:0 -18px 14px;padding:12px 18px;background:color-mix(in srgb,var(--cat) 14%,#fff);border-bottom:1px solid color-mix(in srgb,var(--cat) 30%,#fff);font-weight:800}
+.lesson-sec[id] .sec-h i,.lesson-sec:has(.drill-card) .sec-h i{background:var(--cat);color:#fff}
+/* レッスン一覧：送った動画＝青、届いたレッスン＝緑のごく薄い色。月は黒い札 */
+.pair-sub{background:color-mix(in srgb,var(--c-video) 8%,#fff);border-left-color:var(--c-video);border-color:color-mix(in srgb,var(--c-video) 28%,#fff)}
+.pair-sub:hover{border-left-color:var(--c-video)}
+.pair-icon{background:var(--c-video);color:#fff}
+.lesson-card{background:color-mix(in srgb,var(--c-lesson) 8%,#fff);border-color:color-mix(in srgb,var(--c-lesson) 30%,#fff)}
+.pair-arrow{background:color-mix(in srgb,var(--c-lesson) 50%,var(--c-video))}
+.month{background:var(--ink);color:var(--gold-2);border-radius:999px;padding:4px 14px;width:fit-content}
+.month::after{display:none}
+/* ほかのページの見出し：ホームと同じ、ページの色の薄い帯 */
+.app:has(.top.cat-score){--pc:var(--c-score)} .app:has(.top.cat-drill){--pc:var(--c-drill)} .app:has(.top.cat-celebrate){--pc:var(--c-celebrate)} .app:has(.top.cat-video){--pc:var(--c-video)} .app:has(.top.cat-lesson){--pc:var(--c-lesson)}
+.app:has(.nav a[href="#/home"]) .content>.section-title:not([class*="cat-"]){margin:30px 0 10px;background:color-mix(in srgb,var(--pc,var(--gold)) 14%,#fff);border:1px solid color-mix(in srgb,var(--pc,var(--gold)) 35%,#fff);border-radius:12px;padding:10px 14px;align-items:center}
+.app:has(.nav a[href="#/home"]) .content>.section-title:not([class*="cat-"]) .eyebrow{color:color-mix(in srgb,var(--pc,var(--gold)) 80%,#000);margin:0;font-weight:700;font-size:12px}
+.app:has(.nav a[href="#/home"]) .content>.section-title:not([class*="cat-"]) h2{font-family:"Noto Sans JP",sans-serif;font-weight:800;color:var(--ink)}
+.app:has(.nav a[href="#/home"]) .content>.section-title:not([class*="cat-"]) h2::after{display:none}
+.badge-h{background:color-mix(in srgb,var(--c-celebrate) 12%,#fff);border:1px solid color-mix(in srgb,var(--c-celebrate) 30%,#fff);border-radius:12px;padding:8px 14px}
+/* スコア：タイルもオレンジのごく薄い色 */
+.app:has(.top.cat-score) .stat{background:color-mix(in srgb,var(--c-score) 10%,#fff);border-color:color-mix(in srgb,var(--c-score) 30%,#fff)}
+/* レッスンで届いたドリル：紫のごく薄い色 */
+.drill-list .drill-card{background:color-mix(in srgb,var(--c-drill) 8%,#fff);border-color:color-mix(in srgb,var(--c-drill) 28%,#fff)}
+/* 撮影・提出：「SwingFrame で撮影する」（黒）と「動画を送る」（金）を色で分ける */
+.send-start{background:linear-gradient(135deg,var(--gold-2),var(--gold));color:var(--ink);box-shadow:0 8px 20px -10px rgba(200,169,106,.8)}
+/* 用語集：分類ごとにたたむ */
+.gl-group{margin:0 0 8px;background:#fff;border:1px solid var(--line);border-left:5px solid var(--gl);border-radius:12px}
+.gl-group>summary{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 40px 12px 14px;cursor:pointer;list-style:none;position:relative}
+.gl-group>summary::-webkit-details-marker{display:none}
+.gl-group>summary::after{content:"";position:absolute;right:16px;top:50%;width:8px;height:8px;border-right:1.5px solid var(--muted);border-bottom:1.5px solid var(--muted);transform:translateY(-70%) rotate(45deg);transition:transform .2s}
+.gl-group[open]>summary::after{transform:translateY(-30%) rotate(-135deg)}
+.gl-group>summary .gl-tag{font-size:14.5px;padding:3px 12px}
+.gl-count{font-size:13px;color:var(--muted);font-weight:700}
+.gl-group>dl{margin:0;padding:0 10px 4px}
+.gl-group .gl-item{border-left-width:1px}
+.gl-group .gl-item dt .gl-tag{display:none}
+/* スコアの推移 */
+.score-chart{margin-top:12px}
+.score-chart svg{display:block;width:100%;height:auto;margin-top:6px}
+.sc-grid{stroke:var(--line);stroke-width:1;stroke-dasharray:3 3}
+.sc-ax{font-size:10px;fill:var(--muted)}
+.sc-line{fill:none;stroke:var(--c-score);stroke-width:2;stroke-linejoin:round;stroke-linecap:round}
+.sc-dot{fill:#fff;stroke:var(--c-score);stroke-width:2}
+.sc-dot.best{fill:var(--c-score)}
+.sc-last{font-size:12px;font-weight:700;fill:var(--ink)}
