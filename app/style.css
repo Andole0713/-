@@ -1536,3 +1536,16 @@ button:not(:disabled):active,.btn:active,.next-action:active,.lesson-feature:act
 .acc-fold[open]>summary::after{transform:translateY(-30%) rotate(-135deg)}
 .acc-fold[open]>summary{margin-bottom:12px}
 .cele-card.big.unseen{background:#fff}
+/* ホームの見出し：機能の色の薄い帯（文字は黒）。中身のカードは同じ色のさらに薄い色にして、まとまりを分かりやすく */
+.blk>.section-title[class*="cat-"]{margin-top:30px;margin-bottom:10px;background:color-mix(in srgb,var(--cat) 14%,#fff);border:1px solid color-mix(in srgb,var(--cat) 35%,#fff);border-radius:12px;padding:10px 14px;align-items:center}
+.blk>.section-title[class*="cat-"] .eyebrow{font-size:12px;color:color-mix(in srgb,var(--cat) 80%,#000);margin:0;font-weight:700}
+.blk>.section-title[class*="cat-"] h2{font-family:"Noto Sans JP",sans-serif;font-weight:800;font-size:18.5px;color:var(--ink)}
+.blk>.section-title[class*="cat-"] h2::after{display:none}
+.blk>.section-title[class*="cat-"] a,.blk>.section-title[class*="cat-"]>span{color:color-mix(in srgb,var(--cat) 70%,#000)}
+.blk>.section-title[class*="cat-"] h2 svg{width:30px;height:30px;padding:6px;border-radius:50%;background:var(--cat);color:#fff}
+.card-cat.cat-meeting{background:color-mix(in srgb,var(--c-meeting) 6%,#fff);border-color:color-mix(in srgb,var(--c-meeting) 25%,#fff)}
+.card-cat.cat-meeting .support>div{background:#fff}
+.lesson-feature.cat-lesson{background:color-mix(in srgb,var(--c-lesson) 6%,#fff);border-color:color-mix(in srgb,var(--c-lesson) 28%,#fff)}
+.lesson-feature.cat-lesson .point{background:#fff}
+.blk .task{background:color-mix(in srgb,var(--c-drill) 6%,#fff);border-color:color-mix(in srgb,var(--c-drill) 25%,#fff)}
+.grid.cat-score .stat,.score-add{background:color-mix(in srgb,var(--c-score) 6%,#fff);border-color:color-mix(in srgb,var(--c-score) 25%,#fff)}
