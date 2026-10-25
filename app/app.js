@@ -555,7 +555,7 @@ const PAGE_CAT = {
   celebrations: 'celebrate', badges: 'celebrate', help: 'help', menu: 'menu', account: 'menu', guide: 'help', install: 'help', plans: 'menu',
   'admin/dashboard': 'home', 'admin/inbox': 'video', 'admin/lesson': 'video', 'admin/meetings': 'meeting', 'admin/prep': 'meeting',
   'admin/members': 'member', 'admin/member': 'member', 'admin/roadmap': 'drill', 'admin/drills': 'drill', 'admin/drill': 'drill',
-  'admin/report': 'home', 'admin/stats': 'score', 'admin/templates': 'video', survey: 'menu',
+  'admin/report': 'score', 'admin/stats': 'score', 'admin/templates': 'video', survey: 'menu',
 };
 const CAT_LABEL = { home: 'Home', video: 'Swing Video', lesson: 'Lesson', drill: 'Drill', score: 'Score', celebrate: 'Celebration', help: 'Guide', menu: 'Menu', meeting: 'Meeting', member: 'Members' };
 function pageCat() {
@@ -566,7 +566,7 @@ function header(title, back) {
   const cat = pageCat();
   return `<div class="top cat-${cat}">
     <div class="row">${back ? `<a class="back" href="#/${back}" aria-label="戻る">‹</a>` : ''}
-      <div><div class="brand">${esc(title)}</div><div class="muted top-cat">${location.hash.startsWith('#/admin/stats') ? 'Statistics' : CAT_LABEL[cat]}</div></div></div>
+      <div><div class="brand">${esc(title)}</div><div class="muted top-cat">${/^#\/admin\/(stats|report)/.test(location.hash) ? 'Statistics' : CAT_LABEL[cat]}</div></div></div>
     <div class="top-right">${shootButton()}
       <a href="../" aria-label="${esc(SCHOOL_NAME)} トップページへ"><img class="top-logo" src="../assets/logo-mark.png" width="200" height="170" alt="${esc(SCHOOL_NAME)}"></a></div>
   </div>`;
@@ -974,6 +974,12 @@ async function viewMemberHome() {
         <div><b>ホーム画面に追加しませんか？</b><span>アプリのようにワンタップで開けます</span></div>
         <a class="btn btn-sm btn-gold" href="#/install">やり方</a>
         <button type="button" class="install-close" data-action="dismiss-install" aria-label="閉じる">×</button></div>` : ''}
+    <a class="card home-account" href="#/account">
+      <span class="ha-ic" aria-hidden="true">${icon('user')}</span>
+      <span class="ha-body"><small>アカウント</small><b>${esc(p.name || '')}さん</b>
+        <span class="ha-meta">${esc(planLabel(p.plan) || 'プラン未設定')}　${memberPill(p)}${p.cancel_at ? `　利用期限 ${fmtDate(p.cancel_at)}` : p.current_period_end ? `　次回更新 ${fmtDate(p.current_period_end)}` : p.access_until ? `　利用期限 ${fmtDate(p.access_until)}` : ''}</span>
+        <span class="ha-sub">お名前・ご契約・Myクラブ・お知らせメール・文字の大きさ</span></span>
+      <i aria-hidden="true">›</i></a>
     </div>
   </div>
   </div>  </div>` + memberNav('home');
@@ -2110,7 +2116,7 @@ async function viewDashboard() {
       <a class="kpi" href="#/admin/members"><span>契約中の会員</span><b>${active.length}</b><small>登録 ${people.length}名</small></a>
     </div>
     <div class="dash-top"><p class="dash-legend"><span class="lg todo">対応が必要</span><span class="lg watch">様子を見る</span><span class="lg info">お知らせ</span><span class="lg celebrate">お祝い</span></p>
-      <span class="dash-links"><a class="btn btn-sm btn-sub" href="#/admin/templates">✎ テンプレート</a><a class="btn btn-sm btn-sub" href="#/admin/report">📊 月のまとめ</a></span></div>
+      <span class="dash-links"><a class="btn btn-sm btn-sub" href="#/admin/templates">✎ テンプレート</a></span></div>
     <div class="cols">
       <div class="col-main">${left.map((h, i) => `<div class="blk" style="--o:${i}">${h}</div>`).join('')}</div>
       <div class="col-side">${right.map((h, i) => `<div class="blk" style="--o:${10 + i}">${h}</div>`).join('')}
@@ -2744,6 +2750,10 @@ async function viewTemplates() {
   </div>` + adminNav('admin/dashboard');
 }
 
+// 統計のページ切り替え（期間の統計／月のまとめ）
+const statsTabs = (active) => `<div class="st-tabs" role="tablist" aria-label="統計の種類">
+    <a role="tab" href="#/admin/stats" class="${active === 'stats' ? 'on' : ''}"${active === 'stats' ? ' aria-selected="true"' : ''}>📈 期間の統計</a>
+    <a role="tab" href="#/admin/report" class="${active === 'report' ? 'on' : ''}"${active === 'report' ? ' aria-selected="true"' : ''}>📊 月のまとめ</a></div>`;
 // 月のまとめ（経営の数字）
 // ---------- 統計のための記録（アンケート・レッスンの評価・すすめたい度・退会理由） ----------
 const SURVEY_OPTS = {
@@ -3178,7 +3188,8 @@ async function viewStats() {
   const tile = (label, val, unit = '', note = '') => `<div class="rp-card"><span>${label}</span><b>${val ?? '—'}${val != null && unit ? `<small>${unit}</small>` : ''}</b>${note ? `<small class="muted">${note}</small>` : ''}</div>`;
   const rangeLabel = STATS_RANGES.find(([k]) => k === range)[1];
   return header('統計') + `<div class="content wide stats">
-    <p class="page-lead">会員の動きをまとめて、事業の判断に使うページです。月ごとの数字は「<a href="#/admin/report">月のまとめ</a>」にあります。</p>
+    ${statsTabs('stats')}
+    <p class="page-lead">会員の動きを期間でまとめて、事業の判断に使うページです。1か月ごとの数字は「月のまとめ」にあります。</p>
     <div class="filter-chips st-range" role="group" aria-label="集計する期間">${STATS_RANGES.map(chip).join('')}<span class="muted small">期間：${range === 'all' ? 'これまですべて' : `${fmtDate(sinceYmd)} から今日まで`}</span></div>
     ${needSql ? '<div class="notice">アンケート・評価・すすめたい度・退会理由の集計には、データベースの更新（supabase/migrations/20261026000000_stats.sql の実行）が必要です。</div>' : ''}
 
@@ -3304,7 +3315,14 @@ async function viewReport(ym) {
   const card = (label, val, unit, k, dUnit = unit, better = 'up', note = '') => `<div class="rp-card"><span>${label}</span><b>${val ?? '—'}${val != null ? `<small>${unit}</small>` : ''}</b>${k ? diff(k, dUnit, better) : ''}${note ? `<small class="muted">${note}</small>` : ''}</div>`;
   const prevKey = key(pFrom); const nextKey = key(to);
   const isCurrent = key(from) === key(now);
-  return header('月のまとめ', 'admin/dashboard') + `<div class="content wide">
+  const curKey = key(now);
+  const recent = Array.from({ length: 12 }, (_, i) => key(new Date(now.getFullYear(), now.getMonth() - i, 1)));
+  return header('統計') + `<div class="content wide">
+    ${statsTabs('report')}
+    <div class="rp-pick">
+      <label class="rp-pick-in">月を選ぶ<input type="month" data-report-month value="${key(from)}" max="${curKey}" aria-label="見たい月を選ぶ"></label>
+      <div class="rp-chips" role="group" aria-label="最近の月">${recent.map((k) => `<a href="#/admin/report/${k}" class="${k === key(from) ? 'on' : ''}"${k === key(from) ? ' aria-current="true"' : ''}>${k.slice(0, 4) !== String(now.getFullYear()) ? `${k.slice(2, 4)}年` : ''}${Number(k.slice(5))}月</a>`).join('')}</div>
+    </div>
     <div class="rp-month">
       <a class="btn btn-sm btn-sub" href="#/admin/report/${prevKey}" aria-label="前の月">‹ 前の月</a>
       <b>${y}年${mo}月${isCurrent ? '<small>（今日まで）</small>' : ''}</b>
@@ -3339,9 +3357,8 @@ async function viewReport(ym) {
       ${card('ラウンド', c.rounds, '回', 'rounds', '回')}
       ${card('ベストスコア更新', c.bests, '回', 'bests', '回')}
     </div>
-    <a class="beginner-card" href="#/admin/stats" style="margin-top:16px"><span class="bc-ic" aria-hidden="true">📈</span><span><b>統計を見る</b><small>売上の見込み・継続・権利の消化・満足度・退会理由・会員のプロフィール</small></span><i aria-hidden="true">›</i></a>
     <p class="muted small" style="margin-top:16px">※ 入会・退会・継続率は、この機能を入れた日（データベースの設定を実行した日）からの記録で計算します。それより前の入会は「登録日」で数えています。${isCurrent ? '今月の数字は今日までの集計です。' : ''}</p>
-  </div>` + adminNav('admin/dashboard');
+  </div>` + adminNav('admin/stats');
 }
 
 // 新規（提出動画から / 会員から）または既存レッスンの編集
@@ -4596,6 +4613,7 @@ document.addEventListener('submit', async (ev) => {
 
 // 動画を選んだら、ファイル名と容量を表示してプレビューする
 document.addEventListener('change', (ev) => {
+  if (ev.target.matches('[data-report-month]')) { if (ev.target.value) go(`admin/report/${ev.target.value}`); return; }
   if (ev.target.name === 'member_id' && ev.target.closest('.modal')) { refreshPayType(ev.target.closest('.modal')); return; }
   if (ev.target.name === 'sound_toggle') {
     local.set('atg-sound', ev.target.checked ? 'on' : 'off');
