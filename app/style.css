@@ -1596,3 +1596,4 @@ button:not(:disabled):active,.btn:active,.next-action:active,.lesson-feature:act
 .sc-dot{fill:#fff;stroke:var(--c-score);stroke-width:2}
 .sc-dot.best{fill:var(--c-score)}
 .sc-last{font-size:12px;font-weight:700;fill:var(--ink)}
+.st-plan{margin:0 0 10px;flex-wrap:wrap;overflow:visible}.st-plan button small{margin-left:5px;font-size:12px;opacity:.75;font-weight:400}
