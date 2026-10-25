@@ -1439,3 +1439,24 @@ button:not(:disabled):active,.btn:active,.next-action:active,.lesson-feature:act
 .diag-pick legend{font-size:13px;font-weight:700;padding:0 4px}
 .diag-pick .sv-chips span{padding:5px 11px;font-size:13px}
 .st-two>*{min-width:0}.st-fold .list-item{flex-wrap:wrap;gap:6px}
+/* 統計：ページ切り替え・月を選ぶ */
+.st-tabs{display:flex;gap:6px;margin:0 0 16px;border-bottom:1px solid var(--line)}
+.st-tabs a{padding:10px 16px;font-weight:700;font-size:14.5px;color:var(--muted);text-decoration:none;border-bottom:3px solid transparent;margin-bottom:-1px}
+.st-tabs a.on{color:var(--ink);border-bottom-color:var(--gold)}
+.rp-pick{display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px;margin:0 0 14px}
+.rp-pick-in{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700;margin:0;white-space:nowrap}
+.rp-pick-in input{width:auto;min-width:150px;margin:0}
+.rp-chips{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding:2px 0;flex:1;min-width:0}
+.rp-chips::-webkit-scrollbar{display:none}
+.rp-chips a{flex:none;border:1px solid var(--line);background:#fff;border-radius:999px;padding:5px 12px;font-size:13px;color:var(--text);text-decoration:none}
+.rp-chips a.on{background:var(--ink);border-color:var(--ink);color:var(--gold-2);font-weight:700}
+/* ホームの一番下：アカウント */
+.home-account{display:flex;align-items:center;gap:12px;margin-top:12px;color:var(--text);text-decoration:none;padding:14px 16px}
+.ha-ic{flex:none;width:42px;height:42px;border-radius:50%;background:var(--paper-2);display:grid;place-items:center;color:var(--ink)}
+.ha-ic svg{width:22px;height:22px}
+.ha-body{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.ha-body small{font-size:11.5px;color:var(--muted);font-weight:700;letter-spacing:.06em}
+.ha-body b{font-size:16px}
+.ha-meta{font-size:13px}
+.ha-sub{font-size:12px;color:var(--muted)}
+.home-account>i{font-style:normal;color:var(--muted);font-size:20px}
