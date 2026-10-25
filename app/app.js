@@ -116,6 +116,16 @@ const local = {
   set(key, value) { try { localStorage.setItem(key, value); } catch { /* noop */ } },
   del(key) { try { localStorage.removeItem(key); } catch { /* noop */ } },
 };
+// 統計用の記録（画面が開かれた・用語集で見つからなかった・アップロード失敗・エラー）。失敗しても何もしない
+let eventErrors = 0;
+function logEvent(kind, name = '') {
+  if (!sb || !state.profile) return;
+  sb.from('app_events').insert({ member_id: state.profile.id, kind, name: String(name).slice(0, 200) }).then(() => {}, () => {});
+}
+const logError = (msg) => { if (eventErrors++ < 5) logEvent('error', msg); };
+window.addEventListener('error', (e) => logError(`${e.message || 'error'} @${(e.filename || '').split('/').pop()}:${e.lineno || ''}`));
+window.addEventListener('unhandledrejection', (e) => logError(`promise: ${e.reason?.message || e.reason || ''}`));
+
 const FONT_SIZES = [['m', '標準'], ['l', '大きめ'], ['xl', '特大']];
 function applyFontSize(size = local.get('atg-font-size') || 'm') {
   document.documentElement.dataset.fs = FONT_SIZES.some(([k]) => k === size) ? size : 'm';
@@ -1794,6 +1804,7 @@ function viewHelp(tab) {
 // レッスン・ドリルの画面から用語集へ（戻るボタンで元の画面に戻れるようにする）
 const glossaryLink = () => `<button type="button" class="glossary-link" data-action="open-glossary">
     <span class="gll-ic" aria-hidden="true">📖</span><span><b>わからない言葉は「用語集」で</b><small>レッスンやドリルに出てくるゴルフの言葉を、やさしく説明しています</small></span><i aria-hidden="true">›</i></button>`;
+let glossaryMissTimer; const glossaryMissSent = new Set();
 // 用語集の絞り込み（文字・分類）
 function filterGlossary() {
   const q = (document.querySelector('[data-glossary-search]')?.value || '').trim().toLowerCase();
@@ -1805,6 +1816,9 @@ function filterGlossary() {
   });
   const none = document.querySelector('.gl-none');
   if (none) none.hidden = n > 0;
+  // 見つからなかった言葉は、入力が止まってから記録する（用語を追加するときの参考に）
+  clearTimeout(glossaryMissTimer);
+  if (!n && q.length >= 2) glossaryMissTimer = setTimeout(() => { if (!glossaryMissSent.has(q)) { glossaryMissSent.add(q); logEvent('glossary_miss', q); } }, 1500);
   // 下までスクロールしてから探したときも、結果の先頭が見えるようにする
   const list = document.querySelector('.gl-list');
   const stick = document.querySelector('.help-sticky');
@@ -2742,6 +2756,10 @@ const SURVEY_OPTS = {
 const SURVEY_Q = { referral: 'オルタイムゴルフを何で知りましたか？', age_band: '年代', golf_years: 'ゴルフ歴', score_band: '今のスコア（18ホール）', store_use: 'オルタイムゴルフの店舗に通っていますか？' };
 const PREFS = '北海道 青森県 岩手県 宮城県 秋田県 山形県 福島県 茨城県 栃木県 群馬県 埼玉県 千葉県 東京都 神奈川県 新潟県 富山県 石川県 福井県 山梨県 長野県 岐阜県 静岡県 愛知県 三重県 滋賀県 京都府 大阪府 兵庫県 奈良県 和歌山県 鳥取県 島根県 岡山県 広島県 山口県 徳島県 香川県 愛媛県 高知県 福岡県 佐賀県 長崎県 熊本県 大分県 宮崎県 鹿児島県 沖縄県 海外'.split(' ');
 const EXIT_REASONS = [['price', '料金が合わない'], ['time', '練習やラウンドの時間がとれない'], ['effect', '効果を感じにくい'], ['online', 'オンラインが合わない（対面がいい）'], ['coach', '指導の内容が合わない'], ['app', 'アプリが使いにくい'], ['store', '店舗のレッスンに切り替える'], ['injury', 'けが・体調'], ['quit_golf', 'ゴルフをやめる・休む'], ['other', 'その他']];
+// レッスンの診断の分類（統計の「多い悩み」に使う）
+const DIAG_TAGS = ['スライス', 'フック', 'プッシュ', '引っかけ', 'ダフリ', 'トップ', 'シャンク', 'テンプラ', '飛距離不足', '方向性', 'ミート率',
+  'アドレス・構え', 'グリップ', 'テークバック', 'トップの形', '切り返し', 'ダウンスイング', 'インパクト', 'フォロー・フィニッシュ', '体重移動', '体の回転', '手打ち', 'リズム・テンポ',
+  'アプローチ', 'バンカー', 'パター', 'コースマネジメント'];
 const RATINGS = [[3, '👍', '役に立った'], [2, '🙂', 'まあまあ'], [1, '🤔', 'わかりにくい']];
 // 月の料金（税込・仮）。売上の見込みの計算だけに使う。ユーキャン制は10か月分を月あたりに直した額
 const PLAN_MONTHLY_YEN = { UME: 11000, TAKE: 16500, MATSU: 22000, SUBSCRIPTION: 22000, YOUCAN: 8800 };
@@ -2847,13 +2865,200 @@ const optRows = (key, list) => { const c = countBy(list, (x) => x[key]); return 
 const monthsBetween = (a, b) => (b.getFullYear() - a.getFullYear()) * 12 + b.getMonth() - a.getMonth();
 const yen = (n) => `${Math.round(n).toLocaleString('ja-JP')}円`;
 
+// 名古屋の毎日の雨量（Open-Meteo の過去の天気。キー不要）。取れなければ null
+async function nagoyaWeather(from) {
+  const end = new Date(Date.now() - 2 * 86400000).toLocaleDateString('sv-SE');
+  const start = from.toLocaleDateString('sv-SE');
+  if (start >= end) return null;
+  try {
+    const url = `https://archive-api.open-meteo.com/v1/archive?latitude=35.18&longitude=136.91&start_date=${start}&end_date=${end}&daily=precipitation_sum&timezone=Asia%2FTokyo`;
+    const r = await Promise.race([fetch(url), new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 5000))]);
+    if (!r.ok) return null;
+    const j = await r.json();
+    return Object.fromEntries((j.daily?.time || []).map((d, i) => [d, j.daily.precipitation_sum[i]]));
+  } catch { return null; }
+}
+// 画面の名前（統計の「よく使われる画面」）
+const SCREEN_LABEL = { home: 'ホーム', submit: '撮影・提出', history: 'レッスン一覧', lesson: 'レッスン詳細', submission: '送った動画', drills: 'ドリル', scores: 'スコア',
+  help: 'はじめての方へ', 'help/words': '用語集', 'help/zukai': '図解', menu: 'メニュー', account: 'アカウント', 'account/clubs': 'Myクラブ', celebrations: 'お祝い', badges: 'バッジ',
+  survey: 'アンケート', guide: '使い方ガイド', install: 'ホーム画面に追加', plans: 'プラン' };
+const SITE_KIND = [['view', 'ホームページの表示'], ['line', '「LINEで相談」'], ['tel', '「電話する」'], ['plan', '「このプランを相談する」'], ['login', '「会員ログイン」']];
+const WEEK_JA = ['日', '月', '火', '水', '木', '金', '土'];
+// 目標（例：「90切り」「ベスト85」）から目標スコアを読み取る
+function goalTarget(goal) {
+  const g = String(goal || '').replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xFEE0));
+  const m = g.match(/(\d{2,3})\s*(切|を切|未満)/);
+  if (m) return { score: Number(m[1]), under: true };
+  const n = g.match(/(\d{2,3})/);
+  return n && Number(n[1]) >= 60 && Number(n[1]) <= 150 ? { score: Number(n[1]), under: false } : null;
+}
+
+// 統計（その2）：集客・季節・時間帯・練習と伸び・目標・診断・撮影と送信・機能の利用・用語集・エラー・天気
+function statsMore(d) {
+  const { people, active, stints, avgTenureAll, mrr, subs, rounds, growth, lessonTimes, practiceAll, subs12, weather, sv, nameOf, rangeLabel, sec, tile, sinceD } = d;
+  const diagRows = d.diagRows || []; const subMeta = d.subMeta || []; const srcRows = d.srcRows || []; const siteEv = d.siteEv || []; const adRows = d.adRows || []; const appEv = d.appEv || [];
+  const avg = (a) => (a.length ? a.reduce((t, x) => t + x, 0) / a.length : null);
+  const r1 = (x) => (x == null ? null : Math.round(x * 10) / 10);
+  const inRange = (iso) => iso && new Date(iso) >= sinceD;
+  const refLabel = (k) => (k === 'direct' ? '直接（リンクの指定なし）' : optLabel('referral', k) || k);
+
+  // 集客：生涯売上・どこから来たか・広告費
+  const perHead = active.length ? mrr / active.length : 0;
+  const ltv = avgTenureAll != null && perHead ? perHead * avgTenureAll : null;
+  const surveyRef = Object.fromEntries(sv.map((x) => [x.member_id, x.referral]));
+  const srcOf = Object.fromEntries(srcRows.map((x) => [x.member_id, x.source]));
+  const channelOf = (id) => (srcOf[id] && srcOf[id] !== 'direct' ? srcOf[id] : surveyRef[id] || srcOf[id] || '');
+  const newMembers = people.filter((p) => inRange(p.created_at));
+  const startsIn = stints.filter((x) => x.start >= sinceD);
+  const spendIn = adRows.filter((a) => new Date(`${a.month}T00:00:00`) >= new Date(sinceD.getFullYear(), sinceD.getMonth(), 1));
+  const spendBy = spendIn.reduce((m, a) => { m[a.channel] = (m[a.channel] || 0) + a.amount; return m; }, {});
+  const spendTotal = Object.values(spendBy).reduce((t, x) => t + x, 0);
+  const channels = [...new Set([...SURVEY_OPTS.referral.map(([k]) => k), ...newMembers.map((p) => channelOf(p.id)).filter(Boolean), ...Object.keys(spendBy)])];
+  const chRows = channels.map((k) => {
+    const signups = newMembers.filter((p) => channelOf(p.id) === k).length;
+    const contracts = startsIn.filter((x) => channelOf(x.id) === k).length;
+    const views = siteEv.filter((e) => e.kind === 'view' && e.source === k).length;
+    const spend = spendBy[k] || 0;
+    return { k, views, signups, contracts, spend, cac: contracts && spend ? spend / contracts : null };
+  }).filter((x) => x.views || x.signups || x.contracts || x.spend);
+  const cacAll = startsIn.length && spendTotal ? spendTotal / startsIn.length : null;
+  const views = siteEv.filter((e) => e.kind === 'view').length;
+  const lpUrl = new URL('../', location.href).href;
+
+  // 季節：直近12か月の月ごと
+  const months = Array.from({ length: 12 }, (_, i) => { const m = new Date(new Date().getFullYear(), new Date().getMonth() - 11 + i, 1); return `${m.getFullYear()}-${String(m.getMonth() + 1).padStart(2, '0')}`; });
+  const ym = (x) => String(x).slice(0, 7);
+  const season = months.map((m) => ({ m, starts: stints.filter((x) => ym(x.start.toISOString()) === m).length, subs: subs12.filter((x) => ym(new Date(x.created_at).toLocaleDateString('sv-SE')) === m).length, rounds: rounds.filter((r) => ym(r.played_on) === m).length }));
+  const sMax = Math.max(1, ...season.flatMap((x) => [x.starts, x.subs, x.rounds]));
+  const cell = (n) => `<td><span class="sz-bar"><i style="width:${Math.round(n / sMax * 100)}%"></i></span><b>${n}</b></td>`;
+
+  // 時間帯：動画が送られる曜日・時間
+  const wk = WEEK_JA.map((w, i) => [`${w}曜`, subs.filter((x) => new Date(x.created_at).getDay() === i).length]);
+  const HOURS = [['朝（5〜9時）', 5, 10], ['昼（10〜14時）', 10, 15], ['夕方（15〜18時）', 15, 19], ['夜（19〜22時）', 19, 23], ['深夜（23〜4時）', 23, 29]];
+  const hourOf = (iso) => { const h = new Date(iso).getHours(); return h < 5 ? h + 24 : h; };
+  const hr = HOURS.map(([l, a, b]) => [l, subs.filter((x) => hourOf(x.created_at) >= a && hourOf(x.created_at) < b).length]);
+  const viewEv = appEv.filter((e) => e.kind === 'view');
+  const hrApp = HOURS.map(([l, a, b]) => [l, viewEv.filter((x) => hourOf(x.created_at) >= a && hourOf(x.created_at) < b).length]);
+  // 既読までの時間
+  const lag = lessonTimes.filter((l) => l.read_at).map((l) => ({ h: (new Date(l.read_at) - new Date(l.created_at)) / 3600000, sent: hourOf(l.created_at) })).filter((v) => v.h >= 0);
+  const med = (a) => { if (!a.length) return null; const x = [...a].sort((p, q) => p - q); return x[Math.floor(x.length / 2)]; };
+  const lagBySent = HOURS.map(([l, a, b]) => { const x = lag.filter((v) => v.sent >= a && v.sent < b).map((v) => v.h); return [l, x.length ? r1(med(x)) : 0, x.length ? `${x.length}件` : '']; });
+  const read24 = lessonTimes.length ? Math.round(lag.filter((v) => v.h <= 24).length / lessonTimes.length * 100) : null;
+
+  // 練習量とスコアの伸び（ドリルの練習の記録の、月あたりの日数で分ける）
+  const pDays = new Map(); practiceAll.forEach((x) => { const k = x.member_id; if (!pDays.has(k)) pDays.set(k, new Set()); pDays.get(k).add(x.practiced_on); });
+  const spanM = Math.max(1, (Date.now() - Math.max(sinceD, new Date(Date.now() - 365 * 86400000))) / (30.44 * 86400000));
+  const PB = [['月0〜3日', 0, 4], ['月4〜7日', 4, 8], ['月8日以上', 8, 1e9]];
+  const pRows = PB.map(([l, a, b]) => { const g = growth.filter((x) => { const m = (pDays.get(x.id)?.size || 0) / spanM; return m >= a && m < b; }); return { l, n: g.length, avg: r1(avg(g.map((x) => x.diff))) }; });
+
+  // 目標の達成
+  const bestOf = new Map(); rounds.forEach((r) => { if (!bestOf.has(r.member_id) || r.score < bestOf.get(r.member_id)) bestOf.set(r.member_id, r.score); });
+  const withGoal = people.map((p) => ({ p, t: goalTarget(p.goal), best: bestOf.get(p.id) })).filter((x) => x.t);
+  const achieved = withGoal.filter((x) => x.best != null && (x.t.under ? x.best < x.t.score : x.best <= x.t.score));
+
+  // 診断・撮影と送信
+  const diagCount = countBy(diagRows.flatMap((x) => x.diag_tags || []), (t) => t);
+  const tagged = diagRows.filter((x) => (x.diag_tags || []).length).length;
+  const sm = subMeta.filter((x) => x.capture_source);
+  const sfx = sm.filter((x) => x.capture_source === 'swingframe');
+  const fails = appEv.filter((e) => e.kind === 'upload_fail');
+  const upSec = avg(subMeta.filter((x) => x.upload_ms != null).map((x) => x.upload_ms / 1000));
+  const upMb = avg(subMeta.filter((x) => x.file_mb != null).map((x) => Number(x.file_mb)));
+
+  // 機能の利用・用語集・エラー
+  const vc = countBy(viewEv, (e) => e.name);
+  const vu = new Map(); viewEv.forEach((e) => { if (!vu.has(e.name)) vu.set(e.name, new Set()); vu.get(e.name).add(e.member_id); });
+  const screenRows = [...vc].sort((a, b) => b[1] - a[1]).slice(0, 14).map(([k, n]) => [SCREEN_LABEL[k] || k, n, `${vu.get(k)?.size || 0}名`]);
+  const misses = [...countBy(appEv.filter((e) => e.kind === 'glossary_miss'), (e) => e.name.trim())].sort((a, b) => b[1] - a[1]).slice(0, 20);
+  const errs = appEv.filter((e) => e.kind === 'error');
+  const errRows = [...countBy(errs, (e) => e.name.replace(/\d{3,}/g, '#').slice(0, 80))].sort((a, b) => b[1] - a[1]).slice(0, 8);
+
+  // 天気と練習（名古屋の雨量。1mm以上を雨の日）
+  let wx = null;
+  if (weather) {
+    const perDay = countBy(practiceAll, (x) => x.practiced_on);
+    const days = Object.keys(weather).filter((k) => weather[k] != null);
+    const rain = days.filter((k) => weather[k] >= 1); const dry = days.filter((k) => weather[k] < 1);
+    const per = (list) => (list.length ? r1(list.reduce((t, k) => t + (perDay.get(k) || 0), 0) / list.length) : null);
+    wx = { rain: rain.length, dry: dry.length, pr: per(rain), pd: per(dry) };
+  }
+
+  return `
+    ${d.needSql2 ? '<div class="notice">集客・診断の分類・撮影と送信・機能の利用などの集計には、データベースの更新（supabase/migrations/20261027000000_stats_more.sql の実行）が必要です。</div>' : ''}
+    ${sec('集客と生涯売上', rangeLabel)}
+    <div class="rp-grid">${tile('1人あたりの生涯売上', ltv ? yen(ltv) : null, '', '月の売上 ÷ 人数 × 平均在籍月数')}${tile('ホームページの表示', views, '回')}${tile('新規登録', newMembers.length, '名', views ? `表示の ${Math.round(newMembers.length / views * 1000) / 10}%` : '')}
+      ${tile('広告費', spendTotal ? yen(spendTotal) : null)}${tile('1人契約するのにかかった広告費', cacAll ? yen(cacAll) : null, '', startsIn.length ? `契約 ${startsIn.length}名` : '')}${tile('生涯売上 ÷ 広告費', ltv && cacAll ? r1(ltv / cacAll) : null, '倍', '3倍以上が目安')}</div>
+    <div class="st-two">
+      <div class="card st-card"><h3>ホームページで押されたボタン</h3>${bars(SITE_KIND.map(([k, l]) => [l, siteEv.filter((e) => e.kind === k).length]), { unit: '回', total: 0, empty: 'まだ記録がありません（ホームページの公開後から数えます）' })}</div>
+      <div class="card st-card"><h3>きっかけ別</h3>${chRows.length ? `<div class="tbl-wrap"><table class="st-tbl"><thead><tr><th>きっかけ</th><th>表示</th><th>登録</th><th>契約</th><th>広告費</th><th>1契約あたり</th></tr></thead><tbody>
+        ${chRows.map((x) => `<tr><td>${esc(refLabel(x.k))}</td><td>${x.views}</td><td>${x.signups}</td><td>${x.contracts}</td><td>${x.spend ? yen(x.spend) : '—'}</td><td>${x.cac ? yen(x.cac) : '—'}</td></tr>`).join('')}</tbody></table></div>` : '<p class="muted small">まだデータがありません</p>'}
+        <p class="muted small">きっかけは、専用リンクから来た人はリンクで、それ以外はアンケートの回答で数えています。</p></div>
+    </div>
+    <details class="card st-card st-fold"><summary>きっかけ別の専用リンク（広告・SNS・チラシのQRコードに使う）</summary>
+      <p class="muted small">このリンクからホームページに来て登録した人は、自動で「どこから来たか」が記録されます。</p>
+      ${SURVEY_OPTS.referral.filter(([k]) => !['friend', 'other'].includes(k)).map(([k, l]) => `<div class="list-item small"><span>${esc(l)}</span><code class="st-link">${esc(`${lpUrl}?from=${k}`)}</code><button type="button" class="btn-sm btn-sub" data-action="copy-text" data-text="${esc(`${lpUrl}?from=${k}`)}">コピー</button></div>`).join('')}
+    </details>
+    <details class="card st-card st-fold"><summary>広告費を入力する</summary>
+      <form class="form ad-form" data-form="ad-spend">
+        <div class="ad-row"><label>月<input type="month" name="month" value="${new Date().toLocaleDateString('sv-SE').slice(0, 7)}" required></label>
+          <label>どこに<select name="channel">${SURVEY_OPTS.referral.map(([k, l]) => `<option value="${k}">${esc(l)}</option>`).join('')}</select></label>
+          <label>金額（円）<input type="number" name="amount" min="0" step="1" inputmode="numeric" required></label>
+          <button class="btn-sm" type="submit">保存</button></div>
+      </form>
+      ${adRows.slice(0, 24).map((a) => `<div class="list-item small"><span>${a.month.slice(0, 7).replace('-', '年')}月・${esc(optLabel('referral', a.channel) || a.channel)}</span><b>${yen(a.amount)}</b><button type="button" class="link" data-action="ad-spend-del" data-month="${a.month}" data-channel="${esc(a.channel)}">削除</button></div>`).join('')}
+    </details>
+
+    ${sec('季節ごとの動き', '直近12か月')}
+    <div class="card st-card"><div class="tbl-wrap"><table class="st-tbl season"><thead><tr><th>月</th><th>契約開始</th><th>動画の提出</th><th>ラウンド</th></tr></thead><tbody>
+      ${season.map((x) => `<tr><td>${Number(x.m.slice(5))}月</td>${cell(x.starts)}${cell(x.subs)}${cell(x.rounds)}</tr>`).join('')}</tbody></table></div></div>
+
+    ${sec('利用の時間帯', rangeLabel)}
+    <div class="st-two">
+      <div class="card st-card"><h3>動画が送られる曜日</h3>${bars(wk, { unit: '本' })}<h3 style="margin-top:14px">動画が送られる時間帯</h3>${bars(hr, { unit: '本' })}</div>
+      <div class="card st-card"><h3>アプリが開かれる時間帯</h3>${bars(hrApp, { unit: '回' })}
+        <h3 style="margin-top:14px">レッスンが読まれるまでの時間</h3>
+        <div class="st-nums"><div><span>24時間以内に既読</span><b>${read24 ?? '—'}${read24 != null ? '<small>%</small>' : ''}</b></div><div><span>読まれるまで（中央値）</span><b>${lag.length ? r1(med(lag.map((v) => v.h))) : '—'}${lag.length ? '<small>時間</small>' : ''}</b></div></div>
+        <p class="muted small">送った時間帯ごとの、読まれるまでの時間（中央値）</p>${bars(lagBySent, { unit: '時間', total: 0 })}</div>
+    </div>
+
+    ${sec('練習量とスコアの伸び', 'ドリルの練習の記録（月あたりの日数）で分けて比較')}
+    <div class="card st-card">${pRows.some((x) => x.n) ? `<div class="bars">${pRows.map((x) => `<div class="bar-row"><span class="bar-l">${x.l}</span><span class="bar-v wide">${x.n ? `平均 <b>${x.avg}</b> 打縮んだ<small>${x.n}名</small>` : '<small>対象の会員なし</small>'}</span></div>`).join('')}</div>` : '<p class="muted small">スコアを4回以上記録した会員が増えると表示されます</p>'}
+      <p class="muted small">「練習する人ほど伸びている」ことが分かれば、宣伝や練習の声かけに使えます。</p></div>
+
+    ${sec('目標の達成')}
+    <div class="rp-grid">${tile('目標スコアを決めている会員', withGoal.length, '名')}${tile('達成した会員', achieved.length, '名')}${tile('達成率', withGoal.length ? Math.round(achieved.length / withGoal.length * 100) : null, '%', '目標（例：90切り）とベストスコアを比較')}</div>
+
+    ${sec('多い悩み（診断の分類）', `${rangeLabel}・分類したレッスン ${tagged}件`)}
+    <div class="card st-card">${bars([...diagCount].sort((a, b) => b[1] - a[1]).slice(0, 15), { unit: '件', total: tagged || 0, empty: 'レッスンを作るときに「診断の分類」を選ぶと集計されます' })}</div>
+
+    ${sec('撮影と送信', rangeLabel)}
+    <div class="rp-grid">${tile('SwingFrameで撮影', sm.length ? Math.round(sfx.length / sm.length * 100) : null, '%', `${sm.length}本のうち ${sfx.length}本`)}${tile('撮影した本数（その日）', sfx.filter((x) => x.takes != null).length ? r1(avg(sfx.filter((x) => x.takes != null).map((x) => x.takes))) : null, '本', '送るまでに撮った平均')}${tile('編集してから送った', sfx.length ? Math.round(sfx.filter((x) => x.edited).length / sfx.length * 100) : null, '%', 'カット・書き込み')}
+      ${tile('アップロード時間', upSec != null ? r1(upSec) : null, '秒', '平均')}${tile('動画の容量', upMb != null ? r1(upMb) : null, 'MB', '平均')}${tile('アップロードの失敗', fails.length, '回')}</div>
+    ${fails.length ? `<div class="card st-card"><h3>最近の失敗</h3>${fails.slice(-5).reverse().map((e) => `<div class="st-comment"><p class="small">${esc(e.name)}</p><span class="muted small">${esc(nameOf[e.member_id] || '')}・${fmtShort(e.created_at)}</span></div>`).join('')}</div>` : ''}
+
+    ${sec('よく使われる画面', rangeLabel)}
+    <div class="card st-card">${bars(screenRows, { unit: '回', total: 0, empty: 'まだ記録がありません' })}<p class="muted small">右は、その画面を開いた会員の人数です。</p></div>
+
+    <div class="st-two">
+      <div>${sec('用語集で見つからなかった言葉', rangeLabel)}
+        <div class="card st-card">${misses.length ? `<div class="st-tags">${misses.map(([w, n]) => `<span class="pill">${esc(w)}${n > 1 ? ` ×${n}` : ''}</span>`).join(' ')}</div><p class="muted small">用語集に追加すると便利な言葉の候補です。</p>` : '<p class="muted small">まだ記録がありません</p>'}</div></div>
+      <div>${sec('アプリのエラー', rangeLabel)}
+        <div class="card st-card"><p class="small" style="margin:0 0 8px">合計 <b>${errs.length}</b> 回（${new Set(errs.map((e) => e.member_id)).size}名）</p>
+          ${errRows.length ? bars(errRows, { unit: '回', total: 0 }) : '<p class="muted small">エラーは記録されていません</p>'}</div></div>
+    </div>
+
+    ${sec('天気と練習', '名古屋の雨量（1mm以上を雨の日）とドリルの練習の記録')}
+    <div class="card st-card">${wx ? `<div class="st-nums"><div><span>晴れ・くもりの日</span><b>${wx.pd ?? '—'}<small>件／日</small></b><small class="muted">${wx.dry}日</small></div><div><span>雨の日</span><b>${wx.pr ?? '—'}<small>件／日</small></b><small class="muted">${wx.rain}日</small></div></div>
+      <p class="muted small">1日あたりの練習の記録の数です。雨の日に減るなら、雨の日向けの自宅練習ドリルを用意すると続けやすくなります。</p>` : '<p class="muted small">天気のデータを取得できませんでした（期間が短すぎるか、通信の問題です）</p>'}</div>`;
+}
+
 async function viewStats() {
   const range = STATS_RANGES.some(([k]) => k === state.statsRange) ? state.statsRange : '6m';
   const sinceD = range === 'all' ? new Date(2000, 0, 1) : new Date(new Date().getFullYear(), new Date().getMonth() - { '3m': 2, '6m': 5, '12m': 11 }[range], 1);
   const since = sinceD.toISOString(); const sinceYmd = sinceD.toLocaleDateString('sv-SE');
   const soft = (q) => q.then((r) => (r.error ? null : r.data || []));
   const [people, events, credits, subs, drillLinks, rounds, surveys, ratings, nps, exits, lessons] = await Promise.all([
-    must(sb.from('profiles').select('id, name, plan, created_at, subscription_status, access_until, cancel_at, last_seen_at').neq('role', 'admin')),
+    must(sb.from('profiles').select('id, name, plan, goal, created_at, subscription_status, access_until, cancel_at, last_seen_at').neq('role', 'admin')),
     must(sb.from('membership_events').select('member_id, kind, created_at').order('created_at')),
     must(sb.from('credits').select('member_id, kind, source, granted_on, expires_on, used_at').gte('granted_on', sinceYmd)),
     must(sb.from('submissions').select('member_id, club, angle, created_at').gte('created_at', since)),
@@ -2865,7 +3070,22 @@ async function viewStats() {
     soft(sb.from('exit_reasons').select('reasons, comment, source, created_at').gte('created_at', since).order('created_at', { ascending: false })),
     sb.from('lessons').select('id', { count: 'exact', head: true }).gte('created_at', since).then((r) => r.count ?? null),
   ]);
+  // その2：時間帯・季節・練習・集客・機能の利用など
+  const y1 = new Date(new Date().getFullYear(), new Date().getMonth() - 11, 1);
+  const [lessonTimes, diagRows, subMeta, practiceAll, subs12, srcRows, siteEv, adRows, appEv] = await Promise.all([
+    must(sb.from('lessons').select('created_at, read_at').gte('created_at', since)),
+    soft(sb.from('lessons').select('diag_tags').gte('created_at', since)),
+    soft(sb.from('submissions').select('created_at, capture_source, takes, edited, upload_ms, file_mb').gte('created_at', since)),
+    must(sb.from('roadmap_practice').select('member_id, practiced_on').gte('practiced_on', new Date(Math.max(sinceD, Date.now() - 365 * 86400000)).toLocaleDateString('sv-SE'))),
+    must(sb.from('submissions').select('created_at').gte('created_at', y1.toISOString())),
+    soft(sb.from('signup_sources').select('member_id, source, created_at')),
+    soft(sb.from('site_events').select('kind, source, created_at').gte('created_at', since).limit(50000)),
+    soft(sb.from('ad_spend').select('*').order('month', { ascending: false })),
+    soft(sb.from('app_events').select('member_id, kind, name, created_at').gte('created_at', since).limit(50000)),
+  ]);
+  const weather = await nagoyaWeather(range === 'all' || sinceD < new Date(Date.now() - 365 * 86400000) ? new Date(Date.now() - 365 * 86400000) : sinceD);
   const needSql = [surveys, ratings, nps, exits].some((x) => x === null);
+  const needSql2 = [diagRows, subMeta, srcRows, siteEv, adRows, appEv].some((x) => x === null);
   const nameOf = Object.fromEntries(people.map((p) => [p.id, p.name || '（名前なし）']));
   const active = people.filter(isActive);
   const now = new Date();
@@ -3002,6 +3222,8 @@ async function viewStats() {
     ${sec('退会の理由', `${rangeLabel}・${ex.length}件`)}
     <div class="card st-card">${bars(EXIT_REASONS.map(([v, l]) => [l, ex.filter((x) => x.reasons.includes(v)).length]), { unit: '件', total: ex.length, empty: 'まだ記録がありません' })}
       ${ex.filter((x) => x.comment).slice(0, 5).map((x) => `<div class="st-comment"><p>${esc(x.comment)}</p><span class="muted small">${fmtDate(x.created_at)}・${x.source === 'staff' ? 'スタッフが記録' : '会員の回答'}</span></div>`).join('')}</div>
+
+    ${statsMore({ range, sinceD, people, active, events, stints, avgTenureAll, mrr, subs, rounds, growth, lessonTimes, diagRows, subMeta, practiceAll, subs12, srcRows, siteEv, adRows, appEv, weather, sv, nameOf, rangeLabel, sec, tile, needSql2 })}
 
     ${sec('会員のプロフィール（アンケート）', `回答 ${sv.length}名${people.length ? `／登録 ${people.length}名` : ''}`)}
     <div class="st-two">
@@ -3213,6 +3435,8 @@ async function viewLessonForm(route) {
       <label for="lesson_date">日付</label><input id="lesson_date" name="lesson_date" type="date" value="${esc(lesson.lesson_date)}" required>
       <label for="title">タイトル</label><input id="title" name="title" value="${esc(lesson.title)}" maxlength="100" placeholder="例：ドライバーの右プッシュ" required>
       <label for="point">今回の診断（ポイント）</label><input id="point" name="point" value="${esc(lesson.point)}" maxlength="300" placeholder="例：切り返しで上体が先行している">${tplPicker('point')}
+      <fieldset class="diag-pick" data-had="${(lesson.diag_tags || []).length ? '1' : ''}"><legend>診断の分類（統計用・複数可・会員には見えません）</legend>
+        <div class="sv-chips">${DIAG_TAGS.map((t) => `<label><input type="checkbox" name="diag" value="${esc(t)}" ${(lesson.diag_tags || []).includes(t) ? 'checked' : ''}><span>${esc(t)}</span></label>`).join('')}</div></fieldset>
       <label for="feedback">フィードバック</label><textarea id="feedback" name="feedback" rows="7" maxlength="5000">${esc(lesson.feedback)}</textarea>${tplPicker('feedback')}
       <p class="muted small" style="margin:4px 0 0">空行で段落が分かれます。行の先頭に「・」を付けると箇条書きになり、その直前の短い行（例：ポイント）は見出しになります。</p>
       <label for="practice">次回までの練習</label><textarea id="practice" name="practice" rows="4" maxlength="2000" placeholder="① ハーフスイング 20球&#10;② 7I 30球">${esc(lesson.practice)}</textarea>${tplPicker('practice')}
@@ -3275,7 +3499,14 @@ async function render() {
     // 上部バーの高さ（ページ内で上についてくる部分の位置合わせに使う）
     const topBar = $app.querySelector('.top');
     if (topBar) document.documentElement.style.setProperty('--top-h', `${topBar.offsetHeight}px`);
-    if (fresh) $app.querySelector('.content, .auth-page')?.classList.add('page-in');
+    if (fresh) {
+      $app.querySelector('.content, .auth-page')?.classList.add('page-in');
+      // どの画面がよく使われているか（会員のみ。「help/words」のように2段目まで、IDは含めない）
+      if (state.profile && state.profile.role !== 'admin') {
+        const r = getRoute();
+        logEvent('view', ['help', 'account'].includes(r[0]) && r[1] ? `${r[0]}/${r[1]}` : r[0] || 'home');
+      }
+    }
     if (y !== null) window.scrollTo(0, y);
   };
   try {
@@ -3284,6 +3515,12 @@ async function render() {
     if (!state.session) { state.handoff = await getHandoff(); return paint(viewAuth()); }
     if (!state.profile) await loadProfile();
     rememberEmail();
+    // どこから来て登録したか（ホームページのリンクの ?from=）。登録して7日以内の会員だけ、1回だけ記録する
+    if (state.profile.role !== 'admin' && !local.get('atg-src-sent') && daysAgo(state.profile.created_at) <= 7) {
+      local.set('atg-src-sent', '1');
+      let src = null; try { src = JSON.parse(local.get('atg-from') || 'null'); } catch { /* noop */ }
+      sb.from('signup_sources').insert({ member_id: state.profile.id, source: src?.source || 'direct', first_seen: src?.ts ? new Date(src.ts).toISOString() : null }).then(() => {}, () => {});
+    }
     // 最後にアプリを開いた日時（統計の「声をかけたい会員」に使う。この端末からは6時間に1回だけ送る）
     if (state.profile.role !== 'admin' && Date.now() - Number(local.get('atg-seen') || 0) > 6 * 3600000) {
       local.set('atg-seen', String(Date.now()));
@@ -3363,6 +3600,7 @@ async function render() {
     return paint(await viewMemberHome());
   } catch (e) {
     console.error(e);
+    logError(`render ${location.hash}: ${e.message || e}`);
     // データベースの更新（SQL の実行）がまだのときは、分かりやすく案内する
     const needsSql = ['42P01', '42703', 'PGRST200', 'PGRST204', 'PGRST205', '42883'].includes(e.code) || /schema cache|does not exist/i.test(e.message || '');
     if (needsSql) {
@@ -3440,6 +3678,14 @@ const actions = {
     checkNewBadges();
   },
   'stats-range': (el) => { state.statsRange = el.dataset.range; render(); },
+  'copy-text': async (el) => {
+    try { await navigator.clipboard.writeText(el.dataset.text); toast('コピーしました'); } catch { toast('コピーできませんでした。長押しで選んでコピーしてください', true); }
+  },
+  'ad-spend-del': async (el) => {
+    if (!await confirmDialog({ title: 'この広告費を削除しますか？', body: '', ok: '削除する' })) return;
+    await must(sb.from('ad_spend').delete().eq('month', el.dataset.month).eq('channel', el.dataset.channel));
+    toast('削除しました'); render();
+  },
   'survey-later': () => go('home'),
   'ask-hide': (el) => {
     local.set(el.dataset.key, el.dataset.month ? monthKey() : '1');
@@ -4006,6 +4252,10 @@ const forms = {
     // 撮影画面から来てログインした場合は、そのままマイページへ
     if (getRoute()[0] === 'continue') history.replaceState(null, '', `${location.pathname}#/home`);
   },
+  'ad-spend': async (f) => {
+    await must(sb.from('ad_spend').upsert({ month: `${f.month.value}-01`, channel: f.channel.value, amount: Number(f.amount.value), updated_at: new Date().toISOString() }, { onConflict: 'month,channel' }));
+    toast('広告費を保存しました'); render();
+  },
   survey: async (f) => {
     const val = (k) => f.querySelector(`[name="${k}"]:checked`)?.value || '';
     const row = { member_id: state.profile.id, referral: val('referral'), referral_note: f.referral_note.value.trim(), age_band: val('age_band'), golf_years: val('golf_years'),
@@ -4114,15 +4364,22 @@ const forms = {
     box.classList.remove('hidden');
     const leaveGuard = (e) => { e.preventDefault(); e.returnValue = ''; };
     window.addEventListener('beforeunload', leaveGuard);
+    const fromSwing = !!h && !f.video.files[0];
+    const mb = Math.round(file.size / 104857.6) / 10;
+    const t0 = Date.now();
     try {
-      await uploadVideo(file, path, (r) => {
-        const v = Math.round(r * 100);
-        bar.style.width = `${v}%`; pct.textContent = `${v}%`;
-      });
-      await must(sb.from('submissions').insert({
-        member_id: state.profile.id, video_path: path,
-        club: f.club.value, angle: f.angle.value, question: f.question.value.trim(),
-      }));
+      try {
+        await uploadVideo(file, path, (r) => {
+          const v = Math.round(r * 100);
+          bar.style.width = `${v}%`; pct.textContent = `${v}%`;
+        });
+      } catch (e) { logEvent('upload_fail', `${mb}MB ${fromSwing ? 'SwingFrame' : 'カメラロール'}：${e.message}`); throw e; }
+      const row = { member_id: state.profile.id, video_path: path, club: f.club.value, angle: f.angle.value, question: f.question.value.trim() };
+      // 統計用（撮影方法・撮り直した回数・アップロードの時間と容量）。データベースが未更新でも送信はできるようにする
+      const extra = { capture_source: fromSwing ? 'swingframe' : 'library', takes: fromSwing && Number.isFinite(h.takes) ? h.takes : null, edited: fromSwing ? !!h.edited : null, upload_ms: Date.now() - t0, file_mb: mb };
+      const { error } = await sb.from('submissions').insert({ ...row, ...extra });
+      if (error && ['PGRST204', '42703'].includes(error.code)) await must(sb.from('submissions').insert(row));
+      else if (error) throw error;
     } finally {
       window.removeEventListener('beforeunload', leaveGuard);
     }
@@ -4247,6 +4504,8 @@ const forms = {
       lesson_date: f.lesson_date.value, title: f.title.value.trim(), point: f.point.value.trim(),
       feedback: f.feedback.value.trim(), practice: f.practice.value.trim(), video_url: videoUrl,
     };
+    const diag = [...f.querySelectorAll('input[name="diag"]:checked')].map((i) => i.value);
+    if (diag.length || f.querySelector('.diag-pick')?.dataset.had) row.diag_tags = diag;
     // 新しいドリルが入力されていれば、先にドリル集へ登録しておく
     const drillIds = [...f.querySelectorAll('input[name="drill"]:checked')].map((i) => i.value);
     const nd = drillFromForm(f, 'ld_');
