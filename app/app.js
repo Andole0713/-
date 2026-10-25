@@ -545,7 +545,7 @@ const PAGE_CAT = {
   celebrations: 'celebrate', badges: 'celebrate', help: 'help', menu: 'menu', account: 'menu', guide: 'help', install: 'help', plans: 'menu',
   'admin/dashboard': 'home', 'admin/inbox': 'video', 'admin/lesson': 'video', 'admin/meetings': 'meeting', 'admin/prep': 'meeting',
   'admin/members': 'member', 'admin/member': 'member', 'admin/roadmap': 'drill', 'admin/drills': 'drill', 'admin/drill': 'drill',
-  'admin/report': 'home', 'admin/stats': 'home', 'admin/templates': 'video', survey: 'menu',
+  'admin/report': 'home', 'admin/stats': 'score', 'admin/templates': 'video', survey: 'menu',
 };
 const CAT_LABEL = { home: 'Home', video: 'Swing Video', lesson: 'Lesson', drill: 'Drill', score: 'Score', celebrate: 'Celebration', help: 'Guide', menu: 'Menu', meeting: 'Meeting', member: 'Members' };
 function pageCat() {
@@ -556,7 +556,7 @@ function header(title, back) {
   const cat = pageCat();
   return `<div class="top cat-${cat}">
     <div class="row">${back ? `<a class="back" href="#/${back}" aria-label="戻る">‹</a>` : ''}
-      <div><div class="brand">${esc(title)}</div><div class="muted top-cat">${CAT_LABEL[cat]}</div></div></div>
+      <div><div class="brand">${esc(title)}</div><div class="muted top-cat">${location.hash.startsWith('#/admin/stats') ? 'Statistics' : CAT_LABEL[cat]}</div></div></div>
     <div class="top-right">${shootButton()}
       <a href="../" aria-label="${esc(SCHOOL_NAME)} トップページへ"><img class="top-logo" src="../assets/logo-mark.png" width="200" height="170" alt="${esc(SCHOOL_NAME)}"></a></div>
   </div>`;
@@ -568,6 +568,7 @@ function shootButton() {
 }
 const ICON = {
   calendar: '<rect x="3.5" y="5" width="17" height="15.5" rx="2"/><path d="M3.5 9.5h17"/><path d="M8 3v4M16 3v4"/><path d="M8 13.5h3v3H8z"/>',
+  chart: '<path d="M4 20h16"/><rect x="6" y="11" width="3" height="7" rx="1"/><rect x="11" y="6" width="3" height="12" rx="1"/><rect x="16" y="13" width="3" height="5" rx="1"/>',
   gauge: '<path d="M4 16a8 8 0 1 1 16 0"/><path d="M12 16l4-5"/><circle cx="12" cy="16" r="1.3"/>',
   target: '<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1"/>',
   home: '<path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/><path d="M10 20v-6h4v6"/>',
@@ -598,7 +599,7 @@ const memberNav = (active) => nav([['home', 'home', 'ホーム', 0, 'home'], ['s
 // 契約前の会員（プランを選ぶ前）のメニュー
 const guestNav = (active) => nav([['plans', 'card', 'プラン', 0, 'menu'], ['help', 'help', 'はじめての方へ', 0, 'help'], ['account', 'user', 'アカウント', 0, 'menu']], active);
 const newBadge = (l) => (l.read_at ? '' : '<span class="new-badge">NEW</span>');
-const adminNav = (active) => nav([['admin/dashboard', 'gauge', 'やること', state.adminTodo, 'home'], ['admin/inbox', 'inbox', '提出動画', state.adminPending, 'video'], ['admin/meetings', 'calendar', '面談', state.adminMeetingTodo, 'meeting'], ['admin/members', 'users', '会員一覧', 0, 'member'], ['admin/drills', 'target', 'ドリル集', 0, 'drill'], ['account', 'user', 'アカウント', 0, 'menu']], active);
+const adminNav = (active) => nav([['admin/dashboard', 'gauge', 'やること', state.adminTodo, 'home'], ['admin/inbox', 'inbox', '提出動画', state.adminPending, 'video'], ['admin/meetings', 'calendar', '面談', state.adminMeetingTodo, 'meeting'], ['admin/members', 'users', '会員一覧', 0, 'member'], ['admin/drills', 'target', 'ドリル集', 0, 'drill'], ['admin/stats', 'chart', '統計', 0, 'score'], ['account', 'user', 'アカウント', 0, 'menu']], active);
 
 async function must(promise) {
   const { data, error } = await promise;
@@ -2090,7 +2091,7 @@ async function viewDashboard() {
       <a class="kpi" href="#/admin/members"><span>契約中の会員</span><b>${active.length}</b><small>登録 ${people.length}名</small></a>
     </div>
     <div class="dash-top"><p class="dash-legend"><span class="lg todo">対応が必要</span><span class="lg watch">様子を見る</span><span class="lg info">お知らせ</span><span class="lg celebrate">お祝い</span></p>
-      <span class="dash-links"><a class="btn btn-sm btn-sub" href="#/admin/templates">✎ テンプレート</a><a class="btn btn-sm btn-sub" href="#/admin/report">📊 月のまとめ</a><a class="btn btn-sm btn-sub" href="#/admin/stats">📈 統計</a></span></div>
+      <span class="dash-links"><a class="btn btn-sm btn-sub" href="#/admin/templates">✎ テンプレート</a><a class="btn btn-sm btn-sub" href="#/admin/report">📊 月のまとめ</a></span></div>
     <div class="cols">
       <div class="col-main">${left.map((h, i) => `<div class="blk" style="--o:${i}">${h}</div>`).join('')}</div>
       <div class="col-side">${right.map((h, i) => `<div class="blk" style="--o:${10 + i}">${h}</div>`).join('')}
@@ -2951,7 +2952,7 @@ async function viewStats() {
   const sec = (title, sub = '') => `<div class="section-title"><h2>${title}</h2>${sub ? `<span class="muted small">${sub}</span>` : ''}</div>`;
   const tile = (label, val, unit = '', note = '') => `<div class="rp-card"><span>${label}</span><b>${val ?? '—'}${val != null && unit ? `<small>${unit}</small>` : ''}</b>${note ? `<small class="muted">${note}</small>` : ''}</div>`;
   const rangeLabel = STATS_RANGES.find(([k]) => k === range)[1];
-  return header('統計', 'admin/dashboard') + `<div class="content wide stats">
+  return header('統計') + `<div class="content wide stats">
     <p class="page-lead">会員の動きをまとめて、事業の判断に使うページです。月ごとの数字は「<a href="#/admin/report">月のまとめ</a>」にあります。</p>
     <div class="filter-chips st-range" role="group" aria-label="集計する期間">${STATS_RANGES.map(chip).join('')}<span class="muted small">期間：${range === 'all' ? 'これまですべて' : `${fmtDate(sinceYmd)} から今日まで`}</span></div>
     ${needSql ? '<div class="notice">アンケート・評価・すすめたい度・退会理由の集計には、データベースの更新（supabase/migrations/20261026000000_stats.sql の実行）が必要です。</div>' : ''}
@@ -3007,7 +3008,7 @@ async function viewStats() {
       <div class="card st-card"><h3>入会時のスコア</h3>${bars(optRows('score_band', sv), { unit: '名' })}</div>
     </div>
     <p class="muted small">契約中の会員で回答した人：${svActive.filter((s) => active.some((p) => p.id === s.member_id)).length}名／${active.length}名</p>
-  </div>` + adminNav('admin/dashboard');
+  </div>` + adminNav('admin/stats');
 }
 
 async function viewReport(ym) {
