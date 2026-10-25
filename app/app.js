@@ -1028,14 +1028,18 @@ const BADGES = [
   { id: 'word100', kind: 'word', n: 100, ic: '🎓', title: '用語 100日連続', desc: '今日のゴルフ用語を100日続けてチェック' },
   { id: 'drill7', kind: 'drill', n: 7, ic: '🔥', title: '練習 7日連続', desc: 'ドリルの練習を7日続けて記録' },
   { id: 'drill30', kind: 'drill', n: 30, ic: '🏅', title: '練習 30日連続', desc: 'ドリルの練習を30日続けて記録' },
+  { id: 'survey', kind: 'once', n: 1, ic: '📝', title: 'アンケート回答', desc: 'かんたんアンケートに答えてくれた' },
 ];
 async function loadBadges() {
-  const [wordDays, practice] = await Promise.all([
+  const [wordDays, practice, survey] = await Promise.all([
     state.wordDays ? Promise.resolve(state.wordDays) : loadWordDays(),
     sb.from('roadmap_practice').select('practiced_on').eq('member_id', state.profile.id).then((r) => (r.data || []).map((x) => x.practiced_on)),
+    sb.from('member_survey').select('created_at').eq('member_id', state.profile.id).maybeSingle().then((r) => r.data, () => null),
   ]);
   const src = { word: wordDays, drill: practice };
-  const hist = { word: streakHistory(wordDays), drill: streakHistory(practice) };
+  // 1回でもらえるバッジ（アンケート）
+  const once = survey ? { best: 1, reached: { 1: survey.created_at.slice(0, 10) } } : { best: 0, reached: {} };
+  const hist = { word: streakHistory(wordDays), drill: streakHistory(practice), once };
   const now = { word: currentStreak(wordDays), drill: currentStreak(practice) };
   return {
     now, src,
@@ -1083,9 +1087,9 @@ async function viewBadges() {
   const medal = (b) => `<div class="badge-item${b.got ? ' got' : ''}">
       <span class="bi-medal" aria-hidden="true">${b.ic}</span>
       <b>${esc(b.title)}</b><small>${esc(b.desc)}</small>
-      <em>${b.got ? `${fmtDate(b.on)} 獲得` : `あと ${Math.max(1, b.n - Math.max(b.best, 0))}日（最長 ${b.best}日）`}</em></div>`;
+      <em>${b.got ? `${fmtDate(b.on)} 獲得` : b.kind === 'once' ? '<a href="#/survey">アンケートに答える ›</a>' : `あと ${Math.max(1, b.n - Math.max(b.best, 0))}日（最長 ${b.best}日）`}</em></div>`;
   return header('バッジ', 'menu') + `<div class="content">
-    <p class="page-lead">毎日の「今日のゴルフ用語」と、ドリルの練習を続けるともらえます。</p>
+    <p class="page-lead">毎日の「今日のゴルフ用語」と、ドリルの練習を続けるともらえます。アンケートに答えてももらえます。</p>
     <div class="badge-now">
       <div><span>用語の連続</span><b>${now.word}<small>日</small></b></div>
       <div><span>練習の連続</span><b>${now.drill}<small>日</small></b></div>
@@ -1095,6 +1099,8 @@ async function viewBadges() {
     <div class="badge-grid">${list.filter((b) => b.kind === 'word').map(medal).join('')}</div>
     <h2 class="badge-h">ドリルの練習</h2>
     <div class="badge-grid">${list.filter((b) => b.kind === 'drill').map(medal).join('')}</div>
+    <h2 class="badge-h">そのほか</h2>
+    <div class="badge-grid">${list.filter((b) => b.kind === 'once').map(medal).join('')}</div>
     <p class="muted small">連続は、1日でも空くと0から数え直しになります。一度もらったバッジはなくなりません。</p>
   </div>` + memberNav('menu');
 }
@@ -4280,6 +4286,7 @@ const forms = {
     await must(sb.from('member_survey').upsert(row, { onConflict: 'member_id' }));
     toast('ご協力ありがとうございました！');
     go('home');
+    setTimeout(() => checkNewBadges().catch(() => {}), 600);
   },
   nps: async (f) => {
     const score = Number(f.querySelector('[name="score"]:checked')?.value);
