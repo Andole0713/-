@@ -1597,3 +1597,27 @@ button:not(:disabled):active,.btn:active,.next-action:active,.lesson-feature:act
 .sc-dot.best{fill:var(--c-score)}
 .sc-last{font-size:12px;font-weight:700;fill:var(--ink)}
 .st-plan{margin:0 0 10px;flex-wrap:wrap;overflow:visible}.st-plan button small{margin-left:5px;font-size:12px;opacity:.75;font-weight:400}
+/* ===== 会員ページの背景：深緑×金 ===== */
+body:has(.nav a[href="#/home"]){background:radial-gradient(900px 500px at 100% 0%,#1f4a33 0%,transparent 60%),linear-gradient(180deg,#123222,#0d2418) #0d2418;background-attachment:fixed;color:var(--text)}
+body:has(.nav a[href="#/home"]) .app{background:transparent}
+body:has(.nav a[href="#/home"]) .top{border-bottom-color:var(--gold)}
+/* 背景の上に直接のる文字は明るい色に */
+body:has(.nav a[href="#/home"]) .content>.page-lead,body:has(.nav a[href="#/home"]) .content>.page-lead-fold,body:has(.nav a[href="#/home"]) .content>.page-lead-fold summary{color:#d6ded3;border-left-color:rgba(200,169,106,.7)}
+body:has(.nav a[href="#/home"]) .page-lead a{color:var(--gold-2)}
+body:has(.nav a[href="#/home"]) .content>p,body:has(.nav a[href="#/home"]) .content>.muted,body:has(.nav a[href="#/home"]) .content>.between,body:has(.nav a[href="#/home"]) .content>.between .muted,body:has(.nav a[href="#/home"]) .content>.small,body:has(.nav a[href="#/home"]) .blk>p,body:has(.nav a[href="#/home"]) .cele-new>p,body:has(.nav a[href="#/home"]) .content>.section-title:not([class*="cat-"]) ~ p.muted{color:#d6ded3}
+body:has(.nav a[href="#/home"]) .content>.between b{color:#fff}
+body:has(.nav a[href="#/home"]) .month{background:var(--gold);color:#0d2418}
+body:has(.nav a[href="#/home"]) .badge-h,body:has(.nav a[href="#/home"]) .menu-group>h2{color:var(--ink)}
+body:has(.nav a[href="#/home"]) .menu-group>h2{background:rgba(255,255,255,.92);border-radius:10px;padding:6px 12px;width:fit-content}
+body:has(.nav a[href="#/home"]) .legal-links a{color:#d6ded3}
+body:has(.nav a[href="#/home"]) .help-back{color:var(--gold-2)}
+/* 黒っぽいカードは背景になじまないよう金の枠 */
+body:has(.nav a[href="#/home"]) .hero,body:has(.nav a[href="#/home"]) .lesson-head,body:has(.nav a[href="#/home"]) .shoot-cta{border:1px solid var(--gold)}
+body:has(.nav a[href="#/home"]) .rm-home{border-color:var(--gold)}
+body:has(.nav a[href="#/home"]) .blk>.section-title[class*="cat-"],body:has(.nav a[href="#/home"]) .content>.section-title{box-shadow:0 2px 10px rgba(0,0,0,.25)}
+/* 深緑の背景：はじめての方への見出し・説明 */
+body:has(.nav a[href="#/home"]) .help-h{color:#fff}
+body:has(.nav a[href="#/home"]) .help-h .help-num{background:var(--gold);color:#0d2418}
+body:has(.nav a[href="#/home"]) .help>.muted,body:has(.nav a[href="#/home"]) .content .help-page>.muted,body:has(.nav a[href="#/home"]) .help-tabs-explain~.muted,body:has(.nav a[href="#/home"]) .help-h+.muted{color:#d6ded3}
+body:has(.nav a[href="#/home"]) .hf-loop{color:var(--gold-2)}
+body:has(.nav a[href="#/home"]) .cele-shelf{color:#f3c6d8}
