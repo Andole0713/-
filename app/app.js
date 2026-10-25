@@ -545,7 +545,7 @@ const PAGE_CAT = {
   celebrations: 'celebrate', badges: 'celebrate', help: 'help', menu: 'menu', account: 'menu', guide: 'help', install: 'help', plans: 'menu',
   'admin/dashboard': 'home', 'admin/inbox': 'video', 'admin/lesson': 'video', 'admin/meetings': 'meeting', 'admin/prep': 'meeting',
   'admin/members': 'member', 'admin/member': 'member', 'admin/roadmap': 'drill', 'admin/drills': 'drill', 'admin/drill': 'drill',
-  'admin/report': 'home', 'admin/templates': 'video',
+  'admin/report': 'home', 'admin/stats': 'home', 'admin/templates': 'video', survey: 'menu',
 };
 const CAT_LABEL = { home: 'Home', video: 'Swing Video', lesson: 'Lesson', drill: 'Drill', score: 'Score', celebrate: 'Celebration', help: 'Guide', menu: 'Menu', meeting: 'Meeting', member: 'Members' };
 function pageCat() {
@@ -867,6 +867,7 @@ async function viewMemberHome() {
   const done = tasks.filter((t) => t.done).length;
   const plan = planOf(p.plan);
   const cr = planCredits(p.plan) ? creditSummary(await loadCredits(p.id, { self: true })) : null;
+  const asks = await loadAsks(p);
   return header('マイページ') + `<div class="content wide"><div class="cols">
   <div class="col-main">
     ${newCeles.length ? `<div class="blk cele-new" style="--o:1">
@@ -879,6 +880,7 @@ async function viewMemberHome() {
     <div class="blk" style="--o:1">
     ${nextAction({ latest, rmNow, practicedToday, cr, pending: subs, tasks, done })}
     ${firstSteps({ subCount, latest })}
+    ${askCards(asks)}
     </div>
     <div class="blk" style="--o:2">
     <div class="hero">${plan ? `<span class="pill">${esc(plan.name)}</span>` : ''}
@@ -1360,6 +1362,7 @@ async function viewLesson(id, back = 'history') {
   const drills = links.map((x) => x.drills).filter(Boolean);
   const drillUrls = await signedDrillUrls(drills);
   const mine = l.member_id === state.profile.id;
+  const rated = await sb.from('lesson_ratings').select('rating, comment').eq('lesson_id', l.id).maybeSingle();
   if (mine && !l.read_at) {
     const { error } = await sb.rpc('mark_lesson_read', { p_lesson: l.id });
     if (!error) state.unread = Math.max(0, state.unread - 1);
@@ -1402,6 +1405,10 @@ async function viewLesson(id, back = 'history') {
         ${mine ? '<p class="muted small" style="margin:-4px 0 4px">練習したらタップしてチェックしましょう。</p>' : ''}
         ${practiceBar(l)}
         ${drillList(l.practice, l.practice_done || [], mine ? l.id : null)}</section>` : ''}
+    </div>
+    <div class="blk" style="--o:6">
+    ${mine && !rated.error ? ratingCard(l, rated.data)
+      : !mine && rated.data ? `<section class="card lesson-sec">${secTitle('★', '会員の評価')}<p><b>${RATINGS.find(([v]) => v === rated.data.rating)?.slice(1).join(' ')}</b></p>${rated.data.comment ? `<p class="pre small">${esc(rated.data.comment)}</p>` : ''}</section>` : ''}
     </div>
   </div>
   </div>
@@ -1471,6 +1478,7 @@ function viewAccount() {
         : isActive(p) ? `<p class="muted small" style="margin:10px 0 0">ご契約内容の変更は、LINE またはお電話（${esc(CONTACT.telDisplay)}）でお問い合わせください。</p>`
         : '<a class="btn btn-block" href="#/plans">プランを選ぶ</a>'}
     </div>`}
+    ${admin ? '' : '<a class="beginner-card" href="#/survey"><span class="bc-ic" aria-hidden="true">📝</span><span><b>かんたんアンケート</b><small>回答の確認・変更はこちら</small></span><i aria-hidden="true">›</i></a>'}
     ${admin ? '' : (() => {
       const mine = p.clubs || [];
       const custom = mine.filter((c) => !CLUB_PRESETS.includes(c));
@@ -2082,7 +2090,7 @@ async function viewDashboard() {
       <a class="kpi" href="#/admin/members"><span>契約中の会員</span><b>${active.length}</b><small>登録 ${people.length}名</small></a>
     </div>
     <div class="dash-top"><p class="dash-legend"><span class="lg todo">対応が必要</span><span class="lg watch">様子を見る</span><span class="lg info">お知らせ</span><span class="lg celebrate">お祝い</span></p>
-      <span class="dash-links"><a class="btn btn-sm btn-sub" href="#/admin/templates">✎ テンプレート</a><a class="btn btn-sm btn-sub" href="#/admin/report">📊 月のまとめ</a></span></div>
+      <span class="dash-links"><a class="btn btn-sm btn-sub" href="#/admin/templates">✎ テンプレート</a><a class="btn btn-sm btn-sub" href="#/admin/report">📊 月のまとめ</a><a class="btn btn-sm btn-sub" href="#/admin/stats">📈 統計</a></span></div>
     <div class="cols">
       <div class="col-main">${left.map((h, i) => `<div class="blk" style="--o:${i}">${h}</div>`).join('')}</div>
       <div class="col-side">${right.map((h, i) => `<div class="blk" style="--o:${10 + i}">${h}</div>`).join('')}
@@ -2431,6 +2439,7 @@ async function viewMemberDetail(id) {
     sb.from('member_karte').select('*').eq('member_id', id).maybeSingle().then((r) => r.data),
   ]);
   const mCredits = await loadCredits(id);
+  const mExits = await sb.from('exit_reasons').select('*').eq('member_id', id).order('created_at', { ascending: false }).then((r) => (r.error ? null : r.data || []));
   const mCeles = await sb.from('celebrations').select('id, stamp, title, created_at, seen_at').eq('member_id', id).order('created_at', { ascending: false }).limit(5).then((r) => r.data || []);
   const mst = scoreStats(mRounds, m || {});
   const subUrls = await signedVideoUrls(subs.filter((x) => !x.video_deleted_at)).catch(() => ({}));
@@ -2500,6 +2509,8 @@ async function viewMemberDetail(id) {
     <div class="section-title cat-celebrate"><h2>お祝い</h2><button type="button" class="btn btn-sm btn-cat cat-celebrate" data-action="cele-send" data-member="${m.id}" data-name="${esc(m.name || '')}">＋ お祝いを送る</button></div>
     <div class="card">${mCeles.length ? mCeles.map((c) => `<div class="list-item small"><span>${STAMP[c.stamp] || '🏆'} ${esc(c.title)}</span><span class="muted">${fmtDate(c.created_at)} ${c.seen_at ? '<span class="pill ok">見ました</span>' : '<span class="pill mute">未読</span>'}</span></div>`).join('')
       : '<p class="muted small" style="margin:0">入会1か月・練習の継続・目標達成など、いつでもアプリにお祝いを送れます。</p>'}</div>
+
+    ${mExits && (mExits.length || m.cancel_at || !isActive(m)) ? exitCard(m, mExits) : ''}
 
     <div class="section-title"><h2>担当者メモ</h2><span class="muted small">会員には見えません</span></div>
     <div class="card">
@@ -2714,6 +2725,291 @@ async function viewTemplates() {
 }
 
 // 月のまとめ（経営の数字）
+// ---------- 統計のための記録（アンケート・レッスンの評価・すすめたい度・退会理由） ----------
+const SURVEY_OPTS = {
+  referral: [['store', '店舗（オルタイムゴルフ）'], ['instagram', 'Instagram'], ['line', 'LINE'], ['youtube', 'YouTube'], ['search', '検索（Google など）'], ['friend', '知人・友人の紹介'], ['flyer', 'チラシ・ポスター'], ['other', 'その他']],
+  age_band: [['10s', '10代'], ['20s', '20代'], ['30s', '30代'], ['40s', '40代'], ['50s', '50代'], ['60s', '60代'], ['70s', '70代以上']],
+  golf_years: [['none', 'これから始める'], ['lt1', '1年未満'], ['1-3', '1〜3年'], ['3-10', '3〜10年'], ['10+', '10年以上']],
+  score_band: [['none', 'コースはまだ'], ['120+', '120以上'], ['110', '110台'], ['100', '100台'], ['90', '90台'], ['80', '80台'], ['lt80', '79以下']],
+  store_use: [['now', '今通っている'], ['past', '前に通っていた'], ['never', '通ったことはない']],
+};
+const SURVEY_Q = { referral: 'オルタイムゴルフを何で知りましたか？', age_band: '年代', golf_years: 'ゴルフ歴', score_band: '今のスコア（18ホール）', store_use: 'オルタイムゴルフの店舗に通っていますか？' };
+const PREFS = '北海道 青森県 岩手県 宮城県 秋田県 山形県 福島県 茨城県 栃木県 群馬県 埼玉県 千葉県 東京都 神奈川県 新潟県 富山県 石川県 福井県 山梨県 長野県 岐阜県 静岡県 愛知県 三重県 滋賀県 京都府 大阪府 兵庫県 奈良県 和歌山県 鳥取県 島根県 岡山県 広島県 山口県 徳島県 香川県 愛媛県 高知県 福岡県 佐賀県 長崎県 熊本県 大分県 宮崎県 鹿児島県 沖縄県 海外'.split(' ');
+const EXIT_REASONS = [['price', '料金が合わない'], ['time', '練習やラウンドの時間がとれない'], ['effect', '効果を感じにくい'], ['online', 'オンラインが合わない（対面がいい）'], ['coach', '指導の内容が合わない'], ['app', 'アプリが使いにくい'], ['store', '店舗のレッスンに切り替える'], ['injury', 'けが・体調'], ['quit_golf', 'ゴルフをやめる・休む'], ['other', 'その他']];
+const RATINGS = [[3, '👍', '役に立った'], [2, '🙂', 'まあまあ'], [1, '🤔', 'わかりにくい']];
+// 月の料金（税込・仮）。売上の見込みの計算だけに使う。ユーキャン制は10か月分を月あたりに直した額
+const PLAN_MONTHLY_YEN = { UME: 11000, TAKE: 16500, MATSU: 22000, SUBSCRIPTION: 22000, YOUCAN: 8800 };
+const optLabel = (key, v) => SURVEY_OPTS[key]?.find(([k]) => k === v)?.[1] || '';
+const monthKey = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
+
+// はじめのアンケート（初回のガイドのあと。アカウントからいつでも変更できる）
+async function viewSurvey() {
+  const s = await sb.from('member_survey').select('*').eq('member_id', state.profile.id).maybeSingle().then((r) => r.data) || {};
+  const chips = (key) => `<fieldset class="sv-q"><legend>${SURVEY_Q[key]}</legend><div class="sv-chips">${SURVEY_OPTS[key].map(([v, l]) => `<label><input type="radio" name="${key}" value="${v}" ${s[key] === v ? 'checked' : ''}><span>${l}</span></label>`).join('')}</div></fieldset>`;
+  return header('かんたんアンケート', state.profile.onboarded_at ? 'account' : '') + `<div class="content">
+    <p class="page-lead">レッスンやサービスをよくするために、教えてください（30秒ほどで終わります）。答えたくない項目は空けたままで大丈夫です。</p>
+    <form class="card form survey" data-form="survey">
+      ${chips('referral')}
+      <input name="referral_note" maxlength="100" value="${esc(s.referral_note || '')}" placeholder="紹介してくれた方・その他の内容（任意）" aria-label="何で知ったかの補足">
+      ${chips('age_band')}${chips('golf_years')}${chips('score_band')}
+      <fieldset class="sv-q"><legend>お住まいの都道府県</legend>
+        <select name="prefecture" aria-label="お住まいの都道府県"><option value="">選ぶ</option>${PREFS.map((x) => `<option ${s.prefecture === x ? 'selected' : ''}>${x}</option>`).join('')}</select></fieldset>
+      ${chips('store_use')}
+      <p class="muted small">回答はサービスの改善と統計（会員全体の傾向）にだけ使います。<a href="../legal/privacy.html" target="_blank" rel="noopener">プライバシーポリシー</a></p>
+      <button class="btn-block btn-gold" type="submit">${s.member_id ? '回答を更新する' : '回答する'}</button>
+    </form>
+    ${s.member_id ? '' : '<button type="button" class="btn-block btn-sub" data-action="survey-later">あとで答える</button>'}
+  </div>` + (isActive(state.profile) ? memberNav('menu') : '');
+}
+
+// ホームに出すお願いカード（アンケート・すすめたい度・退会理由）。新しい記録の SQL が未実行なら出さない
+async function loadAsks(p) {
+  const month = monthKey();
+  const [survey, nps, exits] = await Promise.all([
+    sb.from('member_survey').select('member_id').eq('member_id', p.id).maybeSingle(),
+    sb.from('nps_responses').select('score').eq('member_id', p.id).eq('month', month).maybeSingle(),
+    p.cancel_at ? sb.from('exit_reasons').select('id').eq('member_id', p.id).limit(1) : Promise.resolve({ data: [] }),
+  ]);
+  return {
+    survey: !survey.error && !survey.data && !local.get('atg-survey-hide'),
+    nps: !nps.error && !nps.data && local.get('atg-nps-skip') !== month && !p.cancel_at && daysAgo(p.created_at) >= 30,
+    exit: !!p.cancel_at && !exits.error && !(exits.data || []).length && !local.get('atg-exit-hide'),
+  };
+}
+function askCards(a) {
+  return [
+    a.exit ? `<section class="card ask-card">
+      <button type="button" class="fs-close" data-action="ask-hide" data-key="atg-exit-hide" aria-label="閉じる">×</button>
+      <div class="eyebrow">Thank you</div><h2>解約の手続きを受け付けました</h2>
+      <p class="small">これまでありがとうございました。よろしければ、理由を教えてください（今後の改善に使います）。</p>
+      <form class="form" data-form="exit-reason">
+        <div class="sv-chips multi">${EXIT_REASONS.map(([v, l]) => `<label><input type="checkbox" name="reason" value="${v}"><span>${l}</span></label>`).join('')}</div>
+        <textarea name="comment" rows="2" maxlength="1000" placeholder="ご意見・ご要望があればご自由にどうぞ（任意）" aria-label="ご意見"></textarea>
+        <button class="btn-block btn-sub" type="submit">送る</button>
+      </form></section>` : '',
+    a.nps ? `<section class="card ask-card">
+      <button type="button" class="fs-close" data-action="ask-hide" data-key="atg-nps-skip" data-month="1" aria-label="今月は答えない">×</button>
+      <div class="eyebrow">This Month</div><h2>オルタイムゴルフを、友だちにすすめたいと思いますか？</h2>
+      <form class="form" data-form="nps">
+        <div class="nps-scale" role="radiogroup" aria-label="0（すすめたくない）〜10（ぜひすすめたい）">${Array.from({ length: 11 }, (_, i) => `<label><input type="radio" name="score" value="${i}" required><span>${i}</span></label>`).join('')}</div>
+        <div class="nps-ends"><span>すすめたくない</span><span>ぜひすすめたい</span></div>
+        <textarea name="comment" rows="2" maxlength="500" placeholder="その点数の理由（任意）" aria-label="理由"></textarea>
+        <button class="btn-block btn-sub" type="submit">答える</button>
+      </form><p class="muted small" style="margin:6px 0 0">月に1回だけお聞きしています。</p></section>` : '',
+    a.survey ? `<div class="card ask-card ask-link"><a href="#/survey"><span class="ask-ic" aria-hidden="true">📝</span>
+      <span><b>かんたんアンケートにご協力ください</b><small>30秒ほどで終わります。レッスンをよくするために使います</small></span><i aria-hidden="true">›</i></a>
+      <button type="button" class="fs-close" data-action="ask-hide" data-key="atg-survey-hide" aria-label="閉じる">×</button></div>` : '',
+  ].join('');
+}
+
+// レッスンの評価（レッスン詳細の一番下）
+function ratingCard(l, r) {
+  return `<section class="card lesson-sec rate-card" data-lesson="${esc(l.id)}">
+    <h2 class="sec-h"><i aria-hidden="true">★</i>このレッスンはいかがでしたか？</h2>
+    <div class="rate-btns" role="group" aria-label="レッスンの評価">${RATINGS.map(([v, ic, label]) => `<button type="button" data-action="rate-lesson" data-rating="${v}" aria-pressed="${r?.rating === v}" class="${r?.rating === v ? 'on' : ''}"><span aria-hidden="true">${ic}</span>${label}</button>`).join('')}</div>
+    <form class="form rate-comment" data-form="rate-comment" data-lesson="${esc(l.id)}"${r ? '' : ' hidden'}>
+      <textarea name="comment" rows="2" maxlength="500" placeholder="コーチへのひとこと・わかりにくかった所など（任意）" aria-label="コーチへのひとこと">${esc(r?.comment || '')}</textarea>
+      <button class="btn-sm btn-sub" type="submit">送る</button>
+    </form>
+    <p class="muted small" style="margin:6px 0 0">評価はコーチだけが見ます。</p>
+  </section>`;
+}
+
+// スタッフ：会員詳細の「退会の理由」
+function exitCard(m, exits) {
+  return `<div class="section-title"><h2>退会の理由</h2><button type="button" class="btn btn-sm btn-sub" data-action="exit-add" data-member="${m.id}">＋ 記録する</button></div>
+    <div class="card">${exits.length ? exits.map((x) => `<div class="note"><p>${x.reasons.map((k) => `<span class="pill">${esc(EXIT_REASONS.find(([v]) => v === k)?.[1] || k)}</span>`).join(' ')}</p>
+        ${x.comment ? `<p class="pre small">${esc(x.comment)}</p>` : ''}<div class="note-foot"><span class="muted small">${fmtDate(x.created_at)}・${x.source === 'staff' ? 'スタッフが記録' : '会員の回答'}</span></div></div>`).join('')
+      : '<p class="muted small" style="margin:0">解約した会員から聞き取った理由を残すと、「統計」で集計できます（Webで解約した会員は、アプリで直接答えられます）。</p>'}</div>`;
+}
+
+// ---------- 統計（スタッフ） ----------
+const STATS_RANGES = [['3m', '3か月'], ['6m', '6か月'], ['12m', '1年'], ['all', 'すべて']];
+// 横棒グラフ（1色。数と割合を横に書く）
+function bars(rows, { unit = '', total = null, empty = 'まだデータがありません' } = {}) {
+  const list = rows.filter(([, n]) => n > 0);
+  if (!list.length) return `<p class="muted small">${empty}</p>`;
+  const max = Math.max(...list.map(([, n]) => n));
+  const sum = total ?? list.reduce((t, [, n]) => t + n, 0);
+  return `<div class="bars">${list.map(([label, n, note, cls = '']) => `<div class="bar-row ${cls}" title="${esc(label)}：${n}${unit}">
+      <span class="bar-l">${esc(label)}</span>
+      <span class="bar-track"><i style="width:${Math.max(2, Math.round(n / max * 100))}%"></i></span>
+      <span class="bar-v">${n}${unit}${sum ? `<small>${Math.round(n / sum * 100)}%</small>` : ''}${note ? `<small>${note}</small>` : ''}</span></div>`).join('')}</div>`;
+}
+const countBy = (arr, fn) => arr.reduce((m, x) => { const k = fn(x); if (k != null && k !== '') m.set(k, (m.get(k) || 0) + 1); return m; }, new Map());
+const optRows = (key, list) => { const c = countBy(list, (x) => x[key]); return SURVEY_OPTS[key].map(([v, l]) => [l, c.get(v) || 0]); };
+const monthsBetween = (a, b) => (b.getFullYear() - a.getFullYear()) * 12 + b.getMonth() - a.getMonth();
+const yen = (n) => `${Math.round(n).toLocaleString('ja-JP')}円`;
+
+async function viewStats() {
+  const range = STATS_RANGES.some(([k]) => k === state.statsRange) ? state.statsRange : '6m';
+  const sinceD = range === 'all' ? new Date(2000, 0, 1) : new Date(new Date().getFullYear(), new Date().getMonth() - { '3m': 2, '6m': 5, '12m': 11 }[range], 1);
+  const since = sinceD.toISOString(); const sinceYmd = sinceD.toLocaleDateString('sv-SE');
+  const soft = (q) => q.then((r) => (r.error ? null : r.data || []));
+  const [people, events, credits, subs, drillLinks, rounds, surveys, ratings, nps, exits, lessons] = await Promise.all([
+    must(sb.from('profiles').select('id, name, plan, created_at, subscription_status, access_until, cancel_at, last_seen_at').neq('role', 'admin')),
+    must(sb.from('membership_events').select('member_id, kind, created_at').order('created_at')),
+    must(sb.from('credits').select('member_id, kind, source, granted_on, expires_on, used_at').gte('granted_on', sinceYmd)),
+    must(sb.from('submissions').select('member_id, club, angle, created_at').gte('created_at', since)),
+    must(sb.from('lesson_drills').select('drills(title, tags), lessons!inner(created_at)').gte('lessons.created_at', since)),
+    must(sb.from('rounds').select('member_id, played_on, score, holes').eq('holes', 18).order('played_on')),
+    soft(sb.from('member_survey').select('*')),
+    soft(sb.from('lesson_ratings').select('lesson_id, member_id, rating, comment, created_at').gte('created_at', since).order('created_at', { ascending: false })),
+    soft(sb.from('nps_responses').select('member_id, month, score, comment, created_at').gte('month', sinceYmd).order('month', { ascending: false })),
+    soft(sb.from('exit_reasons').select('reasons, comment, source, created_at').gte('created_at', since).order('created_at', { ascending: false })),
+    sb.from('lessons').select('id', { count: 'exact', head: true }).gte('created_at', since).then((r) => r.count ?? null),
+  ]);
+  const needSql = [surveys, ratings, nps, exits].some((x) => x === null);
+  const nameOf = Object.fromEntries(people.map((p) => [p.id, p.name || '（名前なし）']));
+  const active = people.filter(isActive);
+  const now = new Date();
+
+  // 1. 売上の見込み
+  const planRows = [...countBy(active, (p) => p.plan || 'none')]
+    .map(([k, n]) => [k === 'none' ? 'プラン未設定' : planLabel(k), n, PLAN_MONTHLY_YEN[k] ? yen(PLAN_MONTHLY_YEN[k] * n) : '']).sort((a, b) => b[1] - a[1]);
+  const mrr = active.reduce((t, p) => t + (PLAN_MONTHLY_YEN[p.plan] || 0), 0);
+
+  // 2. 継続（契約の開始〜終了）
+  const byMember = new Map();
+  events.forEach((e) => { if (!byMember.has(e.member_id)) byMember.set(e.member_id, []); byMember.get(e.member_id).push(e); });
+  const stints = [];
+  byMember.forEach((list, id) => {
+    let start = null;
+    list.forEach((e) => {
+      if (e.kind === 'start' && !start) start = new Date(e.created_at);
+      if (e.kind === 'stop' && start) { stints.push({ id, start, end: new Date(e.created_at) }); start = null; }
+    });
+    if (start) stints.push({ id, start, end: null });
+  });
+  const tenureM = (s) => ((s.end || now) - s.start) / (30.44 * 86400000);
+  const ended = stints.filter((s) => s.end && s.end >= sinceD);
+  const avg = (a) => (a.length ? a.reduce((t, x) => t + x, 0) / a.length : null);
+  const avgTenureAll = avg(stints.map(tenureM)); const avgTenureEnded = avg(ended.map(tenureM));
+  const TEN_BINS = [['1か月以内', 0, 1], ['2か月目', 1, 2], ['3か月目', 2, 3], ['4か月目', 3, 4], ['5〜6か月目', 4, 6], ['7〜12か月目', 6, 12], ['13か月目以降', 12, 1e9]];
+  const tenureRows = TEN_BINS.map(([l, a, b]) => [l, ended.filter((s) => tenureM(s) >= a && tenureM(s) < b).length]);
+
+  // 3. 権利の消化（付与された月から何か月目に使ったか）
+  const creditStats = (kind) => {
+    const list = credits.filter((c) => c.kind === kind);
+    const used = list.filter((c) => c.used_at);
+    const expired = list.filter((c) => !c.used_at && c.expires_on < today());
+    const live = list.filter((c) => !c.used_at && c.expires_on >= today());
+    const lag = (c) => monthsBetween(new Date(`${c.granted_on}T00:00:00`), new Date(c.used_at));
+    const days = used.map((c) => (new Date(c.used_at) - new Date(`${c.granted_on}T00:00:00`)) / 86400000);
+    const rows = [0, 1, 2, 3, 4, 5, 6].map((m) => [m === 0 ? '付与された月' : m === 1 ? '翌月' : `${m}か月後`, used.filter((c) => (m === 6 ? lag(c) >= 6 : lag(c) === m)).length]);
+    rows.push(['使わずに期限切れ', expired.length, '', 'muted']);
+    const closed = used.length + expired.length;
+    return { list, used, expired, live, rows, avgDays: avg(days), rate: closed ? Math.round(used.length / closed * 100) : null, sameMonth: used.length ? Math.round(used.filter((c) => lag(c) === 0).length / used.length * 100) : null };
+  };
+  const cv = creditStats('video'); const cm = creditStats('meeting');
+  const firstFree = credits.filter((c) => c.source === 'first_free' && c.used_at);
+  const firstFreeDays = avg(firstFree.map((c) => (new Date(c.used_at) - new Date(`${c.granted_on}T00:00:00`)) / 86400000));
+  const creditBlock = (label, s) => `<div class="card st-card"><h3>${label}</h3>
+    <div class="st-nums"><div><span>使った</span><b>${s.used.length}<small>回</small></b></div><div><span>期限切れ</span><b>${s.expired.length}<small>回</small></b></div><div><span>今使える残り</span><b>${s.live.length}<small>回</small></b></div>
+      <div><span>消化率</span><b>${s.rate ?? '—'}${s.rate != null ? '<small>%</small>' : ''}</b></div><div><span>付与から使うまで</span><b>${s.avgDays != null ? Math.round(s.avgDays) : '—'}${s.avgDays != null ? '<small>日（平均）</small>' : ''}</b></div></div>
+    <p class="muted small">付与された月から、何か月目に使ったか</p>${bars(s.rows, { unit: '回' })}</div>`;
+
+  // 4. スコアの伸び（18ホールを4回以上記録した会員：最初の数回と最近の数回の平均を比べる）
+  const rByM = new Map(); rounds.forEach((r) => { if (!rByM.has(r.member_id)) rByM.set(r.member_id, []); rByM.get(r.member_id).push(r.score); });
+  const growth = [...rByM.entries()].filter(([, a]) => a.length >= 4).map(([id, a]) => {
+    const k = Math.min(3, Math.floor(a.length / 2));
+    return { id, before: avg(a.slice(0, k)), after: avg(a.slice(-k)), n: a.length };
+  }).map((g) => ({ ...g, diff: g.before - g.after }));
+  const avgGrowth = avg(growth.map((g) => g.diff));
+  const improved = growth.filter((g) => g.diff > 0).length;
+
+  // 5. 動画・ドリルの傾向
+  const clubRows = [...countBy(subs, (s) => s.club)].sort((a, b) => b[1] - a[1]).slice(0, 10);
+  const angleRows = [...countBy(subs, (s) => s.angle)].sort((a, b) => b[1] - a[1]);
+  const tagRows = [...countBy(drillLinks.flatMap((x) => x.drills?.tags || []), (t) => t)].sort((a, b) => b[1] - a[1]).slice(0, 10);
+  const drillRows = [...countBy(drillLinks, (x) => x.drills?.title)].sort((a, b) => b[1] - a[1]).slice(0, 8);
+
+  // 6. 辞めそうな人（声かけリスト）
+  const lastSub = new Map(); subs.forEach((s) => { if (!lastSub.has(s.member_id) || lastSub.get(s.member_id) < s.created_at) lastSub.set(s.member_id, s.created_at); });
+  const liveBy = countBy(credits.filter((c) => !c.used_at && c.expires_on >= today()), (c) => c.member_id);
+  const soonBy = countBy(credits.filter((c) => !c.used_at && c.expires_on >= today() && c.expires_on <= isoDaysFrom(31).slice(0, 10)), (c) => c.member_id);
+  const risk = active.filter((p) => !p.cancel_at).map((p) => {
+    const flags = [];
+    const seen = p.last_seen_at || null;
+    if (seen && daysAgo(seen) >= 14) flags.push(`${daysAgo(seen)}日アプリを開いていない`);
+    if (daysAgo(p.created_at) >= 45 && !lastSub.get(p.id)) flags.push('45日以上動画を送っていない');
+    else if (lastSub.get(p.id) && daysAgo(lastSub.get(p.id)) >= 45) flags.push(`${daysAgo(lastSub.get(p.id))}日動画を送っていない`);
+    if ((liveBy.get(p.id) || 0) >= 3) flags.push(`権利が${liveBy.get(p.id)}回残っている`);
+    if (soonBy.get(p.id)) flags.push(`${soonBy.get(p.id)}回分の期限が1か月以内`);
+    return { p, flags };
+  }).filter((x) => x.flags.length).sort((a, b) => b.flags.length - a.flags.length);
+
+  // 7. 満足度
+  const rt = ratings || []; const np = nps || []; const ex = exits || []; const sv = surveys || [];
+  const good = rt.length ? Math.round(rt.filter((r) => r.rating === 3).length / rt.length * 100) : null;
+  const npsOf = (list) => (list.length ? Math.round((list.filter((x) => x.score >= 9).length - list.filter((x) => x.score <= 6).length) / list.length * 100) : null);
+  const npsMonths = [...new Set(np.map((x) => x.month))].sort().reverse().slice(0, 6);
+  const svActive = sv.filter((s) => people.some((p) => p.id === s.member_id));
+  const prefRows = [...countBy(sv, (s) => s.prefecture)].sort((a, b) => b[1] - a[1]).slice(0, 8);
+
+  const chip = ([k, l]) => `<button type="button" data-action="stats-range" data-range="${k}" class="${range === k ? 'on' : ''}" aria-pressed="${range === k}">${l}</button>`;
+  const sec = (title, sub = '') => `<div class="section-title"><h2>${title}</h2>${sub ? `<span class="muted small">${sub}</span>` : ''}</div>`;
+  const tile = (label, val, unit = '', note = '') => `<div class="rp-card"><span>${label}</span><b>${val ?? '—'}${val != null && unit ? `<small>${unit}</small>` : ''}</b>${note ? `<small class="muted">${note}</small>` : ''}</div>`;
+  const rangeLabel = STATS_RANGES.find(([k]) => k === range)[1];
+  return header('統計', 'admin/dashboard') + `<div class="content wide stats">
+    <p class="page-lead">会員の動きをまとめて、事業の判断に使うページです。月ごとの数字は「<a href="#/admin/report">月のまとめ</a>」にあります。</p>
+    <div class="filter-chips st-range" role="group" aria-label="集計する期間">${STATS_RANGES.map(chip).join('')}<span class="muted small">期間：${range === 'all' ? 'これまですべて' : `${fmtDate(sinceYmd)} から今日まで`}</span></div>
+    ${needSql ? '<div class="notice">アンケート・評価・すすめたい度・退会理由の集計には、データベースの更新（supabase/migrations/20261026000000_stats.sql の実行）が必要です。</div>' : ''}
+
+    ${sec('売上の見込み', '今の契約から計算（料金は仮）')}
+    <div class="rp-grid">${tile('契約中', active.length, '名')}${tile('月の売上の見込み', mrr ? yen(mrr) : null)}${tile('1人あたり', active.length && mrr ? yen(mrr / active.length) : null)}</div>
+    <div class="card st-card"><h3>プラン別の人数</h3>${bars(planRows, { unit: '名' })}<p class="muted small">ユーキャン制は 88,000円 ÷ 10か月 で月あたりに直しています。追加の動画・面談（都度払い）は入っていません。</p></div>
+
+    ${sec('継続', '契約の開始・終了の記録から計算')}
+    <div class="rp-grid">${tile('平均の在籍期間', avgTenureAll != null ? Math.round(avgTenureAll * 10) / 10 : null, 'か月', '今も続けている人を含む')}${tile('辞めた人の在籍期間', avgTenureEnded != null ? Math.round(avgTenureEnded * 10) / 10 : null, 'か月', `${rangeLabel}に辞めた ${ended.length}名の平均`)}</div>
+    <div class="card st-card"><h3>何か月目で辞めたか</h3>${bars(tenureRows, { unit: '名', empty: 'この期間に辞めた人はいません' })}<p class="muted small">最低契約期間は4か月です。辞める人が多い月の前に、面談やお祝いで声をかけるのが効果的です。</p></div>
+
+    ${sec('動画・面談の権利の消化', `${rangeLabel}に付与された権利`)}
+    <div class="st-two">${creditBlock('動画の権利', cv)}${creditBlock('面談の権利', cm)}</div>
+    ${firstFree.length ? `<p class="small">初回無料面談は、付与から平均 <b>${Math.round(firstFreeDays)}日</b> で使われています（${firstFree.length}名）。</p>` : ''}
+
+    ${sec('スコアの伸び', '18ホールを4回以上記録した会員')}
+    <div class="rp-grid">${tile('対象の会員', growth.length, '名')}${tile('平均で縮んだ打数', avgGrowth != null ? Math.round(avgGrowth * 10) / 10 : null, '打', '最初の数回と最近の数回の平均を比較')}${tile('スコアが縮んだ人', growth.length ? Math.round(improved / growth.length * 100) : null, '%', `${improved}名`)}</div>
+    ${growth.length ? `<div class="card st-card"><h3>伸びた会員</h3>${bars(growth.filter((g) => g.diff > 0).sort((a, b) => b.diff - a.diff).slice(0, 8).map((g) => [nameOf[g.id] || '（退会済み）', Math.round(g.diff * 10) / 10, `${Math.round(g.before)}→${Math.round(g.after)}`]), { unit: '打', total: 0 })}</div>` : ''}
+
+    ${sec('動画とドリルの傾向', rangeLabel)}
+    <div class="st-two">
+      <div class="card st-card"><h3>送られた動画（クラブ別）</h3>${bars(clubRows, { unit: '本' })}<h3 style="margin-top:14px">撮影方向</h3>${bars(angleRows, { unit: '本' })}</div>
+      <div class="card st-card"><h3>レッスンで使ったドリル（タグ別）</h3>${bars(tagRows, { unit: '回' })}<h3 style="margin-top:14px">よく使ったドリル</h3>${bars(drillRows, { unit: '回' })}</div>
+    </div>
+
+    ${sec('声をかけたい会員', '辞める前ぶれが出ている契約中の会員')}
+    <div class="card">${risk.length ? risk.slice(0, 15).map(({ p, flags }) => `<a class="list-item risk-row" href="#/admin/member/${p.id}"><b>${esc(p.name || '（名前なし）')}</b><span>${flags.map((f) => `<span class="pill warn">${esc(f)}</span>`).join(' ')}</span></a>`).join('')
+      : '<p class="muted small" style="margin:0">今は目立った前ぶれのある会員はいません。</p>'}
+      <p class="muted small" style="margin:8px 0 0">目安：14日以上アプリを開いていない／45日以上動画を送っていない／権利が3回以上残っている／期限が1か月以内の権利がある</p></div>
+
+    ${sec('満足度', rangeLabel)}
+    <div class="rp-grid">${tile('レッスンの評価', rt.length, '件', lessons ? `送ったレッスン ${lessons}件のうち` : '')}${tile('「役に立った」', good, '%')}${tile('すすめたい度（NPS）', npsOf(np.filter((x) => x.month === npsMonths[0])), '', npsMonths[0] ? `${npsMonths[0].slice(0, 7).replace('-', '年')}月・${np.filter((x) => x.month === npsMonths[0]).length}名が回答` : 'まだ回答がありません')}</div>
+    <div class="st-two">
+      <div class="card st-card"><h3>レッスンの評価</h3>${bars(RATINGS.map(([v, ic, l]) => [`${ic} ${l}`, rt.filter((r) => r.rating === v).length]), { unit: '件' })}
+        ${rt.filter((r) => r.comment).slice(0, 5).map((r) => `<div class="st-comment"><p>${esc(r.comment)}</p><a class="muted small" href="#/admin/member/${r.member_id}">${esc(nameOf[r.member_id] || '')}・${fmtDate(r.created_at)} ›</a></div>`).join('')}</div>
+      <div class="card st-card"><h3>すすめたい度（月ごと）</h3>${npsMonths.length ? `<div class="bars">${npsMonths.map((m) => { const l = np.filter((x) => x.month === m); return `<div class="bar-row"><span class="bar-l">${m.slice(0, 7).replace('-', '年')}月</span><span class="bar-v wide">NPS <b>${npsOf(l)}</b><small>平均 ${Math.round(avg(l.map((x) => x.score)) * 10) / 10}点・${l.length}名</small></span></div>`; }).join('')}</div>` : '<p class="muted small">まだ回答がありません</p>'}
+        <p class="muted small">NPS＝（9〜10点の人の割合）−（0〜6点の人の割合）。0より上なら「すすめたい人」が多い状態です。</p>
+        ${np.filter((x) => x.comment).slice(0, 5).map((x) => `<div class="st-comment"><p><b>${x.score}点</b> ${esc(x.comment)}</p><span class="muted small">${esc(nameOf[x.member_id] || '')}</span></div>`).join('')}</div>
+    </div>
+
+    ${sec('退会の理由', `${rangeLabel}・${ex.length}件`)}
+    <div class="card st-card">${bars(EXIT_REASONS.map(([v, l]) => [l, ex.filter((x) => x.reasons.includes(v)).length]), { unit: '件', total: ex.length, empty: 'まだ記録がありません' })}
+      ${ex.filter((x) => x.comment).slice(0, 5).map((x) => `<div class="st-comment"><p>${esc(x.comment)}</p><span class="muted small">${fmtDate(x.created_at)}・${x.source === 'staff' ? 'スタッフが記録' : '会員の回答'}</span></div>`).join('')}</div>
+
+    ${sec('会員のプロフィール（アンケート）', `回答 ${sv.length}名${people.length ? `／登録 ${people.length}名` : ''}`)}
+    <div class="st-two">
+      <div class="card st-card"><h3>何で知ったか</h3>${bars(optRows('referral', sv), { unit: '名' })}
+        <h3 style="margin-top:14px">店舗の利用</h3>${bars(optRows('store_use', sv), { unit: '名' })}</div>
+      <div class="card st-card"><h3>年代</h3>${bars(optRows('age_band', sv), { unit: '名' })}
+        <h3 style="margin-top:14px">お住まい</h3>${bars(prefRows, { unit: '名' })}</div>
+      <div class="card st-card"><h3>ゴルフ歴</h3>${bars(optRows('golf_years', sv), { unit: '名' })}</div>
+      <div class="card st-card"><h3>入会時のスコア</h3>${bars(optRows('score_band', sv), { unit: '名' })}</div>
+    </div>
+    <p class="muted small">契約中の会員で回答した人：${svActive.filter((s) => active.some((p) => p.id === s.member_id)).length}名／${active.length}名</p>
+  </div>` + adminNav('admin/dashboard');
+}
+
 async function viewReport(ym) {
   const now = new Date();
   const [y, mo] = /^\d{4}-\d{2}$/.test(ym || '') ? ym.split('-').map(Number) : [now.getFullYear(), now.getMonth() + 1];
@@ -2815,6 +3111,7 @@ async function viewReport(ym) {
       ${card('ラウンド', c.rounds, '回', 'rounds', '回')}
       ${card('ベストスコア更新', c.bests, '回', 'bests', '回')}
     </div>
+    <a class="beginner-card" href="#/admin/stats" style="margin-top:16px"><span class="bc-ic" aria-hidden="true">📈</span><span><b>統計を見る</b><small>売上の見込み・継続・権利の消化・満足度・退会理由・会員のプロフィール</small></span><i aria-hidden="true">›</i></a>
     <p class="muted small" style="margin-top:16px">※ 入会・退会・継続率は、この機能を入れた日（データベースの設定を実行した日）からの記録で計算します。それより前の入会は「登録日」で数えています。${isCurrent ? '今月の数字は今日までの集計です。' : ''}</p>
   </div>` + adminNav('admin/dashboard');
 }
@@ -2981,6 +3278,11 @@ async function render() {
     if (!state.session) { state.handoff = await getHandoff(); return paint(viewAuth()); }
     if (!state.profile) await loadProfile();
     rememberEmail();
+    // 最後にアプリを開いた日時（統計の「声をかけたい会員」に使う。この端末からは6時間に1回だけ送る）
+    if (state.profile.role !== 'admin' && Date.now() - Number(local.get('atg-seen') || 0) > 6 * 3600000) {
+      local.set('atg-seen', String(Date.now()));
+      sb.rpc('touch_last_seen').then(() => {}, () => {});
+    }
 
     const p = state.profile;
     const r = getRoute();
@@ -3001,6 +3303,7 @@ async function render() {
       if (r[1] === 'meetings') return paint(await viewMeetings());
       if (r[1] === 'prep' && r[2]) return paint(await viewMeetingPrep(r[2]));
       if (r[1] === 'report') return paint(await viewReport(r[2]));
+      if (r[1] === 'stats') return paint(await viewStats());
       if (r[1] === 'templates') return paint(await viewTemplates());
       if (r[1] === 'members') { paint(await viewMembers()); applyMemberFilter(); return; }
       if (r[1] === 'drills') return paint(await viewDrills());
@@ -3019,6 +3322,7 @@ async function render() {
     }
     state.handoff = await getHandoff();
     if (r[0] === 'guide') return paint(viewGuide());
+    if (r[0] === 'survey' && p.role !== 'admin') return paint(await viewSurvey());
     if (r[0] === 'scores' && isActive(p)) return paint(await viewScores());
     if (r[0] === 'install') return paint(viewInstall());
     if (!p.onboarded_at) return go('guide');
@@ -3129,6 +3433,40 @@ const actions = {
     await sb.from('word_checks').upsert({ member_id: state.profile.id, checked_on: key }, { onConflict: 'member_id,checked_on', ignoreDuplicates: true }).then(() => {}, () => {});
     checkNewBadges();
   },
+  'stats-range': (el) => { state.statsRange = el.dataset.range; render(); },
+  'survey-later': () => go('home'),
+  'ask-hide': (el) => {
+    local.set(el.dataset.key, el.dataset.month ? monthKey() : '1');
+    el.closest('.ask-card').remove();
+  },
+  'rate-lesson': async (el) => {
+    const card = el.closest('.rate-card');
+    const rating = Number(el.dataset.rating);
+    card.querySelectorAll('[data-action="rate-lesson"]').forEach((b) => { b.disabled = true; });
+    try {
+      await must(sb.from('lesson_ratings').upsert({ lesson_id: card.dataset.lesson, member_id: state.profile.id, rating, updated_at: new Date().toISOString() }, { onConflict: 'lesson_id' }));
+      card.querySelectorAll('[data-action="rate-lesson"]').forEach((b) => { const on = b === el; b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on)); });
+      card.querySelector('.rate-comment').hidden = false;
+      toast('評価を送りました。ありがとうございます！');
+    } catch (e) { toast('送れませんでした', true); }
+    card.querySelectorAll('[data-action="rate-lesson"]').forEach((b) => { b.disabled = false; });
+  },
+  'exit-add': async (el) => {
+    const v = await confirmDialog({
+      title: '退会の理由を記録',
+      body: `<p class="muted small">聞き取った理由をすべて選んでください（「統計」で集計します）。</p>
+        <div class="sv-chips multi">${EXIT_REASONS.map(([k, l]) => `<label><input type="checkbox" name="r_${k}"><span>${l}</span></label>`).join('')}</div>
+        <div class="form modal-form"><label>くわしい内容（任意）</label><textarea name="comment" rows="3" maxlength="1000" placeholder="例：仕事が忙しくなり練習時間がとれない。落ち着いたら再開したい"></textarea></div>`,
+      ok: '記録する',
+    });
+    if (!v) return;
+    const reasons = EXIT_REASONS.map(([k]) => k).filter((k) => v[`r_${k}`]);
+    if (!reasons.length && !v.comment.trim()) { toast('理由を選ぶか、内容を書いてください', true); return; }
+    try {
+      await must(sb.from('exit_reasons').insert({ member_id: el.dataset.member, reasons, comment: v.comment.trim(), source: 'staff' }));
+      toast('記録しました'); render();
+    } catch (e) { toast(e.message || '記録できませんでした', true); }
+  },
   'hide-firststeps': async (el) => {
     if (!await confirmDialog({ title: '「はじめの一歩」を閉じますか？', body: '<p>閉じると、もう表示されません。使い方は「メニュー」→「使い方ガイド」でいつでも見られます。</p>', ok: '閉じる' })) return;
     local.set('atg-firststeps-hide', '1');
@@ -3150,6 +3488,9 @@ const actions = {
     if (!state.profile.onboarded_at) {
       await must(sb.from('profiles').update({ onboarded_at: new Date().toISOString() }).eq('id', state.profile.id));
       await loadProfile();
+      // はじめてのときは、続けてかんたんアンケートへ（まだ答えていなければ）
+      const sv = await sb.from('member_survey').select('member_id').eq('member_id', state.profile.id).maybeSingle();
+      if (!sv.error && !sv.data) return go('survey');
     }
     go('home');
   },
@@ -3658,6 +3999,29 @@ const forms = {
     playCupIn();
     // 撮影画面から来てログインした場合は、そのままマイページへ
     if (getRoute()[0] === 'continue') history.replaceState(null, '', `${location.pathname}#/home`);
+  },
+  survey: async (f) => {
+    const val = (k) => f.querySelector(`[name="${k}"]:checked`)?.value || '';
+    const row = { member_id: state.profile.id, referral: val('referral'), referral_note: f.referral_note.value.trim(), age_band: val('age_band'), golf_years: val('golf_years'),
+      score_band: val('score_band'), prefecture: f.prefecture.value, store_use: val('store_use'), updated_at: new Date().toISOString() };
+    await must(sb.from('member_survey').upsert(row, { onConflict: 'member_id' }));
+    toast('ご協力ありがとうございました！');
+    go('home');
+  },
+  nps: async (f) => {
+    const score = Number(f.querySelector('[name="score"]:checked')?.value);
+    await must(sb.from('nps_responses').insert({ member_id: state.profile.id, month: monthKey(), score, comment: f.comment.value.trim() }));
+    f.closest('.ask-card').innerHTML = '<p class="center" style="margin:6px 0">ご回答ありがとうございました！</p>';
+  },
+  'exit-reason': async (f) => {
+    const reasons = [...f.querySelectorAll('[name="reason"]:checked')].map((i) => i.value);
+    if (!reasons.length && !f.comment.value.trim()) throw new Error('理由を選ぶか、ご意見を書いてください');
+    await must(sb.from('exit_reasons').insert({ member_id: state.profile.id, reasons, comment: f.comment.value.trim(), source: 'member' }));
+    f.closest('.ask-card').innerHTML = '<p class="center" style="margin:6px 0">お答えいただき、ありがとうございました。</p>';
+  },
+  'rate-comment': async (f) => {
+    await must(sb.from('lesson_ratings').update({ comment: f.comment.value.trim(), updated_at: new Date().toISOString() }).eq('lesson_id', f.dataset.lesson));
+    toast('コーチに届けました');
   },
   signup: async (f) => {
     const { data, error } = await sb.auth.signUp({
