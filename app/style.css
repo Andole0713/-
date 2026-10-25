@@ -1303,3 +1303,58 @@ body.wiz-open{overflow:hidden}
 
 .zt .zt-ex{display:block;margin-top:4px;white-space:nowrap;color:var(--text)}
 .zt .zt-ex b{font-size:14px}
+/* レッスン詳細：ページ内ジャンプ・練習バー・前回との見比べ */
+.ls-jump{display:flex;flex-wrap:wrap;gap:6px;margin-top:14px}
+.ls-jump button{background:rgba(255,255,255,.08);color:var(--gold-2);border:1px solid var(--gold-line);border-radius:999px;padding:5px 12px;font-size:12.5px;font-weight:700;min-height:0;margin:0;box-shadow:none}
+.ls-jump button:hover{background:rgba(200,169,106,.2)}
+.lesson-page .lesson-sec{scroll-margin-top:86px;position:relative}
+.pbar-wrap{display:flex;align-items:center;gap:10px;margin:6px 0 8px}
+.pbar{flex:1;height:10px;border-radius:999px;background:var(--paper-2);overflow:hidden}
+.pbar i{display:block;height:100%;border-radius:inherit;background:linear-gradient(90deg,var(--gold),var(--gold-2));transition:width .5s cubic-bezier(.2,.9,.3,1.2)}
+.pbar-n{font-size:13px;color:var(--ink);min-width:2.6em;text-align:right}
+.pbar-wrap.all .pbar i{background:linear-gradient(90deg,#3f8f5a,#6cc08a)}
+.pbar-wrap.all .pbar-n::after{content:' 完了！';color:#3f8f5a}
+.cmp-box{margin-top:12px}
+.cmp-open{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px;width:100%;background:var(--paper);color:var(--ink);border:1px dashed var(--gold);border-radius:12px;padding:11px 14px;font-weight:700;font-size:14.5px;text-align:left;box-shadow:none;margin:0}
+.cmp-open small{font-weight:400;color:var(--muted);font-size:12px}
+.cmp-open[aria-expanded="true"]{border-style:solid;background:#fff}
+.cmp{margin-top:10px}
+.cmp-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.cmp-grid figure{margin:0}
+.cmp-grid figcaption{font-size:12.5px;font-weight:700;color:var(--muted)}
+.cmp-grid figcaption.now{color:var(--ink)}
+.cmp-grid figcaption small{font-weight:400}
+.cmp-grid .swing-video{margin:4px 0 0;max-height:52vh;border-radius:10px}
+@media (prefers-reduced-motion:reduce){.pbar i{transition:none}}
+/* 何もないときの表示 */
+.empty-ill{background:#fff;border:1px dashed var(--line);padding:24px 16px 20px}
+.empty-ill .em-ic{display:block;font-size:34px;line-height:1;margin-bottom:8px}
+.empty-ill p{margin:0 0 4px;line-height:1.8}
+.empty-ill .btn{display:inline-flex;margin-top:10px;width:auto}
+/* はじめの一歩 */
+.first-steps{position:relative;margin-top:12px;border:1px solid var(--gold-line);padding:16px 16px 10px}
+.first-steps h2{margin:2px 0 8px;font-size:18px;font-family:var(--serif)}
+.first-steps h2 small{font-family:inherit;font-size:13px;color:var(--muted);margin-left:6px}
+.fs-close{position:absolute;top:8px;right:8px;width:34px;height:34px;min-height:0;padding:0;border-radius:50%;background:transparent;color:var(--muted);font-size:18px;box-shadow:none;margin:0}
+.fs-list{list-style:none;margin:6px 0 0;padding:0}
+.fs-list li{border-top:1px dashed var(--line)}
+.fs-list li:first-child{border-top:0}
+.fs-list a,.fs-row{display:flex;align-items:center;gap:10px;padding:9px 2px;color:var(--text);text-decoration:none;font-size:14.5px}
+.fs-n{flex:none;width:26px;height:26px;border-radius:50%;display:grid;place-items:center;font-size:12.5px;font-weight:700;background:var(--paper-2);color:var(--ink)}
+.fs-t{flex:1}
+.fs-list li.done .fs-n{background:var(--gold);color:var(--ink)}
+.fs-list li.done .fs-t{color:var(--muted);text-decoration:line-through}
+.fs-list li.next .fs-n{background:var(--ink);color:var(--gold-2)}
+.fs-list li.next .fs-t{font-weight:700}
+.fs-go{font-size:12px;font-weight:700;color:var(--ink);background:rgba(200,169,106,.25);border-radius:999px;padding:3px 10px}
+/* 操作の気持ちよさ：画面の切り替え・読み込みバー・押したときの反応 */
+body::before{content:'';position:fixed;top:0;left:0;height:3px;width:0;z-index:100;background:linear-gradient(90deg,var(--gold),var(--gold-2));box-shadow:0 0 8px rgba(200,169,106,.7);opacity:0;pointer-events:none;transition:opacity .2s}
+body.is-loading::before{opacity:1;animation:load-bar 1.6s ease-out infinite}
+@keyframes load-bar{0%{width:0;left:0}60%{width:70%;left:10%}100%{width:10%;left:100%}}
+.page-in{animation:page-in .28s ease-out both}
+@keyframes page-in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+button,.btn,.next-action,.lesson-feature,.beginner-card,.score-add,.menu-tile,.history-list a,.fs-list a{transition:transform .12s ease,filter .12s ease,background-color .15s,box-shadow .15s}
+button:not(:disabled):active,.btn:active,.next-action:active,.lesson-feature:active,.beginner-card:active,.score-add:active,.history-list a:active,.fs-list a:active{transform:scale(.97);filter:brightness(.96)}
+.drill .n.pop{animation:check-pop .4s cubic-bezier(.2,1.6,.4,1)}
+@keyframes check-pop{0%{transform:scale(.4)}100%{transform:scale(1)}}
+@media (prefers-reduced-motion:reduce){.page-in,.drill .n.pop,body.is-loading::before{animation:none}body.is-loading::before{width:100%}button,.btn{transition:none}button:not(:disabled):active,.btn:active{transform:none}}

@@ -45,6 +45,7 @@ const $toast = document.getElementById('toast');
 
 const state = { session: null, profile: null, recovery: false, authTab: 'login', authMessage: '', unread: 0, drillUnread: 0, historyClub: '', adminPending: 0, adminMeetingTodo: 0, adminTodo: 0, meetingTab: 'upcoming', memberFilter: 'all' };
 let renderSeq = 0;
+let paintedRoute = null; // 直前に表示した画面（同じ画面の再表示ではふわっと出さない）
 
 // ---------- ユーティリティ ----------
 
@@ -300,7 +301,7 @@ function swingVideo(sub, urls, { tools = false, preload = 'metadata' } = {}) {
   const video = `<video class="swing-video" src="${esc(url)}" controls playsinline preload="${preload}"></video>`;
   return tools ? `<div class="vid-wrap">${video}${videoTools()}</div>` : video;
 }
-// スタッフ用：スロー再生とコマ送り（1コマ＝1/30秒）
+// スロー再生とコマ送り（1コマ＝1/30秒）
 const videoTools = () => `<div class="vid-tools" role="group" aria-label="再生の速さとコマ送り">
     <span class="vt-group">${[[0.25, '¼'], [0.5, '½'], [1, '等速']].map(([r, l]) => `<button type="button" data-action="vid-rate" data-rate="${r}" aria-pressed="${r === 1}" class="${r === 1 ? 'on' : ''}">${l}</button>`).join('')}</span>
     <span class="vt-group"><button type="button" data-action="vid-step" data-dir="-1" aria-label="1コマ戻す">◀ コマ</button><button type="button" data-action="vid-step" data-dir="1" aria-label="1コマ進める">コマ ▶</button></span>
@@ -778,6 +779,37 @@ function viewPlans() {
 
 // ---------- 画面：会員 ----------
 
+// 何もないときの表示：アイコン＋説明＋次にやることのボタン
+const emptyBox = (ic, text, href = '', btn = '') => `<div class="empty empty-ill"><span class="em-ic" aria-hidden="true">${ic}</span><p>${text}</p>${href ? `<a class="btn btn-sm btn-sub" href="${href}">${btn} ›</a>` : ''}</div>`;
+
+// はじめの一歩：入会したばかりの人向けのチェックリスト（全部終わるか、閉じると出なくなる）
+function firstSteps({ subCount, latest }) {
+  if (local.get('atg-firststeps-hide')) return '';
+  const p = state.profile;
+  const steps = [
+    ['使い方ガイドを見る', true, '#/guide'],
+    ['Myクラブを登録する', !!(p.clubs || []).length, '#/account/clubs'],
+    ['はじめての動画を送る', subCount > 0, '#/submit'],
+    ['届いたレッスンを見る', !!latest?.read_at, latest ? `#/lesson/${latest.id}` : ''],
+    ['練習をチェックする', !!(latest?.practice_done || []).length, latest ? `#/lesson/${latest.id}` : ''],
+    ['ホーム画面に追加する', isStandalone() || !!local.get('atg-install-dismissed'), '#/install'],
+  ];
+  const done = steps.filter((x) => x[1]).length;
+  if (done === steps.length) return '';
+  const nextI = steps.findIndex((x) => !x[1]);
+  return `<section class="card first-steps">
+    <button type="button" class="fs-close" data-action="hide-firststeps" aria-label="はじめの一歩を閉じる">×</button>
+    <div class="eyebrow">First Steps</div>
+    <h2>はじめの一歩 <small>${done}/${steps.length}</small></h2>
+    <div class="pbar-wrap"><div class="pbar" role="progressbar" aria-valuemin="0" aria-valuemax="${steps.length}" aria-valuenow="${done}" aria-label="はじめの一歩の進み具合"><i style="width:${Math.round(done / steps.length * 100)}%"></i></div></div>
+    <ol class="fs-list">${steps.map(([label, ok, href], i) => {
+      const inner = `<span class="fs-n">${ok ? '✓' : i + 1}</span><span class="fs-t">${label}</span>${i === nextI ? '<span class="fs-go">次はこれ ›</span>' : ''}`;
+      const cls = ok ? 'done' : i === nextI ? 'next' : '';
+      return `<li class="${cls}">${href && !ok ? `<a href="${href}">${inner}</a>` : `<span class="fs-row">${inner}</span>`}</li>`;
+    }).join('')}</ol>
+  </section>`;
+}
+
 // ホームの一番上に出す「次にやること」（そのときいちばん大事なことを1つだけ）
 function nextAction({ latest, rmNow, practicedToday, cr, pending, tasks, done }) {
   const p = state.profile;
@@ -812,10 +844,11 @@ async function viewMemberHome() {
     must(sb.from('lessons').select('id').eq('member_id', p.id).gte('created_at', since)),
     must(sb.from('roadmap_items').select('id, publish_on, theme, published_at, hidden, seen_at, drills(title)').eq('member_id', p.id).order('publish_on')),
   ]);
-  const [rounds, myMeetings] = await Promise.all([
+  const [rounds, myMeetings, subCount] = await Promise.all([
     must(sb.from('rounds').select('played_on, score, holes').eq('member_id', p.id)),
     sb.from('meetings').select('scheduled_at, summary').eq('member_id', p.id).eq('status', 'done').neq('summary', '').order('scheduled_at', { ascending: false }).limit(1)
       .then((r) => r.data || []),
+    sb.from('submissions').select('id', { count: 'exact', head: true }).eq('member_id', p.id).then((r) => r.count || 0),
   ]);
   const lastMeeting = myMeetings[0];
   const celes = await sb.from('celebrations').select('*').eq('member_id', p.id).order('created_at', { ascending: false }).limit(20).then((r) => r.data || []);
@@ -845,6 +878,7 @@ async function viewMemberHome() {
     </div>` : ''}
     <div class="blk" style="--o:1">
     ${nextAction({ latest, rmNow, practicedToday, cr, pending: subs, tasks, done })}
+    ${firstSteps({ subCount, latest })}
     </div>
     <div class="blk" style="--o:2">
     <div class="hero">${plan ? `<span class="pill">${esc(plan.name)}</span>` : ''}
@@ -868,7 +902,7 @@ async function viewMemberHome() {
     <div class="section-title cat-lesson"><div><div class="eyebrow">Practice</div><h2>${icon('pen')}今月の課題</h2></div><span class="muted">${done}/${tasks.length}</span></div>
     ${tasks.length ? tasks.map((t) => `<button type="button" class="task${t.done ? ' done' : ''}" data-action="toggle-task" data-id="${t.id}" data-done="${t.done}" aria-pressed="${t.done}">
         <span class="check">${t.done ? '✓' : ''}</span><span><b>${esc(t.title)}</b><div class="muted">${esc(t.detail)}</div></span></button>`).join('')
-      : '<div class="empty">コーチから課題が届くとここに表示されます</div>'}
+      : emptyBox('📝', 'コーチから課題が届くと、ここに表示されます。<br>終わったらタップしてチェックできます。')}
     </div>
     <div class="blk" style="--o:7">${wordCard()}</div>
   </div>
@@ -901,7 +935,8 @@ async function viewMemberHome() {
         ${latest.point ? `<div class="point"><span>今回のポイント</span><p>${esc(latest.point)}</p></div>` : ''}
         ${practiceProgress(latest)}
         <span class="go">レッスンを見る <i aria-hidden="true">›</i></span></a>`
-      : '<div class="empty">まだレッスンはありません。まずは動画を送りましょう。</div>'}
+      : subs.length ? emptyBox('⏳', 'コーチが動画を確認しています。<br>レッスンが届くとメールでお知らせします。')
+        : emptyBox('🎬', 'まだレッスンはありません。<br>スイング動画を送ると、コーチから解説が届きます。<br>下のボタンから送れます。')}
     ${subs.length ? `<div class="notice">確認待ちの動画が ${subs.length} 件あります。コーチからのレッスンをお待ちください。
         <a href="#/submission/${subs[0].id}">間違えて送った場合はこちら</a></div>` : ''}
     <a class="btn btn-block btn-cat cat-video" href="#/submit">${icon('video')} スイング動画を送る</a>
@@ -1236,7 +1271,7 @@ async function viewHistory() {
     ${clubs.length > 1 ? `<div class="filter-chips" role="group" aria-label="クラブで絞り込む">
       ${[['', 'すべて'], ...clubs.map((c) => [c, c])].map(([v, label]) => `<button type="button" data-action="history-filter" data-club="${esc(v)}" class="${filter === v ? 'on' : ''}" aria-pressed="${filter === v}">${esc(label)}</button>`).join('')}
     </div>` : ''}
-    ${list ? `<div class="history-list">${list}</div>` : `<div class="empty">${filter ? 'このクラブの動画はまだありません' : 'まだ履歴はありません。まずは動画を送りましょう。'}</div>`}
+    ${list ? `<div class="history-list">${list}</div>` : (filter ? '<div class="empty">このクラブの動画はまだありません</div>' : emptyBox('🎬', 'まだ履歴はありません。<br>送った動画と、届いたレッスンがここにたまっていきます。'))}
     ${items.length ? '' : '<a class="btn btn-block btn-gold" href="#/submit">スイング動画を送る</a>'}
   </div>` + memberNav('history');
 }
@@ -1283,12 +1318,43 @@ function drillList(text, done = [], lessonId = null) {
   }).join('')}</ol>`;
 }
 const secTitle = (icon, label) => `<h2 class="sec-h"><i aria-hidden="true">${icon}</i>${label}</h2>`;
+// 練習の進み具合バー（チェックするたびに伸びる）
+function practiceBar(l) {
+  const total = practiceLines(l.practice).length;
+  const done = (l.practice_done || []).filter((i) => i < total).length;
+  return `<div class="pbar-wrap${done === total ? ' all' : ''}"><div class="pbar" role="progressbar" aria-valuemin="0" aria-valuemax="${total}" aria-valuenow="${done}" aria-label="練習の進み具合"><i style="width:${total ? Math.round(done / total * 100) : 0}%"></i></div><b class="pbar-n">${done}/${total}</b></div>`;
+}
+// 同じクラブで前に送った動画と、横に並べて見比べる
+function compareBlock(prev, cur, urls) {
+  if (!prev || !urls[prev.video_path] || !urls[cur.video_path]) return '';
+  const md = (iso) => { const d = new Date(iso); return `${d.getMonth() + 1}/${d.getDate()}`; };
+  const v = (x) => `<video class="swing-video" src="${esc(urls[x.video_path])}" controls playsinline preload="metadata" muted></video>`;
+  return `<div class="cmp-box">
+    <button type="button" class="cmp-open" data-action="cmp-toggle" aria-expanded="false">⇆ 前回の動画と見比べる<small>${esc(fmtDate(prev.created_at))}・${esc(prev.club)}</small></button>
+    <div class="cmp" hidden>
+      <div class="cmp-grid">
+        <figure><figcaption>前回 <small>${md(prev.created_at)}</small></figcaption>${v(prev)}</figure>
+        <figure><figcaption class="now">今回 <small>${md(cur.created_at)}</small></figcaption>${v(cur)}</figure>
+      </div>
+      <p class="muted small">それぞれをアドレスの位置に合わせてから「同時に再生」を押すと、違いがよくわかります。</p>
+      <div class="vid-tools" role="group" aria-label="2本まとめて操作">
+        <span class="vt-group">${[[0.25, '¼'], [0.5, '½'], [1, '等速']].map(([r, l]) => `<button type="button" data-action="cmp-rate" data-rate="${r}" aria-pressed="${r === 1}" class="${r === 1 ? 'on' : ''}">${l}</button>`).join('')}</span>
+        <span class="vt-group"><button type="button" data-action="cmp-play">▶ 同時に再生</button><button type="button" data-action="cmp-step" data-dir="-1" aria-label="2本とも1コマ戻す">◀</button><button type="button" data-action="cmp-step" data-dir="1" aria-label="2本とも1コマ進める">▶</button></span>
+      </div>
+    </div>
+  </div>`;
+}
 
 async function viewLesson(id, back = 'history') {
-  const l = await must(sb.from('lessons').select('*, submissions(video_path, video_deleted_at, question)').eq('id', id).maybeSingle());
+  const l = await must(sb.from('lessons').select('*, submissions(id, club, angle, created_at, video_path, video_deleted_at, question)').eq('id', id).maybeSingle());
   if (!l) return header('レッスン詳細', back) + '<div class="content"><div class="empty">レッスンが見つかりません</div></div>';
+  const cur = l.submissions;
+  // 同じクラブ・同じ撮影方向で、ひとつ前に送った動画（見比べ用）
+  const prev = cur?.club && cur.video_path && !cur.video_deleted_at ? (await sb.from('submissions').select('id, club, angle, created_at, video_path, video_deleted_at')
+    .eq('member_id', l.member_id).eq('club', cur.club).eq('angle', cur.angle).lt('created_at', cur.created_at).is('video_deleted_at', null)
+    .order('created_at', { ascending: false }).limit(1)).data?.[0] : null;
   const [urls, links] = await Promise.all([
-    signedVideoUrls([l.submissions]),
+    signedVideoUrls([cur, prev]),
     must(sb.from('lesson_drills').select('sort_order, drills(*)').eq('lesson_id', l.id).order('sort_order')),
   ]);
   const drills = links.map((x) => x.drills).filter(Boolean);
@@ -1298,19 +1364,21 @@ async function viewLesson(id, back = 'history') {
     const { error } = await sb.rpc('mark_lesson_read', { p_lesson: l.id });
     if (!error) state.unread = Math.max(0, state.unread - 1);
   }
+  const jumps = [l.video_url && ['ls-video', '▶ 解説動画'], l.feedback && ['ls-fb', '✎ フィードバック'], l.practice && ['ls-practice', '✓ 練習'], cur && ['ls-mine', '◉ 送った動画']].filter(Boolean);
   return header('レッスン詳細', back) + `<div class="content wide lesson-page">
     <div class="blk" style="--o:0">
     <div class="lesson-head">
       <span class="date">${fmtDate(l.lesson_date)}</span>
       <h1>${esc(l.title)}</h1>
       ${l.point ? `<div class="diag"><span>今回の診断</span><p>${esc(l.point)}</p></div>` : ''}
+      ${jumps.length > 1 ? `<nav class="ls-jump" aria-label="このページの中を移動">${jumps.map(([to, label]) => `<button type="button" data-action="jump" data-to="${to}">${label}</button>`).join('')}</nav>` : ''}
     </div>
     ${mine ? glossaryLink() : ''}
     </div>
   <div class="cols">
   <div class="col-main">
     <div class="blk" style="--o:1">
-    ${l.video_url ? `<section class="card lesson-sec">${secTitle('▶', 'コーチの解説動画')}${videoEmbed(l.video_url)}</section>` : ''}
+    ${l.video_url ? `<section class="card lesson-sec" id="ls-video">${secTitle('▶', 'コーチの解説動画')}${videoEmbed(l.video_url)}</section>` : ''}
     </div>
     <div class="blk" style="--o:2">
     ${drills.length ? `<section class="card lesson-sec">${secTitle('◎', 'ドリル動画')}
@@ -1318,19 +1386,21 @@ async function viewLesson(id, back = 'history') {
         ${drills.map((d) => drillCard(d, drillUrls)).join('')}</section>` : ''}
     </div>
     <div class="blk" style="--o:5">
-    ${l.submissions ? `<section class="card lesson-sec">${secTitle('◉', '送った動画')}${swingVideo(l.submissions, urls)}
+    ${cur ? `<section class="card lesson-sec" id="ls-mine">${secTitle('◉', '送った動画')}${swingVideo(cur, urls, { tools: true })}
+        ${compareBlock(prev, cur, urls)}
         ${mine ? `<a class="muted small" href="#/submission/${l.submission_id}">送った動画の詳細（保存期限など）›</a>` : ''}
         ${l.submissions.question ? `<div class="my-q"><span>送ったときのお悩み・質問</span><p class="pre">${esc(l.submissions.question)}</p></div>` : ''}</section>` : ''}
     </div>
   </div>
   <div class="col-side">
     <div class="blk" style="--o:3">
-    ${l.feedback ? `<section class="card lesson-sec">${secTitle('✎', 'コーチからのフィードバック')}<div class="fb">${richText(l.feedback)}</div>
+    ${l.feedback ? `<section class="card lesson-sec" id="ls-fb">${secTitle('✎', 'コーチからのフィードバック')}<div class="fb">${richText(l.feedback)}</div>
         ${mine ? '<button type="button" class="gl-inline" data-action="open-glossary">📖 わからない言葉は「用語集」で調べる ›</button>' : ''}</section>` : ''}
     </div>
     <div class="blk" style="--o:4">
-    ${l.practice ? `<section class="card lesson-sec practice">${secTitle('✓', '次回までの練習')}
+    ${l.practice ? `<section class="card lesson-sec practice" id="ls-practice">${secTitle('✓', '次回までの練習')}
         ${mine ? '<p class="muted small" style="margin:-4px 0 4px">練習したらタップしてチェックしましょう。</p>' : ''}
+        ${practiceBar(l)}
         ${drillList(l.practice, l.practice_done || [], mine ? l.id : null)}</section>` : ''}
     </div>
   </div>
@@ -1530,7 +1600,7 @@ async function viewScores() {
           <div class="muted small">${r.out_score != null ? `${r.out_score}${r.in_score != null ? ` / ${r.in_score}` : ''}　` : ''}${r.putts != null ? `パット ${r.putts}　` : ''}${esc(r.note)}</div></div>
         <b class="round-score${st.count && r.holes === 18 && r.score === st.best ? ' best' : ''}">${r.score}</b>
         <button type="button" class="btn-sm btn-sub" data-action="delete-round" data-id="${r.id}" data-label="${esc(`${fmtDate(r.played_on)} ${r.course_name}（${r.score}）`)}" aria-label="削除">×</button>
-      </div>`).join('')}</div>` : '<div class="empty">まだ記録はありません。ラウンドしたらスコアを記録しましょう。</div>'}
+      </div>`).join('')}</div>` : emptyBox('⛳', 'まだ記録はありません。<br>ラウンドしたら、上のフォームでスコアを記録しましょう。<br>ベスト・平均が自動で計算されます。')}
   </div>` + memberNav('menu');
 }
 
@@ -1640,7 +1710,7 @@ async function viewMemberDrills() {
     <div class="section-title"><div><div class="eyebrow">From Lessons</div><h2>レッスンで届いたドリル</h2></div></div>
     ${list.length ? `<div class="drill-list">${list.map((r) => drillCard(r.drills, urls,
       `<a class="drill-from" href="#/lesson/${r.lessons.id}">${fmtDate(r.lessons.lesson_date)} のレッスン「${esc(r.lessons.title)}」より ›</a>`)).join('')}</div>`
-      : '<div class="empty">コーチからレッスンでドリルが届くと、ここにたまっていきます。</div>'}
+      : emptyBox('🎯', 'コーチからレッスンでドリルが届くと、ここにたまっていきます。<br>契約中はいつでも見返せます。')}
   </div>` + memberNav('drills');
 }
 
@@ -2884,8 +2954,15 @@ function navScrollTarget() {
 
 async function render() {
   const seq = ++renderSeq;
+  // 読み込みに時間がかかるときだけ、画面の上に細い読み込みバーを出す
+  const slow = setTimeout(() => { if (seq === renderSeq) document.body.classList.add('is-loading'); }, 250);
   const paint = (html) => {
     if (seq !== renderSeq) return;
+    clearTimeout(slow);
+    document.body.classList.remove('is-loading');
+    const route = location.hash;
+    const fresh = route !== paintedRoute;
+    paintedRoute = route;
     document.body.classList.toggle('on-auth', html.startsWith('<div class="auth-page">'));
     document.body.classList.remove('wiz-open');
     // パソコンでは下部メニューを左側のサイドメニューにするため、メニューがある画面かどうかを付けておく
@@ -2895,6 +2972,7 @@ async function render() {
     // 上部バーの高さ（ページ内で上についてくる部分の位置合わせに使う）
     const topBar = $app.querySelector('.top');
     if (topBar) document.documentElement.style.setProperty('--top-h', `${topBar.offsetHeight}px`);
+    if (fresh) $app.querySelector('.content, .auth-page')?.classList.add('page-in');
     if (y !== null) window.scrollTo(0, y);
   };
   try {
@@ -2985,6 +3063,9 @@ async function render() {
     }
     paint(`<div class="content"><div class="error">読み込みに失敗しました：${esc(e.message)}</div>
       <button data-action="reload">再読み込み</button> <button class="btn-sub" data-action="logout">ログアウト</button></div>`);
+  } finally {
+    clearTimeout(slow);
+    if (seq === renderSeq) document.body.classList.remove('is-loading');
   }
 }
 
@@ -3008,8 +3089,24 @@ const actions = {
       el.setAttribute('aria-pressed', String(on));
       el.parentElement.classList.toggle('done', on);
       el.querySelector('.n').textContent = on ? '✓' : Number(el.dataset.index) + 1;
+      if (on) el.querySelector('.n').classList.add('pop');
       const list = el.closest('.drill');
-      if (on && list.querySelectorAll('li.done').length === list.children.length) toast('すべての練習が完了しました！ナイスです⛳');
+      const done = list.querySelectorAll('li.done').length, total = list.children.length;
+      const wrap = list.parentElement.querySelector('.pbar-wrap');
+      if (wrap) {
+        wrap.querySelector('.pbar i').style.width = `${Math.round(done / total * 100)}%`;
+        wrap.querySelector('.pbar').setAttribute('aria-valuenow', String(done));
+        wrap.querySelector('.pbar-n').textContent = `${done}/${total}`;
+        wrap.classList.toggle('all', done === total);
+      }
+      if (on && done === total) {
+        toast('すべての練習が完了しました！ナイスです⛳');
+        const sec = list.closest('.lesson-sec');
+        if (sec && !sec.querySelector('.confetti')) {
+          sec.insertAdjacentHTML('afterbegin', `<div class="confetti" aria-hidden="true">${'<i></i>'.repeat(14)}</div>`);
+          setTimeout(() => sec.querySelector('.confetti')?.remove(), 3200);
+        }
+      }
     } catch (e) { toast('更新できませんでした', true); }
     el.disabled = false;
   },
@@ -3031,6 +3128,11 @@ const actions = {
     document.getElementById('word-day')?.replaceWith(Object.assign(document.createElement('div'), { innerHTML: wordCard() }).firstElementChild);
     await sb.from('word_checks').upsert({ member_id: state.profile.id, checked_on: key }, { onConflict: 'member_id,checked_on', ignoreDuplicates: true }).then(() => {}, () => {});
     checkNewBadges();
+  },
+  'hide-firststeps': async (el) => {
+    if (!await confirmDialog({ title: '「はじめの一歩」を閉じますか？', body: '<p>閉じると、もう表示されません。使い方は「メニュー」→「使い方ガイド」でいつでも見られます。</p>', ok: '閉じる' })) return;
+    local.set('atg-firststeps-hide', '1');
+    el.closest('.first-steps').remove();
   },
   'dismiss-install': (el) => {
     local.set('atg-install-dismissed', '1');
@@ -3468,6 +3570,33 @@ const actions = {
     const v = el.closest('.vid-wrap').querySelector('video');
     v.playbackRate = Number(el.dataset.rate);
     el.parentElement.querySelectorAll('button').forEach((b) => { const on = b === el; b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on)); });
+  },
+  'jump': (el) => {
+    const t = document.getElementById(el.dataset.to);
+    if (t) t.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
+  },
+  'cmp-toggle': (el) => {
+    const box = el.nextElementSibling;
+    box.hidden = !box.hidden;
+    el.setAttribute('aria-expanded', String(!box.hidden));
+    if (box.hidden) box.querySelectorAll('video').forEach((v) => v.pause());
+  },
+  'cmp-play': (el) => {
+    const vs = [...el.closest('.cmp').querySelectorAll('video')];
+    if (vs.some((v) => v.paused)) {
+      el.textContent = '❚❚ 止める';
+      Promise.all(vs.map((v) => v.play())).catch(() => { vs.forEach((v) => v.pause()); el.textContent = '▶ 同時に再生'; });
+    }
+    else { vs.forEach((v) => v.pause()); el.textContent = '▶ 同時に再生'; }
+  },
+  'cmp-rate': (el) => {
+    el.closest('.cmp').querySelectorAll('video').forEach((v) => { v.playbackRate = Number(el.dataset.rate); });
+    el.parentElement.querySelectorAll('button').forEach((b) => { const on = b === el; b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on)); });
+  },
+  'cmp-step': (el) => {
+    const box = el.closest('.cmp');
+    box.querySelectorAll('video').forEach((v) => { v.pause(); v.currentTime = Math.max(0, Math.min(v.duration || 0, v.currentTime + Number(el.dataset.dir) / 30)); });
+    box.querySelector('[data-action="cmp-play"]').textContent = '▶ 同時に再生';
   },
   'vid-step': (el) => {
     const v = el.closest('.vid-wrap').querySelector('video');
