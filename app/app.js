@@ -116,6 +116,20 @@ const local = {
   set(key, value) { try { localStorage.setItem(key, value); } catch { /* noop */ } },
   del(key) { try { localStorage.removeItem(key); } catch { /* noop */ } },
 };
+// ページの最初の説明：3回見たら「このページについて」としてたたむ（毎回同じ説明で中身が下がらないように）
+function foldPageLead() {
+  const lead = $app.querySelector('.content > .page-lead');
+  if (!lead || state.profile?.role === 'admin') return;
+  const key = `atg-lead:${getRoute()[0]}`;
+  const n = Number(local.get(key) || 0) + 1;
+  local.set(key, String(Math.min(n, 99)));
+  if (n <= 3) return;
+  const d = document.createElement('details');
+  d.className = 'page-lead-fold';
+  d.innerHTML = `<summary>ⓘ このページについて</summary><p>${lead.innerHTML}</p>`;
+  lead.replaceWith(d);
+}
+
 // 統計用の記録（画面が開かれた・用語集で見つからなかった・アップロード失敗・エラー）。失敗しても何もしない
 let eventErrors = 0;
 function logEvent(kind, name = '') {
@@ -308,7 +322,8 @@ function swingVideo(sub, urls, { tools = false, preload = 'metadata' } = {}) {
   if (sub.video_deleted_at) return `<p class="muted small">保存期間（${RETENTION_LABEL}）を過ぎたため、動画は削除されました。</p>`;
   const url = urls[sub.video_path];
   if (!url) return '<p class="muted small">動画を読み込めませんでした。ページを再読み込みしてください。</p>';
-  const video = `<video class="swing-video" src="${esc(url)}" controls playsinline preload="${preload}"></video>`;
+  // 「#t=0.1」を付けると、再生前でも最初の場面が表示される（真っ黒な四角にしない）
+  const video = `<video class="swing-video" src="${esc(url)}#t=0.1" controls playsinline preload="${preload}"></video>`;
   return tools ? `<div class="vid-wrap">${video}${videoTools()}</div>` : video;
 }
 // スロー再生とコマ送り（1コマ＝1/30秒）
@@ -329,7 +344,7 @@ async function signedDrillUrls(drills) {
 function drillMedia(d, urls) {
   if (d.video_path) {
     const url = urls[d.video_path];
-    return url ? `<video class="swing-video" src="${esc(url)}" controls playsinline preload="metadata"></video>`
+    return url ? `<video class="swing-video" src="${esc(url)}#t=0.1" controls playsinline preload="metadata"></video>`
       : '<p class="muted small">動画を読み込めませんでした。ページを再読み込みしてください。</p>';
   }
   return d.video_url ? videoEmbed(d.video_url) : '';
@@ -886,25 +901,22 @@ async function viewMemberHome() {
   const asks = await loadAsks(p);
   return header('マイページ') + `<div class="content wide"><div class="cols">
   <div class="col-main">
-    ${newCeles.length ? `<div class="blk cele-new" style="--o:1">
+    <div class="blk" style="--o:1">
+    <div class="hero hero-home">
+      <div class="hh-top">${plan ? `<span class="pill">${esc(plan.name)}</span>` : ''}<a class="hh-badge" href="#/badges">🏅 バッジ</a>${celes.length ? `<a class="hh-badge" href="#/celebrations">🏆 お祝い ${celes.length}</a>` : ''}</div>
+      <h1>${esc(p.name)}さん、おかえりなさい。</h1>
+      <div class="hh-goal"><span>目標</span><b>${esc(p.goal || '未設定')}</b>${p.theme ? `<small>今月のテーマ：${esc(p.theme)}</small>` : ''}</div>
+      ${nextAction({ latest, rmNow, practicedToday, cr, pending: subs, tasks, done })}
+    </div>
+    </div>
+    ${newCeles.length ? `<div class="blk cele-new" style="--o:2">
       <div class="confetti" aria-hidden="true">${'<i></i>'.repeat(14)}</div>
       ${celeCard(newCeles[0], true)}
       ${newCeles.length > 1 ? `<p class="small center" style="margin:6px 0 0">ほかにも ${newCeles.length - 1} 件のお祝いが届いています</p>` : ''}
       <div class="cele-actions"><button type="button" class="btn btn-cat cat-celebrate" data-action="celebrate-thanks">ありがとう！</button>
         <a class="btn btn-sub" href="#/celebrations">お祝いをすべて見る</a></div>
     </div>` : ''}
-    <div class="blk" style="--o:1">
-    ${nextAction({ latest, rmNow, practicedToday, cr, pending: subs, tasks, done })}
-    ${askCards(asks)}
-    </div>
-    <div class="blk" style="--o:2">
-    <div class="hero">${plan ? `<span class="pill">${esc(plan.name)}</span>` : ''}
-      <h1>${esc(p.name)}さん、おかえりなさい。</h1>
-      <div class="muted">現在の目標</div><h2 style="margin:4px 0 0;font-size:24px">${esc(p.goal || '未設定')}</h2>
-      ${p.theme ? `<div style="margin-top:12px">今月のテーマ：${esc(p.theme)}</div>` : ''}
-      ${celes.length ? `<a class="hero-cele" href="#/celebrations">🏆 これまでのお祝い <b>${celes.length}</b>件 ›</a>` : ''}
-      <a class="hero-cele" href="#/badges">🏅 バッジを見る ›</a></div>
-    </div>
+    <div class="blk" style="--o:2">${askCards(asks)}</div>
     <div class="blk" style="--o:3">
     ${rmNow ? `<a class="rm-home cat-drill" href="#/drills">
         <div class="rm-home-head"><span class="rm-badge">今月のドリル</span>${rmNow.seen_at ? '' : '<span class="new-badge">NEW</span>'}
@@ -934,14 +946,14 @@ async function viewMemberHome() {
         <div><span class="label">解説動画</span><b>${monthLessons.length}<small>本</small></b></div>`}
         <div><span class="label">次回の面談</span>${p.next_meeting_at && new Date(p.next_meeting_at).getTime() > Date.now() - 2 * 3600000 ? meetingWhen(p.next_meeting_at) : '<b class="none">未定</b>'}</div>
       </div>
-      ${cr && cr.live.length ? `<p class="small credit-exp">有効期限：${expiryText(cr.live)}（期限が近いものから使われます）</p>` : ''}
-      ${exemptN ? `<p class="small quota-free-note">回数外の動画 ${exemptN}本（コーチ側で戻した分）は数えていません。</p>` : ''}
-      ${plan?.credits ? `<p class="muted small" style="margin:10px 0 0">毎月1日に、動画${plan.credits.video}回${plan.credits.meeting ? `・オンライン面談${plan.credits.meeting}回` : ''}の権利が付与されます（付与された月から半年後の月末まで有効）。</p>` : ''}
       ${lastMeeting ? `<details class="last-meeting"><summary>前回の面談（${fmtShort(lastMeeting.scheduled_at)}）のまとめ</summary><p class="pre">${esc(lastMeeting.summary)}</p></details>` : ''}
-      <div class="meeting-book">
+      <div class="meeting-book">${lineBtn('LINEで面談を予約する')}</div>
+      <details class="support-more"><summary>回数・有効期限・予約のしかた</summary>
+        ${cr && cr.live.length ? `<p class="small credit-exp">有効期限：${expiryText(cr.live)}（期限が近いものから使われます）</p>` : ''}
+        ${exemptN ? `<p class="small quota-free-note">回数外の動画 ${exemptN}本（コーチ側で戻した分）は数えていません。</p>` : ''}
+        ${plan?.credits ? `<p class="muted small">毎月1日に、動画${plan.credits.video}回${plan.credits.meeting ? `・オンライン面談${plan.credits.meeting}回` : ''}の権利が付与されます（付与された月から半年後の月末まで有効）。</p>` : ''}
         <p class="muted small">面談のご予約はLINEで承ります。日時が決まると「次回の面談」に表示されます。</p>
-        ${lineBtn('LINEで面談を予約する')}
-      </div>
+      </details>
     </div>
     </div>
     <div class="blk" style="--o:5">
@@ -953,10 +965,9 @@ async function viewMemberHome() {
         ${practiceProgress(latest)}
         <span class="go">レッスンを見る <i aria-hidden="true">›</i></span></a>`
       : subs.length ? emptyBox('⏳', 'コーチが動画を確認しています。<br>レッスンが届くとメールでお知らせします。')
-        : emptyBox('🎬', 'まだレッスンはありません。<br>スイング動画を送ると、コーチから解説が届きます。<br>下のボタンから送れます。')}
+        : emptyBox('🎬', 'まだレッスンはありません。<br>スイング動画を送ると、コーチから解説が届きます。', '#/submit', 'スイング動画を送る')}
     ${subs.length ? `<div class="notice">確認待ちの動画が ${subs.length} 件あります。コーチからのレッスンをお待ちください。
         <a href="#/submission/${subs[0].id}">間違えて送った場合はこちら</a></div>` : ''}
-    <a class="btn btn-block btn-cat cat-video" href="#/submit">${icon('video')} スイング動画を送る</a>
     </div>
     <div class="blk" style="--o:8">
     <div class="section-title cat-score"><div><div class="eyebrow">Score</div><h2>${icon('flag')}スコア</h2></div></div>
@@ -1358,7 +1369,7 @@ function practiceBar(l) {
 function compareBlock(prev, cur, urls) {
   if (!prev || !urls[prev.video_path] || !urls[cur.video_path]) return '';
   const md = (iso) => { const d = new Date(iso); return `${d.getMonth() + 1}/${d.getDate()}`; };
-  const v = (x) => `<video class="swing-video" src="${esc(urls[x.video_path])}" controls playsinline preload="metadata" muted></video>`;
+  const v = (x) => `<video class="swing-video" src="${esc(urls[x.video_path])}#t=0.1" controls playsinline preload="metadata" muted></video>`;
   return `<div class="cmp-box">
     <button type="button" class="cmp-open" data-action="cmp-toggle" aria-expanded="false">⇆ 前回の動画と見比べる<small>${esc(fmtDate(prev.created_at))}・${esc(prev.club)}</small></button>
     <div class="cmp" hidden>
@@ -1520,6 +1531,7 @@ function viewAccount() {
         <button class="btn-block btn-gold" type="submit">Myクラブセッティングを保存</button>
       </form>`;
     })()}
+    <details class="acc-fold"><summary>設定<small>お知らせメール・文字の大きさ${admin ? '' : '・効果音'}・パスワード</small></summary>
     ${admin ? '' : `<form class="card form" data-form="notify">
       <b>お知らせメール</b>
       <label class="switch"><input type="checkbox" name="email_notify"${p.email_notify !== false ? ' checked' : ''}>
@@ -1536,22 +1548,24 @@ function viewAccount() {
         <span>ログインしたとき・動画を送ったときにカップインの音を鳴らす</span></label>
       <button type="button" class="btn-sm btn-sub" data-action="sound-test" style="margin-top:8px">♪ 試しに鳴らす</button>
     </div>`}
-    ${admin ? '' : `<div class="card links">
-      <a class="list-item" href="#/guide"><span>使い方ガイド（動画の撮り方・送り方）</span><span aria-hidden="true">›</span></a>
-      <a class="list-item" href="#/install"><span>ホーム画面に追加する方法</span><span aria-hidden="true">›</span></a>
-    </div>`}
     <form class="card form" data-form="change-password">
       <b>パスワード変更</b>
       <label for="password">新しいパスワード（8文字以上）</label>
       <input id="password" name="password" type="password" autocomplete="new-password" minlength="8" required>
       <button class="btn-block btn-sub" type="submit">パスワードを変更</button>
     </form>
+    </details>
     <button class="btn-block btn-danger" data-action="logout">ログアウト</button>
-    ${admin ? '' : `<div class="card account-delete">
+    ${admin ? '' : `<details class="acc-fold"><summary>その他<small>使い方ガイド・ホーム画面に追加・アカウントの削除</small></summary>
+    <div class="card links">
+      <a class="list-item" href="#/guide"><span>使い方ガイド（動画の撮り方・送り方）</span><span aria-hidden="true">›</span></a>
+      <a class="list-item" href="#/install"><span>ホーム画面に追加する方法</span><span aria-hidden="true">›</span></a>
+    </div>
+    <div class="card account-delete">
       <b>アカウントの削除</b>
       <p class="muted small">アカウントと、これまでの動画・レッスン・スコアなどの記録をすべて削除します。削除を申し込んでから${DELETE_GRACE_DAYS}日間は、ログインすると元に戻せます。</p>
       <button type="button" class="btn-sm btn-sub" data-action="account-delete">アカウントを削除する</button>
-    </div>`}
+    </div></details>`}
   </div>` + navHtml;
 }
 
@@ -1845,9 +1859,11 @@ function viewMenu() {
   const tile = (cat, ic, label, desc, href, badge = 0, ext = false) => `<a class="menu-tile cat-${cat}" href="${href}"${ext ? ' target="_blank" rel="noopener"' : ''}>
       <span class="mt-ic">${icon(ic)}</span><span class="mt-body"><b>${label}</b><small>${desc}</small></span>
       ${badge ? `<em class="mt-badge">${badge}</em>` : ''}<i aria-hidden="true">›</i></a>`;
-  const group = (title, tiles) => `<section class="menu-group"><h2>${title}</h2><div class="menu-grid">${tiles.join('')}</div></section>`;
+  // よく使うものは説明付きの大きな行、補助的なものは2列の小さなタイルにする
+  const mini = (cat, ic, label, href, badge = 0) => `<a class="menu-mini cat-${cat}" href="${href}"><span class="mt-ic">${icon(ic)}</span><b>${label}</b>${badge ? `<em class="mt-badge">${badge}</em>` : ''}</a>`;
+  const group = (title, tiles, small = false) => `<section class="menu-group"><h2>${title}</h2><div class="menu-grid${small ? ' small' : ''}">${tiles.join('')}</div></section>`;
   return header('メニュー') + `<div class="content">
-    <p class="page-lead">このアプリでできることの一覧です。色ごとに機能が分かれています。</p>
+    <p class="page-lead">このアプリでできることの一覧です。</p>
     ${group('アカウント', [
       tile('menu', 'user', 'アカウント', 'お名前・ご契約・Myクラブ・通知・文字の大きさ', '#/account'),
     ])}
@@ -1859,17 +1875,17 @@ function viewMenu() {
       tile('meeting', 'calendar', '面談を予約する', 'コーチとオンラインで話す（LINEで予約）', CONTACT.lineUrl, 0, true),
     ])}
     ${group('記録・お祝い', [
-      tile('score', 'flag', 'スコア記録', 'ラウンドのスコアを記録。ベスト・平均を自動計算', '#/scores'),
-      tile('celebrate', 'trophy', 'お祝い', 'コーチから届いたお祝いメッセージ', '#/celebrations', state.celebrateUnread),
-      tile('celebrate', 'star', 'バッジ', '用語チェック・ドリル練習の連続でもらえる', '#/badges'),
-    ])}
+      mini('score', 'flag', 'スコア記録', '#/scores'),
+      mini('celebrate', 'trophy', 'お祝い', '#/celebrations', state.celebrateUnread),
+      mini('celebrate', 'star', 'バッジ', '#/badges'),
+    ], true)}
     ${group('はじめての方へ・使い方', [
-      tile('help', 'help', 'はじめての方へ', 'アプリの使い方とゴルフの基本', '#/help'),
-      tile('help', 'flag', '図解で見る', '撮影の向き・スイング・コース・クラブ・スコア', '#/help/zukai'),
-      tile('help', 'book', '用語集', 'ゴルフの言葉・アプリの言葉を調べる', '#/help/words'),
-      tile('help', 'video', '使い方ガイド', '動画の撮り方・送り方（3ステップ）', '#/guide'),
-      tile('help', 'home', 'ホーム画面に追加', 'アプリのようにワンタップで開く', '#/install'),
-    ])}
+      mini('help', 'help', 'はじめての方へ', '#/help'),
+      mini('help', 'flag', '図解で見る', '#/help/zukai'),
+      mini('help', 'book', '用語集', '#/help/words'),
+      mini('help', 'video', '使い方ガイド', '#/guide'),
+      mini('help', 'home', 'ホーム画面に追加', '#/install'),
+    ], true)}
     ${group('お問い合わせ', [
       tile('menu', 'chat', 'LINEで問い合わせる', '分からないこと・ご相談はこちら', CONTACT.lineUrl, 0, true),
     ])}
@@ -2817,6 +2833,7 @@ async function loadAsks(p) {
   };
 }
 function askCards(a) {
+  // お願いは同時に1つだけ（退会理由 → すすめたい度 → アンケートの順）
   return [
     a.exit ? `<section class="card ask-card">
       <button type="button" class="fs-close" data-action="ask-hide" data-key="atg-exit-hide" aria-label="閉じる">×</button>
@@ -2837,9 +2854,9 @@ function askCards(a) {
         <button class="btn-block btn-sub" type="submit">答える</button>
       </form><p class="muted small" style="margin:6px 0 0">月に1回だけお聞きしています。</p></section>` : '',
     a.survey ? `<div class="card ask-card ask-link"><a href="#/survey"><span class="ask-ic" aria-hidden="true">📝</span>
-      <span><b>かんたんアンケートにご協力ください</b><small>30秒ほどで終わります。レッスンをよくするために使います</small></span><i aria-hidden="true">›</i></a>
+      <span><b>かんたんアンケートにご協力ください</b><small>30秒ほどで終わります。答えるとバッジがもらえます</small></span><i aria-hidden="true">›</i></a>
       <button type="button" class="fs-close" data-action="ask-hide" data-key="atg-survey-hide" aria-label="閉じる">×</button></div>` : '',
-  ].join('');
+  ].find(Boolean) || '';
 }
 
 // レッスンの評価（レッスン詳細の一番下）
@@ -3524,6 +3541,7 @@ async function render() {
     if (topBar) document.documentElement.style.setProperty('--top-h', `${topBar.offsetHeight}px`);
     if (fresh) {
       $app.querySelector('.content, .auth-page')?.classList.add('page-in');
+      foldPageLead();
       // どの画面がよく使われているか（会員のみ。「help/words」のように2段目まで、IDは含めない）
       if (state.profile && state.profile.role !== 'admin') {
         const r = getRoute();
