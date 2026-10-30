@@ -319,6 +319,7 @@ async function signedVideoUrls(subs) {
 
 // コーチの解説動画（アプリで作った、音声と線入りの動画）の再生用リンク
 const LESSON_VIDEO_BUCKET = 'lesson-videos';
+const COACH_VIDEO_RETENTION_LABEL = '6か月'; // 解説動画はレッスンを送ってから半年で自動削除
 async function coachVideoUrl(l) {
   if (!l?.coach_video_path || l.coach_video_deleted_at) return '';
   const { data } = await sb.storage.from(LESSON_VIDEO_BUCKET).createSignedUrl(l.coach_video_path, 3600);
@@ -1433,7 +1434,7 @@ async function viewLesson(id, back = 'history') {
   <div class="col-main">
     <div class="blk" style="--o:1">
     ${l.video_url || hasCv ? `<section class="card lesson-sec" id="ls-video">${secTitle('▶', 'コーチの解説動画')}
-        ${cvUrl ? coachVideoTag(cvUrl) : hasCv ? `<p class="muted small">保存期間（${RETENTION_LABEL}）を過ぎたため、解説動画は削除されました。下の文章のフィードバックはいつでも見られます。</p>` : ''}
+        ${cvUrl ? coachVideoTag(cvUrl) : hasCv ? `<p class="muted small">保存期間（${COACH_VIDEO_RETENTION_LABEL}）を過ぎたため、解説動画は削除されました。下の文章のフィードバックはいつでも見られます。</p>` : ''}
         ${l.video_url ? videoEmbed(l.video_url) : ''}</section>` : ''}
     </div>
     <div class="blk" style="--o:2">
@@ -3573,7 +3574,7 @@ async function viewLessonForm(route) {
         ${submission && !submission.video_deleted_at
           ? `<div class="cv-btns"><button type="button" class="btn-sm btn-gold" data-action="rec-open" data-member="${esc(memberId)}" data-title="${esc(`${member?.name || ''}さん　${submission.club} / ${submission.angle}`)}">🎙 ${cvUrl ? '解説動画を作り直す' : '提出動画で解説動画を作る'}</button>
               ${cvUrl ? '<button type="button" class="btn-sm btn-sub" data-action="rec-remove">この解説動画を外す</button>' : ''}</div>
-            <p class="muted small" style="margin:6px 0 0">提出動画を再生しながら、線・矢印・円・角度を書き込み、話した声と一緒に録画します。1〜3分がおすすめです。</p>`
+            <p class="muted small" style="margin:6px 0 0">提出動画を再生しながら、線・矢印・円・角度を書き込み、話した声と一緒に録画します。1〜3分がおすすめです（最長10分）。会員は送ってから${COACH_VIDEO_RETENTION_LABEL}見られます。</p>`
           : '<p class="muted small" style="margin:0">提出動画があるレッスンで作れます。</p>'}
       </fieldset>
       <label for="video_url">コーチの解説動画（YouTube・任意）</label><input id="video_url" name="video_url" type="url" value="${esc(lesson.video_url || '')}" placeholder="https://youtu.be/...">

@@ -5,7 +5,7 @@
 
 const COLORS = ['#ff3b30', '#ffd60a', '#ffffff', '#0a84ff'];
 const TOOLS = [['pen', '✎', 'ペン'], ['line', '／', '直線'], ['arrow', '↗', '矢印'], ['circle', '○', '円'], ['angle', '∠', '角度']];
-const MAX_SEC = 300; // 録画は5分まで
+const MAX_SEC = 600; // 録画は10分まで
 
 // 録画に使える形式（mp4 を優先。会員の iPhone でもそのまま再生できる）
 function pickMime() {
