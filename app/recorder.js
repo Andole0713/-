@@ -4,7 +4,7 @@
 // openRecorder({ src, title }) → 使うと決めた動画の Blob（やめたら null）
 
 const COLORS = ['#ff3b30', '#ffd60a', '#ffffff', '#0a84ff'];
-const TOOLS = [['pen', '✎', 'ペン'], ['line', '／', '直線'], ['arrow', '↗', '矢印'], ['circle', '○', '円'], ['angle', '∠', '角度']];
+const TOOLS = [['move', '✥', '動かす'], ['pen', '✎', 'ペン'], ['line', '／', '直線'], ['arrow', '↗', '矢印'], ['circle', '○', '円'], ['angle', '∠', '角度']];
 const MAX_SEC = 600; // 録画は10分まで
 
 // 録画に使える形式（mp4 を優先。会員の iPhone でもそのまま再生できる）
@@ -38,13 +38,13 @@ export function openRecorder({ src, title = '' }) {
           <input type="range" class="rec-seek" min="0" max="1000" value="0" aria-label="再生位置">
         </div>
         <div class="rec-row">
-          <span class="rec-grp tools">${TOOLS.map(([k, ic, l], i) => `<button type="button" data-r="tool" data-v="${k}" class="${i === 0 ? 'on' : ''}" title="${l}"><b>${ic}</b><small>${l}</small></button>`).join('')}</span>
+          <span class="rec-grp tools">${TOOLS.map(([k, ic, l]) => `<button type="button" data-r="tool" data-v="${k}" class="${k === 'pen' ? 'on' : ''}" title="${l}"><b>${ic}</b><small>${l}</small></button>`).join('')}</span>
           <span class="rec-grp">${COLORS.map((c, i) => `<button type="button" data-r="color" data-v="${c}" class="sw${i === 0 ? ' on' : ''}" style="--c:${c}" aria-label="色"></button>`).join('')}</span>
-          <span class="rec-grp"><button type="button" data-r="undo">元に戻す</button><button type="button" data-r="clear">全部消す</button></span>
+          <span class="rec-grp"><button type="button" data-r="del" hidden>選んだものを消す</button><button type="button" data-r="undo">元に戻す</button><button type="button" data-r="clear">全部消す</button></span>
         </div>
         <div class="rec-row rec-main">
           <button type="button" data-r="rec" class="rec-go">● 録画を始める</button>
-          <span class="rec-hint">録画中も、再生・一時停止・スロー・書き込みができます。マイクで話した声も一緒に録れます。</span>
+          <span class="rec-hint">「✥ 動かす」で、書いた線や円をつかんで移動、端をつまんで長さ・大きさ・角度を変えられます。録画中も操作できます。</span>
         </div>
       </div>
       <div class="rec-review" hidden>
@@ -60,6 +60,10 @@ export function openRecorder({ src, title = '' }) {
     const $ = (s) => wrap.querySelector(s);
     let tool = 'pen'; let color = COLORS[0];
     const shapes = []; let draft = null; let anglePts = [];
+    // 「元に戻す」用に、書き込み・移動・削除の前の状態を残す
+    const history = [];
+    const snap = () => { history.push(JSON.stringify(shapes)); if (history.length > 60) history.shift(); };
+    let sel = null; let drag = null; // 動かす：選んでいる図形と、つかんでいる場所
     let rec = null; let chunks = []; let mic = null; let t0 = 0; let timer = null; let outUrl = ''; let objUrl = ''; let raf = 0; let closed = false;
 
     // 動画は一度ダウンロードしてから使う（別のサーバーの動画のままだと、画面を録画できないため）
@@ -124,6 +128,10 @@ export function openRecorder({ src, title = '' }) {
         shapes.forEach(drawShape);
         if (draft) drawShape(draft);
         if (anglePts.length) drawShape({ t: 'angle', c: color, p: anglePts });
+        // 選んでいる図形の「つまみ」（録画中は映らないように出さない）
+        if (tool === 'move' && sel && shapes.includes(sel) && !(rec && rec.state === 'recording')) {
+          handles(sel).forEach((h) => { ctx.beginPath(); ctx.arc(h.x, h.y, lw() * 2.8, 0, Math.PI * 2); ctx.fillStyle = '#fff'; ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = '#111'; ctx.stroke(); });
+        }
         if (!$('.rec-seek').matches(':active') && video.duration) $('.rec-seek').value = String(Math.round(video.currentTime / video.duration * 1000));
       }
       raf = requestAnimationFrame(frame);
@@ -132,22 +140,72 @@ export function openRecorder({ src, title = '' }) {
 
     // 書き込み（指・マウス・ペン）
     const pt = (e) => { const r = cv.getBoundingClientRect(); return { x: (e.clientX - r.left) * cv.width / r.width, y: (e.clientY - r.top) * cv.height / r.height }; };
+    // 図形の「つまみ」（端・中心・角度の頂点）。つかむと形を変えられる
+    function handles(s) {
+      if (s.t === 'line' || s.t === 'arrow' || s.t === 'circle') return [s.a, s.b];
+      if (s.t === 'angle') return s.p;
+      return [];
+    }
+    const segDist = (p, a, b) => {
+      const dx = b.x - a.x; const dy = b.y - a.y; const L = dx * dx + dy * dy;
+      const t = L ? Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / L)) : 0;
+      return Math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy));
+    };
+    // 指・マウスの位置にある図形を探す（上に描いたものから）
+    function hit(p) {
+      const tol = lw() * 4;
+      for (let i = shapes.length - 1; i >= 0; i--) {
+        const s = shapes[i];
+        const h = handles(s).find((q) => Math.hypot(q.x - p.x, q.y - p.y) <= tol * 1.3);
+        if (h) return { s, h };
+        let d = Infinity;
+        if (s.t === 'pen') for (let k = 1; k < s.p.length; k++) d = Math.min(d, segDist(p, s.p[k - 1], s.p[k]));
+        if (s.t === 'line' || s.t === 'arrow') d = segDist(p, s.a, s.b);
+        if (s.t === 'circle') { const r = Math.hypot(s.b.x - s.a.x, s.b.y - s.a.y); const c = Math.hypot(p.x - s.a.x, p.y - s.a.y); d = c <= r ? 0 : c - r; }
+        if (s.t === 'angle') d = Math.min(segDist(p, s.p[0], s.p[1]), s.p[2] ? segDist(p, s.p[1], s.p[2]) : Infinity);
+        if (d <= tol) return { s, h: null };
+      }
+      return null;
+    }
+    const allPts = (s) => (s.t === 'pen' || s.t === 'angle' ? s.p : [s.a, s.b]);
+    const showDel = () => { $('[data-r="del"]').hidden = !(tool === 'move' && sel && shapes.includes(sel)); };
     cv.addEventListener('pointerdown', (e) => {
       e.preventDefault(); cv.setPointerCapture(e.pointerId);
       const p = pt(e);
+      if (tool === 'move') {
+        const f = hit(p);
+        sel = f ? f.s : null; showDel();
+        // 円の中心をつかんだときは、大きさはそのままで円ごと動かす
+        if (f) { snap(); drag = { s: f.s, h: f.s.t === 'circle' && f.h === f.s.a ? null : f.h, last: p }; }
+        return;
+      }
       if (tool === 'angle') {
         anglePts.push(p);
-        if (anglePts.length === 3) { shapes.push({ t: 'angle', c: color, p: anglePts }); anglePts = []; }
+        if (anglePts.length === 3) { snap(); shapes.push({ t: 'angle', c: color, p: anglePts }); anglePts = []; }
         return;
       }
       draft = tool === 'pen' ? { t: 'pen', c: color, p: [p] } : { t: tool, c: color, a: p, b: p };
     });
     cv.addEventListener('pointermove', (e) => {
+      if (drag) {
+        const p = pt(e);
+        if (drag.h) { drag.h.x = p.x; drag.h.y = p.y; } else {
+          // 円は中心をつかんでも全体が動く。それ以外も全体を平行移動
+          const dx = p.x - drag.last.x; const dy = p.y - drag.last.y;
+          allPts(drag.s).forEach((q) => { q.x += dx; q.y += dy; });
+        }
+        drag.last = p;
+        return;
+      }
+      if (tool === 'move') { cv.style.cursor = hit(pt(e)) ? 'grab' : 'default'; return; }
       if (!draft) return;
       const p = pt(e);
       if (draft.t === 'pen') draft.p.push(p); else draft.b = p;
     });
-    const endDraw = () => { if (draft) { if (draft.t === 'pen' ? draft.p.length > 1 : Math.hypot(draft.b.x - draft.a.x, draft.b.y - draft.a.y) > 4) shapes.push(draft); draft = null; } };
+    const endDraw = () => {
+      drag = null;
+      if (draft) { if (draft.t === 'pen' ? draft.p.length > 1 : Math.hypot(draft.b.x - draft.a.x, draft.b.y - draft.a.y) > 4) { snap(); shapes.push(draft); } draft = null; }
+    };
     cv.addEventListener('pointerup', endDraw); cv.addEventListener('pointercancel', endDraw);
 
     const fmt = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
@@ -209,10 +267,14 @@ export function openRecorder({ src, title = '' }) {
       if (r === 'play') { if (video.paused) { video.play(); b.textContent = '❚❚'; } else { video.pause(); b.textContent = '▶'; } }
       if (r === 'rate') { video.playbackRate = Number(b.dataset.v); b.parentElement.querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b)); }
       if (r === 'step') { video.pause(); $('.rec-play').textContent = '▶'; video.currentTime = Math.max(0, Math.min(video.duration || 0, video.currentTime + Number(b.dataset.v) / 30)); }
-      if (r === 'tool') { tool = b.dataset.v; anglePts = []; b.parentElement.querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b)); }
-      if (r === 'color') { color = b.dataset.v; b.parentElement.querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b)); }
-      if (r === 'undo') { if (anglePts.length) anglePts = []; else shapes.pop(); }
-      if (r === 'clear') { shapes.length = 0; anglePts = []; }
+      if (r === 'tool') { tool = b.dataset.v; anglePts = []; sel = null; showDel(); cv.style.cursor = tool === 'move' ? 'default' : 'crosshair'; b.parentElement.querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b)); }
+      if (r === 'color') { color = b.dataset.v; if (tool === 'move' && sel && shapes.includes(sel)) { snap(); sel.c = color; } b.parentElement.querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b)); }
+      if (r === 'undo') {
+        if (anglePts.length) anglePts = [];
+        else if (history.length) { shapes.splice(0, shapes.length, ...JSON.parse(history.pop())); sel = null; showDel(); }
+      }
+      if (r === 'clear') { if (shapes.length) snap(); shapes.length = 0; anglePts = []; sel = null; showDel(); }
+      if (r === 'del' && sel) { snap(); shapes.splice(shapes.indexOf(sel), 1); sel = null; showDel(); }
       if (r === 'rec') { if (rec && rec.state === 'recording') stopRec(); else startRec(); }
       if (r === 'retake') { $('.rec-review').hidden = true; $('.rec-out').removeAttribute('src'); wrap._blob = null; }
       if (r === 'use') close(wrap._blob);
