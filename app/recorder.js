@@ -70,8 +70,21 @@ export function openRecorder({ src, title = '' }) {
       const scale = Math.min(1, 1280 / Math.max(video.videoWidth, video.videoHeight));
       cv.width = Math.round(video.videoWidth * scale / 2) * 2; cv.height = Math.round(video.videoHeight * scale / 2) * 2;
       $('.rec-load').hidden = true;
+      fit();
       video.currentTime = 0.05;
     });
+    // 画面（表示エリア）にちょうど収まる大きさで表示する。縦長の動画でも下がはみ出さないように
+    const stage = $('.rec-stage');
+    function fit() {
+      if (!cv.width) return;
+      const pad = 16;
+      const w = Math.max(50, stage.clientWidth - pad); const h = Math.max(50, stage.clientHeight - pad);
+      const k = Math.min(w / cv.width, h / cv.height);
+      cv.style.width = `${Math.floor(cv.width * k)}px`; cv.style.height = `${Math.floor(cv.height * k)}px`;
+    }
+    const ro = window.ResizeObserver ? new ResizeObserver(fit) : null;
+    ro?.observe(stage);
+    window.addEventListener('resize', fit);
 
     const lw = () => Math.max(3, cv.width / 160);
     function arrowHead(a, b) {
@@ -176,6 +189,7 @@ export function openRecorder({ src, title = '' }) {
       if (objUrl) URL.revokeObjectURL(objUrl);
       if (outUrl && !result) URL.revokeObjectURL(outUrl);
       document.removeEventListener('keydown', onKey, true);
+      ro?.disconnect(); window.removeEventListener('resize', fit);
       wrap.remove(); document.body.classList.remove('rec-open');
       resolve(result || null);
     }
