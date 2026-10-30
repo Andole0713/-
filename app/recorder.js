@@ -29,7 +29,8 @@ export function openRecorder({ src, title = '' }) {
     wrap.innerHTML = `
       <div class="rec-top"><b>🎙 解説動画を作る</b><span class="rec-sub">${esc(title)}</span><button type="button" class="rec-x" data-r="close" aria-label="閉じる">×</button></div>
       <div class="rec-stage"><canvas class="rec-cv"></canvas><div class="rec-load">動画を読み込んでいます…</div>
-        <div class="rec-badge" hidden><i></i>録画中 <b class="rec-time">0:00</b></div></div>
+        <div class="rec-badge" hidden><i></i>録画中 <b class="rec-time">0:00</b></div>
+        <div class="rec-tip" hidden></div></div>
       <div class="rec-bar">
         <div class="rec-row">
           <button type="button" data-r="play" class="rec-play" aria-label="再生・一時停止">▶</button>
@@ -90,7 +91,7 @@ export function openRecorder({ src, title = '' }) {
     ro?.observe(stage);
     window.addEventListener('resize', fit);
 
-    const lw = () => Math.max(3, cv.width / 160);
+    const lw = () => Math.max(4, cv.width / 110);
     function arrowHead(a, b) {
       const ang = Math.atan2(b.y - a.y, b.x - a.x); const s = lw() * 4;
       ctx.beginPath(); ctx.moveTo(b.x, b.y);
@@ -99,8 +100,8 @@ export function openRecorder({ src, title = '' }) {
       ctx.closePath(); ctx.fill();
     }
     function label(text, x, y) {
-      ctx.font = `700 ${Math.round(lw() * 5)}px sans-serif`;
-      const w = ctx.measureText(text).width; const h = lw() * 6.5;
+      ctx.font = `700 ${Math.round(lw() * 6.5)}px sans-serif`;
+      const w = ctx.measureText(text).width; const h = lw() * 8;
       ctx.fillStyle = 'rgba(0,0,0,.65)'; ctx.fillRect(x + 8, y - h, w + 14, h + 4);
       ctx.fillStyle = '#fff'; ctx.fillText(text, x + 15, y - lw());
     }
@@ -111,7 +112,11 @@ export function openRecorder({ src, title = '' }) {
       if (s.t === 'line' || s.t === 'arrow') { ctx.beginPath(); ctx.moveTo(s.a.x, s.a.y); ctx.lineTo(s.b.x, s.b.y); ctx.stroke(); if (s.t === 'arrow') arrowHead(s.a, s.b); }
       if (s.t === 'circle') { ctx.beginPath(); ctx.arc(s.a.x, s.a.y, Math.hypot(s.b.x - s.a.x, s.b.y - s.a.y), 0, Math.PI * 2); ctx.stroke(); }
       if (s.t === 'angle') {
-        const [a, b, c] = s.p; ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); if (c) ctx.lineTo(c.x, c.y); ctx.stroke();
+        const [a, b, c] = s.p;
+        // 途中（1点目・2点目だけ）のときは、置いた点と線だけを出す
+        s.p.forEach((q) => { ctx.beginPath(); ctx.arc(q.x, q.y, lw() * 1.4, 0, Math.PI * 2); ctx.fill(); });
+        if (!b) { ctx.shadowBlur = 0; return; }
+        ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); if (c) ctx.lineTo(c.x, c.y); ctx.stroke();
         if (c) {
           const a1 = Math.atan2(a.y - b.y, a.x - b.x); const a2 = Math.atan2(c.y - b.y, c.x - b.x);
           let d = Math.abs(a1 - a2) * 180 / Math.PI; if (d > 180) d = 360 - d;
@@ -123,6 +128,11 @@ export function openRecorder({ src, title = '' }) {
     }
     function frame() {
       if (closed) return;
+      // 次の描画を先に予約する（1つの図形でエラーが起きても、画面が止まらないように）
+      raf = requestAnimationFrame(frame);
+      try { draw(); } catch (err) { console.error(err); }
+    }
+    function draw() {
       if (video.readyState >= 2 && cv.width) {
         ctx.drawImage(video, 0, 0, cv.width, cv.height);
         shapes.forEach(drawShape);
@@ -134,7 +144,6 @@ export function openRecorder({ src, title = '' }) {
         }
         if (!$('.rec-seek').matches(':active') && video.duration) $('.rec-seek').value = String(Math.round(video.currentTime / video.duration * 1000));
       }
-      raf = requestAnimationFrame(frame);
     }
     raf = requestAnimationFrame(frame);
 
@@ -168,6 +177,13 @@ export function openRecorder({ src, title = '' }) {
       return null;
     }
     const allPts = (s) => (s.t === 'pen' || s.t === 'angle' ? s.p : [s.a, s.b]);
+    // 角度：いま何点目をタップするかを案内する
+    const ANGLE_STEPS = ['角度：① 片方の端をタップ', '角度：② 角の頂点（曲がっている所）をタップ', '角度：③ もう片方の端をタップ'];
+    function angleTip() {
+      const tip = $('.rec-tip');
+      tip.hidden = tool !== 'angle';
+      tip.textContent = ANGLE_STEPS[anglePts.length] || '';
+    }
     const showDel = () => { $('[data-r="del"]').hidden = !(tool === 'move' && sel && shapes.includes(sel)); };
     cv.addEventListener('pointerdown', (e) => {
       e.preventDefault(); cv.setPointerCapture(e.pointerId);
@@ -182,6 +198,7 @@ export function openRecorder({ src, title = '' }) {
       if (tool === 'angle') {
         anglePts.push(p);
         if (anglePts.length === 3) { snap(); shapes.push({ t: 'angle', c: color, p: anglePts }); anglePts = []; }
+        angleTip();
         return;
       }
       draft = tool === 'pen' ? { t: 'pen', c: color, p: [p] } : { t: tool, c: color, a: p, b: p };
@@ -267,10 +284,10 @@ export function openRecorder({ src, title = '' }) {
       if (r === 'play') { if (video.paused) { video.play(); b.textContent = '❚❚'; } else { video.pause(); b.textContent = '▶'; } }
       if (r === 'rate') { video.playbackRate = Number(b.dataset.v); b.parentElement.querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b)); }
       if (r === 'step') { video.pause(); $('.rec-play').textContent = '▶'; video.currentTime = Math.max(0, Math.min(video.duration || 0, video.currentTime + Number(b.dataset.v) / 30)); }
-      if (r === 'tool') { tool = b.dataset.v; anglePts = []; sel = null; showDel(); cv.style.cursor = tool === 'move' ? 'default' : 'crosshair'; b.parentElement.querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b)); }
+      if (r === 'tool') { tool = b.dataset.v; anglePts = []; sel = null; showDel(); angleTip(); cv.style.cursor = tool === 'move' ? 'default' : 'crosshair'; b.parentElement.querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b)); }
       if (r === 'color') { color = b.dataset.v; if (tool === 'move' && sel && shapes.includes(sel)) { snap(); sel.c = color; } b.parentElement.querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b)); }
       if (r === 'undo') {
-        if (anglePts.length) anglePts = [];
+        if (anglePts.length) { anglePts = []; angleTip(); }
         else if (history.length) { shapes.splice(0, shapes.length, ...JSON.parse(history.pop())); sel = null; showDel(); }
       }
       if (r === 'clear') { if (shapes.length) snap(); shapes.length = 0; anglePts = []; sel = null; showDel(); }
