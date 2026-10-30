@@ -29,6 +29,7 @@ export function openRecorder({ src, title = '' }) {
     wrap.innerHTML = `
       <div class="rec-top"><b>🎙 解説動画を作る</b><span class="rec-sub">${esc(title)}</span><button type="button" class="rec-x" data-r="close" aria-label="閉じる">×</button></div>
       <div class="rec-stage"><canvas class="rec-cv"></canvas><div class="rec-load">動画を読み込んでいます…</div>
+        <div class="rec-scan" hidden><b>手ぶれを読み取っています…</b><i><s></s></i><button type="button" data-r="stab-cancel">やめる</button></div>
         <div class="rec-badge" hidden><i></i>録画中 <b class="rec-time">0:00</b></div>
         <div class="rec-tip" hidden></div></div>
       <div class="rec-bar">
@@ -37,6 +38,7 @@ export function openRecorder({ src, title = '' }) {
           <span class="rec-grp">${[[0.25, '¼'], [0.5, '½'], [1, '等速']].map(([r, l]) => `<button type="button" data-r="rate" data-v="${r}" class="${r === 1 ? 'on' : ''}">${l}</button>`).join('')}</span>
           <span class="rec-grp"><button type="button" data-r="step" data-v="-1" aria-label="1コマ戻す">◀</button><button type="button" data-r="step" data-v="1" aria-label="1コマ進める">▶</button></span>
           <span class="rec-grp zoom"><button type="button" data-r="zoom" data-v="-1" aria-label="縮小">－</button><button type="button" data-r="zoom" data-v="0" class="rec-zv" title="全体を表示">1.0倍</button><button type="button" data-r="zoom" data-v="1" aria-label="拡大">＋</button></span>
+          <span class="rec-grp"><button type="button" data-r="stab" class="rec-stab" title="撮った人の手ぶれを打ち消して、お客様がいつも画面の同じ位置に映るようにします">手ぶれ補正</button></span>
           <input type="range" class="rec-seek" min="0" max="1000" value="0" aria-label="再生位置">
         </div>
         <div class="rec-row">
@@ -46,7 +48,7 @@ export function openRecorder({ src, title = '' }) {
         </div>
         <div class="rec-row rec-main">
           <button type="button" data-r="rec" class="rec-go">● 録画を始める</button>
-          <span class="rec-hint">「✥ 動かす」で、書いた線や円をつかんで移動、端をつまんで長さ・大きさ・角度を変えられます。＋－で拡大・縮小（2本指でつまむ・マウスのホイールでも）。拡大中は「✥ 動かす」で何もない所をドラッグすると、見る場所を動かせます。録画中も操作できます。</span>
+          <span class="rec-hint">撮った人の手ぶれで線が体からずれるときは「手ぶれ補正」（押したときの画面が基準。目印は録画に映りません）。「✥ 動かす」で、書いた線や円をつかんで移動、端をつまんで長さ・大きさ・角度を変えられます。＋－で拡大・縮小（2本指でつまむ・マウスのホイールでも）。拡大中は「✥ 動かす」で何もない所をドラッグすると、見る場所を動かせます。録画中も操作できます。</span>
         </div>
       </div>
       <div class="rec-review" hidden>
@@ -68,6 +70,10 @@ export function openRecorder({ src, title = '' }) {
     // 拡大・縮小：z 倍で、動画の (cx, cy) を画面の真ん中に映す。view は今の表示、aim は向かう先（ボタンのときはなめらかに寄る）
     const view = { z: 1, cx: 0, cy: 0 }; const aim = { z: 1, cx: 0, cy: 0 };
     const ZMAX = 4;
+    // 手ぶれ補正：各時刻で、景色が基準の画面からどれだけずれているか（動画の座標）。null なら補正なし
+    let stab = null; let scanning = false; let scanStop = false;
+    // 補正でずらした分、画面の端に黒い所が出ないよう、その分だけは拡大しておく
+    const zMin = () => stab?.zMin || 1;
     let sel = null; let drag = null; // 動かす：選んでいる図形と、つかんでいる場所
     let rec = null; let chunks = []; let mic = null; let t0 = 0; let timer = null; let outUrl = ''; let objUrl = ''; let raf = 0; let closed = false;
 
@@ -146,7 +152,8 @@ export function openRecorder({ src, title = '' }) {
         ctx.setTransform(1, 0, 0, 1, 0, 0);
         if (view.z > 1) { ctx.fillStyle = '#000'; ctx.fillRect(0, 0, cv.width, cv.height); }
         ctx.setTransform(view.z, 0, 0, view.z, cv.width / 2 - view.z * view.cx, cv.height / 2 - view.z * view.cy);
-        ctx.drawImage(video, 0, 0, cv.width, cv.height);
+        const o = shakeAt(video.currentTime);
+        ctx.drawImage(video, -o.x, -o.y, cv.width, cv.height);
         shapes.forEach(drawShape);
         if (draft) drawShape(draft);
         if (anglePts.length) drawShape({ t: 'angle', c: color, p: anglePts });
@@ -160,6 +167,140 @@ export function openRecorder({ src, title = '' }) {
     }
     raf = requestAnimationFrame(frame);
 
+    // ---- 手ぶれ補正 ----
+    // 押したときに映っている画面を基準にする。動画を最初から最後まで1コマずつ読んで、
+    // 画面をマス目に分け、多くのマスがそろってずれた量を「カメラのぶれ」とみなす
+    // （スイングしている人のマスはばらばらに動くので、多数決で外れる）。
+    // 表示するときは、そのぶれの分だけ映像を逆にずらす。線は景色に付いたままになるので、
+    // カメラが揺れても体からずれない。頭が本当に動いたときは、線からはみ出して見える。
+    // 目印は何も描かないので、録画にもお客様の動画にも映らない。
+    function shakeAt(t) {
+      if (!stab) return { x: 0, y: 0 };
+      // 1コマごとに読んであるので、いま映っているコマの値をそのまま使う
+      const i = Math.max(0, Math.min(stab.x.length - 1, Math.floor(t / stab.dt)));
+      return { x: stab.x[i] * stab.k, y: stab.y[i] * stab.k };
+    }
+    const seekTo = (t) => new Promise((ok) => {
+      const done = () => { video.removeEventListener('seeked', done); clearTimeout(tm); ok(); };
+      const tm = setTimeout(done, 1500);
+      video.addEventListener('seeked', done); video.currentTime = t;
+    });
+    async function toggleStab() {
+      if (scanning) return;
+      if (rec && rec.state === 'recording') { alert('手ぶれ補正の切り替えは、録画していないときにしてください。'); return; }
+      const btn = $('.rec-stab');
+      if (stab) {
+        // 補正をやめると、線は今映っている位置のまま、映像の座標に直す
+        const o = shakeAt(video.currentTime);
+        shapes.forEach((sh) => allPts(sh).forEach((q) => { q.x += o.x; q.y += o.y; }));
+        stab = null; btn.classList.remove('on'); btn.textContent = '手ぶれ補正';
+        clampView(aim); zv();
+        return;
+      }
+      if (!video.duration || !cv.width) return;
+      scanning = true; scanStop = false;
+      const was = { t: video.currentTime, paused: video.paused }; video.pause(); $('.rec-play').textContent = '▶';
+      const box = $('.rec-scan'); const bar = box.querySelector('s'); box.hidden = false; bar.style.width = '0%';
+      try {
+        const res = await scanShake(was.t, (r) => { bar.style.width = `${Math.round(r * 100)}%`; });
+        if (res) {
+          // 押したときの画面を基準（ずれ 0）にしたので、いま書いてある線もそのまま合う
+          stab = res; btn.classList.add('on'); btn.textContent = '手ぶれ補正 ON';
+          aim.z = Math.max(aim.z, stab.zMin); clampView(aim); Object.assign(view, aim); zv();
+          if (stab.weak) alert('背景に模様が少なく、手ぶれを読み取りにくい動画でした。補正が合っていない所があるかもしれません。');
+        }
+      } catch (err) { console.error(err); alert('手ぶれを読み取れませんでした。'); }
+      box.hidden = true; scanning = false;
+      await seekTo(was.t);
+    }
+    async function scanShake(tRef, progress) {
+      const dur = video.duration;
+      const AW = Math.min(320, cv.width); const AH = Math.round(AW * cv.height / cv.width);
+      const ac = document.createElement('canvas'); ac.width = AW; ac.height = AH;
+      const ax = ac.getContext('2d', { willReadFrequently: true });
+      const gray = () => {
+        ax.drawImage(video, 0, 0, AW, AH);
+        const d = ax.getImageData(0, 0, AW, AH).data; const g = new Uint8Array(AW * AH);
+        for (let i = 0, j = 0; j < g.length; i += 4, j++) g[j] = (d[i] * 77 + d[i + 1] * 150 + d[i + 2] * 29) >> 8;
+        // 半分の大きさのものも作る。大きく揺れたコマは、まず粗い方で大まかに探す
+        const hw = AW >> 1; const hh = AH >> 1; const h = new Uint8Array(hw * hh);
+        for (let y = 0; y < hh; y++) for (let x = 0; x < hw; x++) { const o = 2 * y * AW + 2 * x; h[y * hw + x] = (g[o] + g[o + 1] + g[o + AW] + g[o + AW + 1]) >> 2; }
+        return { full: { g, w: AW, h: AH }, half: { g: h, w: hw, h: hh } };
+      };
+      // 1マスを少し離れたもう1枚の中で探し、いちばん似ている位置のずれを返す
+      const B = 16;
+      function blockShift(A, Bi, px, py, cx, cy, S) {
+        const W = A.w; let best = Infinity; let bx = 0; let by = 0;
+        for (let dy = cy - S; dy <= cy + S; dy++) {
+          for (let dx = cx - S; dx <= cx + S; dx++) {
+            const qx = px + dx; const qy = py + dy;
+            if (qx < 0 || qy < 0 || qx + B > W || qy + B > A.h) continue;
+            let sad = 0;
+            for (let y = 0; y < B && sad < best; y += 2) {
+              const ra = (py + y) * W + px; const rb = (qy + y) * W + qx;
+              for (let x = 0; x < B; x += 2) sad += Math.abs(A.g[ra + x] - Bi.g[rb + x]);
+            }
+            if (sad < best) { best = sad; bx = dx; by = dy; }
+          }
+        }
+        return best === Infinity ? null : [bx, by];
+      }
+      // 模様のあるマスだけを使う（真っ白な壁などは、どこに動いたか分からない）
+      function texturedBlocks(A) {
+        const out = []; const cols = 9; const rows = Math.max(6, Math.round(cols * A.h / A.w));
+        for (let r = 0; r < rows; r++) {
+          for (let c = 0; c < cols; c++) {
+            const px = Math.round((A.w - B) * (c + 0.5) / cols); const py = Math.round((A.h - B) * (r + 0.5) / rows);
+            let s1 = 0; let s2 = 0;
+            for (let y = 0; y < B; y += 2) for (let x = 0; x < B; x += 2) { const v = A.g[(py + y) * A.w + px + x]; s1 += v; s2 += v * v; }
+            const n = (B / 2) * (B / 2); if (s2 / n - (s1 / n) ** 2 > 40) out.push([px, py]);
+          }
+        }
+        return out;
+      }
+      // 多くのマスがそろって動いた量（多数決）。ばらばらに動くマス（スイングしている人）は外れる
+      function vote(A, Bi, cx, cy, S) {
+        const blocks = texturedBlocks(A); const v = [];
+        blocks.forEach(([px, py]) => { const m = blockShift(A, Bi, px, py, cx, cy, S); if (m) v.push(m); });
+        if (!v.length) return null;
+        let best = null; let bestN = 0;
+        v.forEach(([x, y]) => { const c = v.filter(([p, q]) => Math.abs(p - x) <= 1 && Math.abs(q - y) <= 1).length; if (c > bestN) { bestN = c; best = [x, y]; } });
+        const near = v.filter(([p, q]) => Math.abs(p - best[0]) <= 1 && Math.abs(q - best[1]) <= 1);
+        return { x: near.reduce((a, q) => a + q[0], 0) / near.length, y: near.reduce((a, q) => a + q[1], 0) / near.length, share: bestN / Math.max(1, blocks.length) };
+      }
+      // 1秒に30コマ読む（長い動画は最大900コマ）。各コマの真ん中の時刻を見る
+      const dt = Math.max(1 / 30, dur / 900); const n = Math.max(1, Math.ceil(dur / dt));
+      await seekTo(tRef); const ref = gray();
+      const xs = new Float32Array(n); const ys = new Float32Array(n);
+      let prev = null; let px = 0; let py = 0; let weakN = 0;
+      for (let i = 0; i < n; i++) {
+        if (scanStop || closed) return null;
+        await seekTo(Math.min(dur - 0.001, (i + 0.5) * dt));
+        const cur = gray();
+        // 前のコマからのずれで見当をつけ（半分の大きさで広く探してから、元の大きさで細かく）、
+        // 最後に基準の画面と見比べて合わせる（少しずつずれがたまらないように）
+        let gx = px; let gy = py;
+        {
+          // 最初のコマは前のコマがないので、基準の画面から広く探す
+          const from = prev || ref; if (!prev) { gx = 0; gy = 0; }
+          const c = vote(from.half, cur.half, 0, 0, 12);
+          if (c && c.share > 0.2) {
+            const d = vote(from.full, cur.full, Math.round(c.x * 2), Math.round(c.y * 2), 2);
+            const m = d && d.share > 0.2 ? d : { x: c.x * 2, y: c.y * 2 };
+            gx = px + m.x; gy = py + m.y;
+          }
+        }
+        const r = vote(ref.full, cur.full, Math.round(gx), Math.round(gy), 4);
+        if (r && r.share > 0.2) { px = r.x; py = r.y; } else { px = gx; py = gy; weakN++; }
+        xs[i] = px; ys[i] = py; prev = cur;
+        progress((i + 1) / n);
+      }
+      const k = cv.width / AW;
+      let mx = 0; let my = 0; xs.forEach((v) => { mx = Math.max(mx, Math.abs(v) * k); }); ys.forEach((v) => { my = Math.max(my, Math.abs(v) * k); });
+      const need = Math.max(1 / Math.max(0.4, 1 - 2 * mx / cv.width), 1 / Math.max(0.4, 1 - 2 * my / cv.height));
+      return { x: xs, y: ys, dt, k, zMin: Math.min(ZMAX, need * 1.02), weak: weakN > n * 0.3 };
+    }
+
     // 書き込み（指・マウス・ペン）
     // 画面上の位置（canvas の座標）
     const scr = (e) => { const r = cv.getBoundingClientRect(); return { x: (e.clientX - r.left) * cv.width / r.width, y: (e.clientY - r.top) * cv.height / r.height }; };
@@ -168,14 +309,14 @@ export function openRecorder({ src, title = '' }) {
     const pt = (e) => toVid(scr(e));
     // 動画の外（黒い所）が見えないように、見る場所を枠の中に収める
     function clampView(v) {
-      v.z = Math.max(1, Math.min(ZMAX, v.z));
+      v.z = Math.max(zMin(), Math.min(ZMAX, v.z));
       const hw = cv.width / 2 / v.z; const hh = cv.height / 2 / v.z;
       v.cx = Math.max(hw, Math.min(cv.width - hw, v.cx)); v.cy = Math.max(hh, Math.min(cv.height - hh, v.cy));
       return v;
     }
     // 画面上の点 s を動かさずに、倍率を z にする（指でつまんだ所・マウスの所を中心に拡大）
     function zoomAt(z, s, v = view) {
-      const before = toVid(s, v); v.z = Math.max(1, Math.min(ZMAX, z));
+      const before = toVid(s, v); v.z = Math.max(zMin(), Math.min(ZMAX, z));
       v.cx = before.x - (s.x - cv.width / 2) / v.z; v.cy = before.y - (s.y - cv.height / 2) / v.z;
       return clampView(v);
     }
@@ -190,7 +331,7 @@ export function openRecorder({ src, title = '' }) {
     const ZSTEPS = [1, 1.5, 2, 3, 4];
     function zoomStep(d) {
       const c = { x: cv.width / 2, y: cv.height / 2 };
-      const z = d > 0 ? (ZSTEPS.find((v) => v > aim.z + 0.05) || ZMAX) : ([...ZSTEPS].reverse().find((v) => v < aim.z - 0.05) || 1);
+      const z = d > 0 ? (ZSTEPS.find((v) => v > aim.z + 0.05) || ZMAX) : ([...ZSTEPS].reverse().find((v) => v < aim.z - 0.05) || zMin());
       zoomAt(z, c, aim); zv();
     }
     cv.addEventListener('wheel', (e) => {
@@ -287,7 +428,7 @@ export function openRecorder({ src, title = '' }) {
         // つまみ始めの表示から計算しなおす（指の間の点が、つまんだ所に付いてくる）
         const v = { ...pinch.v };
         const at = toVid(pinch.m, v);
-        v.z = Math.max(1, Math.min(ZMAX, pinch.z * n.d / Math.max(1, pinch.d)));
+        v.z = Math.max(zMin(), Math.min(ZMAX, pinch.z * n.d / Math.max(1, pinch.d)));
         v.cx = at.x - (n.m.x - cv.width / 2) / v.z; v.cy = at.y - (n.m.y - cv.height / 2) / v.z;
         Object.assign(view, clampView(v)); jump();
         return;
@@ -395,8 +536,10 @@ export function openRecorder({ src, title = '' }) {
       }
       if (r === 'clear') { if (shapes.length) snap(); shapes.length = 0; anglePts = []; sel = null; showDel(); }
       if (r === 'del' && sel) { snap(); shapes.splice(shapes.indexOf(sel), 1); sel = null; showDel(); }
-      if (r === 'zoom') { const d = Number(b.dataset.v); if (d) zoomStep(d); else { aim.z = 1; aim.cx = cv.width / 2; aim.cy = cv.height / 2; zv(); } }
-      if (r === 'rec') { if (rec && rec.state === 'recording') stopRec(); else startRec(); }
+      if (r === 'zoom') { const d = Number(b.dataset.v); if (d) zoomStep(d); else { aim.z = zMin(); aim.cx = cv.width / 2; aim.cy = cv.height / 2; clampView(aim); zv(); } }
+      if (r === 'stab') toggleStab();
+      if (r === 'stab-cancel') scanStop = true;
+      if (r === 'rec') { if (rec && rec.state === 'recording') stopRec(); else if (!scanning) startRec(); }
       if (r === 'retake') { $('.rec-review').hidden = true; $('.rec-out').removeAttribute('src'); wrap._blob = null; }
       if (r === 'use') close(wrap._blob);
     });
