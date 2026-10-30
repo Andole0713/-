@@ -12,7 +12,8 @@ function requireEnv(name: string): string {
 }
 
 const BUCKET = "swing-videos";
-const LESSON_BUCKET = "lesson-videos"; // コーチの解説動画（お客様のスイングが映るため、同じく3か月で削除）
+const LESSON_BUCKET = "lesson-videos"; // コーチの解説動画（レッスンとして見返せるよう、半年で削除）
+const LESSON_RETENTION_MONTHS = 6;
 const RETENTION_MONTHS = 3;
 const BATCH = 100;
 const DELETE_AFTER_DAYS = 30;
@@ -104,14 +105,16 @@ Deno.serve(async (req) => {
       deleted += rows.length;
       if (rows.length < BATCH) break;
     }
-    // コーチの解説動画（レッスンを送ってから3か月）。データベースが未更新なら何もしない
+    // コーチの解説動画（レッスンを送ってから半年）。データベースが未更新なら何もしない
+    const lessonCutoff = new Date();
+    lessonCutoff.setMonth(lessonCutoff.getMonth() - LESSON_RETENTION_MONTHS);
     for (;;) {
       const { data: rows, error } = await db
         .from("lessons")
         .select("id, coach_video_path")
         .not("coach_video_path", "is", null)
         .is("coach_video_deleted_at", null)
-        .lt("created_at", cutoff.toISOString())
+        .lt("created_at", lessonCutoff.toISOString())
         .order("created_at")
         .limit(BATCH);
       if (error) { console.warn("解説動画の削除をスキップしました", error.message); break; }
