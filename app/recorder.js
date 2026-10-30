@@ -139,14 +139,6 @@ export function openRecorder({ src, title = '' }) {
         ctx.drawImage(video, 0, 0, cv.width, cv.height);
         shapes.forEach(drawShape);
         if (draft) drawShape(draft);
-        // 直線・矢印を引いている間（と、端を動かしている間）だけ、水平からの角度を出す
-        const live = draft && (draft.t === 'line' || draft.t === 'arrow') ? draft
-          : drag && drag.h && (drag.s.t === 'line' || drag.s.t === 'arrow') ? drag.s : null;
-        if (live && Math.hypot(live.b.x - live.a.x, live.b.y - live.a.y) > 6) {
-          const deg = Math.round(Math.atan2(Math.abs(live.b.y - live.a.y), Math.abs(live.b.x - live.a.x)) * 180 / Math.PI);
-          const end = drag && drag.h ? drag.h : live.b;
-          label(`水平から ${deg}°`, end.x, end.y);
-        }
         if (anglePts.length) drawShape({ t: 'angle', c: color, p: anglePts });
         // 選んでいる図形の「つまみ」（録画中は映らないように出さない）
         if (tool === 'move' && sel && shapes.includes(sel) && !(rec && rec.state === 'recording')) {
@@ -164,6 +156,18 @@ export function openRecorder({ src, title = '' }) {
       if (s.t === 'line' || s.t === 'arrow' || s.t === 'circle') return [s.a, s.b];
       if (s.t === 'angle') return s.p;
       return [];
+    }
+    // 直線・矢印：0°・45°・90°・135°・180° の近くでは、その角度にぴたっと吸い付く（数字は出さない）
+    const SNAP_DEG = 4; let snapped = false;
+    function snapTo(fixed, p) {
+      const dx = p.x - fixed.x; const dy = p.y - fixed.y; const len = Math.hypot(dx, dy);
+      if (len < 12) { snapped = false; return p; }
+      const ang = Math.atan2(dy, dx); const step = Math.PI / 4;
+      const near = Math.round(ang / step) * step;
+      const on = Math.abs(ang - near) * 180 / Math.PI <= SNAP_DEG;
+      if (on && !snapped) navigator.vibrate?.(8); // 吸い付いた瞬間、対応するスマホでは軽く震える
+      snapped = on;
+      return on ? { x: fixed.x + len * Math.cos(near), y: fixed.y + len * Math.sin(near) } : p;
     }
     const segDist = (p, a, b) => {
       const dx = b.x - a.x; const dy = b.y - a.y; const L = dx * dx + dy * dy;
@@ -216,7 +220,11 @@ export function openRecorder({ src, title = '' }) {
     cv.addEventListener('pointermove', (e) => {
       if (drag) {
         const p = pt(e);
-        if (drag.h) { drag.h.x = p.x; drag.h.y = p.y; } else {
+        if (drag.h) {
+          const lineLike = drag.s.t === 'line' || drag.s.t === 'arrow';
+          const q = lineLike ? snapTo(drag.h === drag.s.a ? drag.s.b : drag.s.a, p) : p;
+          drag.h.x = q.x; drag.h.y = q.y;
+        } else {
           // 円は中心をつかんでも全体が動く。それ以外も全体を平行移動
           const dx = p.x - drag.last.x; const dy = p.y - drag.last.y;
           allPts(drag.s).forEach((q) => { q.x += dx; q.y += dy; });
@@ -227,7 +235,7 @@ export function openRecorder({ src, title = '' }) {
       if (tool === 'move') { cv.style.cursor = hit(pt(e)) ? 'grab' : 'default'; return; }
       if (!draft) return;
       const p = pt(e);
-      if (draft.t === 'pen') draft.p.push(p); else draft.b = p;
+      if (draft.t === 'pen') draft.p.push(p); else draft.b = draft.t === 'line' || draft.t === 'arrow' ? snapTo(draft.a, p) : p;
     });
     const endDraw = () => {
       drag = null;
