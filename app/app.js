@@ -1249,7 +1249,7 @@ async function viewSubmit() {
     <p class="page-lead">撮影したスイング動画をコーチに送るページです。送ると、コーチが解説（レッスン）を作って返します。</p>
     ${usage}
     <a class="shoot-cta" href="${SWINGFRAME_URL}"><span class="ico" aria-hidden="true">●</span>
-      <span><b>SwingFrame で撮影する</b><small>ガイドに合わせて自動で録画。撮ったあと再生画面の「⛳ コーチへ」を押すと、そのままここに届きます</small></span><i aria-hidden="true">›</i></a>
+      <span><b>SwingFrame で撮影する</b><small>ガイドに合わせて撮影。撮ったあと再生画面の「⛳ コーチへ」を押すと、そのままここに届きます</small></span><i aria-hidden="true">›</i></a>
     <div class="notice">正面または後方から、全身とクラブが入るように撮影してください。<a href="#/guide">撮り方ガイドを見る</a><br>送った動画は<b>${RETENTION_LABEL}</b>保存され、その後自動で削除されます。</div>
     <button type="button" class="btn-block btn-gold send-start" data-action="wiz-open">${icon('video')} 動画を送る</button>
     ${submitWizard(myClubs)}
@@ -1843,7 +1843,7 @@ function viewGuide() {
       <h2>動画を撮る <small>このアプリの撮影機能「SwingFrame」を使います</small></h2>
       <ol>
         <li>下のメニューの「<b>撮影・提出</b>」→「<b>SwingFrame で撮影する</b>」を押します</li>
-        <li>ガイドに合わせて立つと、自動で録画されます</li>
+        <li>ガイドの枠に体が入るようにスマホを置き、録画ボタンで録画を始めて止めます（設定で「自動録画」にすると、構えたら始まり、打球音のあとに自動で止まります）</li>
         <li>撮った動画の再生画面で「<b>⛳ コーチへ</b>」を押すと、提出画面にそのまま届きます</li>
       </ol>
       <a class="btn btn-sm btn-sub" href="${SWINGFRAME_URL}" style="margin:0 0 10px">SwingFrame を開く ›</a>
