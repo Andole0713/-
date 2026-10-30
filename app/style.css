@@ -1621,3 +1621,47 @@ body:has(.nav a[href="#/home"]) .help-h .help-num{background:var(--gold);color:#
 body:has(.nav a[href="#/home"]) .help>.muted,body:has(.nav a[href="#/home"]) .content .help-page>.muted,body:has(.nav a[href="#/home"]) .help-tabs-explain~.muted,body:has(.nav a[href="#/home"]) .help-h+.muted{color:#d6ded3}
 body:has(.nav a[href="#/home"]) .hf-loop{color:var(--gold-2)}
 body:has(.nav a[href="#/home"]) .cele-shelf{color:#f3c6d8}
+/* 解説動画レコーダー（スタッフ） */
+body.rec-open{overflow:hidden}
+.rec{position:fixed;inset:0;z-index:60;background:#0b100d;color:#fff;display:flex;flex-direction:column}
+.rec-top{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid rgba(200,169,106,.35)}
+.rec-top b{color:var(--gold-2);font-size:15px}
+.rec-sub{flex:1;min-width:0;font-size:12.5px;color:#c9cbbf;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rec-x{width:40px;height:40px;border-radius:50%;background:rgba(255,255,255,.1);color:#fff;font-size:20px;padding:0;min-height:0;margin:0;box-shadow:none}
+.rec-stage{position:relative;flex:1;min-height:0;display:grid;place-items:center;padding:8px}
+.rec-cv{max-width:100%;max-height:100%;touch-action:none;cursor:crosshair;border-radius:8px;background:#000}
+.rec-load{position:absolute;color:#c9cbbf;font-size:14px}
+.rec-badge{position:absolute;top:14px;left:14px;display:flex;align-items:center;gap:6px;background:rgba(0,0,0,.6);border-radius:999px;padding:4px 12px;font-size:13px;font-weight:700}
+.rec-badge i{width:10px;height:10px;border-radius:50%;background:#ff3b30;animation:pulse 1.2s ease-in-out infinite}
+.rec-bar{padding:8px 12px calc(10px + env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:8px;background:#121a15;border-top:1px solid rgba(200,169,106,.25)}
+.rec-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.rec-row button{min-height:40px;margin:0;box-shadow:none}
+.rec-play{width:48px;background:var(--gold);color:var(--ink);font-size:16px;padding:0}
+.rec-grp{display:inline-flex;border:1px solid rgba(255,255,255,.18);border-radius:10px;overflow:hidden}
+.rec-grp button{background:transparent;color:#e8ede6;border-radius:0;padding:6px 11px;font-size:13px}
+.rec-grp button+button{border-left:1px solid rgba(255,255,255,.12)}
+.rec-grp button.on{background:rgba(200,169,106,.3);color:#fff}
+.rec-grp.tools button{display:flex;flex-direction:column;align-items:center;line-height:1.1;padding:4px 10px}
+.rec-grp.tools b{font-size:16px}.rec-grp.tools small{font-size:10.5px}
+.rec-grp .sw{width:36px;padding:0}
+.rec-grp .sw::before{content:"";display:block;width:18px;height:18px;margin:auto;border-radius:50%;background:var(--c);box-shadow:0 0 0 2px rgba(255,255,255,.25)}
+.rec-grp .sw.on::before{box-shadow:0 0 0 3px #fff}
+.rec-seek{flex:1;min-width:140px;accent-color:var(--gold)}
+.rec-main{flex-wrap:nowrap}
+.rec-go{background:#c62828;color:#fff;font-weight:800;padding:10px 20px;border-radius:999px;flex:none}
+.rec-go.on{background:#fff;color:#c62828}
+.rec-hint{font-size:12px;color:#aeb7ab;line-height:1.5}
+.rec-review{position:absolute;inset:57px 0 0;background:rgba(5,9,6,.96);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:16px}
+.rec-out{max-width:100%;max-height:70vh;border-radius:10px;background:#000}
+.rec-review-btns{display:flex;gap:10px}
+.rec-review-btns button{min-height:48px;padding:0 22px;border-radius:999px;font-weight:800}
+.rec-sub-btn{background:rgba(255,255,255,.12);color:#fff}
+.rec-use{background:linear-gradient(135deg,var(--gold-2),var(--gold));color:var(--ink)}
+@media (max-width:600px){.rec-hint{display:none}.rec-grp.tools small{display:none}}
+/* レッスン作成：解説動画の欄 */
+.coach-vid{border:1.5px solid var(--gold);border-radius:12px;padding:10px 12px 12px;margin:14px 0 4px;background:#fffaf0}
+.coach-vid legend{font-weight:800;font-size:14px;padding:0 6px}
+.coach-vid .cv-btns{display:flex;flex-wrap:wrap;gap:8px}
+.coach-vid .coach-video{margin:4px 0 8px;max-height:50vh}
+.lc-coachvid{margin:8px 0 0;font-size:12.5px;font-weight:700;color:var(--ink);background:color-mix(in srgb,var(--c-video) 12%,#fff);border-radius:8px;padding:4px 10px;width:fit-content}
+.rec [hidden]{display:none!important}

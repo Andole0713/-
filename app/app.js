@@ -317,6 +317,15 @@ async function signedVideoUrls(subs) {
   return Object.fromEntries((data || []).filter((d) => d.signedUrl).map((d) => [d.path, d.signedUrl]));
 }
 
+// コーチの解説動画（アプリで作った、音声と線入りの動画）の再生用リンク
+const LESSON_VIDEO_BUCKET = 'lesson-videos';
+async function coachVideoUrl(l) {
+  if (!l?.coach_video_path || l.coach_video_deleted_at) return '';
+  const { data } = await sb.storage.from(LESSON_VIDEO_BUCKET).createSignedUrl(l.coach_video_path, 3600);
+  return data?.signedUrl || '';
+}
+const coachVideoTag = (url) => `<video class="swing-video coach-video" src="${esc(url)}#t=0.1" controls playsinline preload="metadata"></video>`;
+
 function swingVideo(sub, urls, { tools = false, preload = 'metadata' } = {}) {
   if (!sub) return '';
   if (sub.video_deleted_at) return `<p class="muted small">保存期間（${RETENTION_LABEL}）を過ぎたため、動画は削除されました。</p>`;
@@ -1257,6 +1266,7 @@ function lessonCard(l) {
         <span class="lc-play" aria-hidden="true"></span>
         <span class="lc-video-label">▶ コーチの解説動画を見る</span>
       </div>` : ''}
+    ${l.coach_video_path && !l.coach_video_deleted_at ? '<div class="lc-coachvid">🎙 音声と線のコーチ解説動画つき</div>' : ''}
     <div class="lc-foot">${practiceProgress(l)}<span class="go">${yt ? 'レッスンの詳細' : 'レッスンを見る'} <i aria-hidden="true">›</i></span></div>
   </a>`;
 }
@@ -1283,7 +1293,7 @@ const monthLabel = (iso) => `${iso.slice(0, 4)}年${Number(iso.slice(5, 7))}月`
 async function viewHistory() {
   const p = state.profile;
   const [lessons, subs] = await Promise.all([
-    must(sb.from('lessons').select('id, submission_id, lesson_date, created_at, title, point, practice, practice_done, read_at, video_url').eq('member_id', p.id).order('lesson_date', { ascending: false }).order('created_at', { ascending: false })),
+    must(sb.from('lessons').select('*').eq('member_id', p.id).order('lesson_date', { ascending: false }).order('created_at', { ascending: false })),
     must(sb.from('submissions').select('*').eq('member_id', p.id).order('created_at', { ascending: false }).limit(200)),
   ]);
   // 送った動画ごとにレッスンをまとめ、動画のないレッスン（コーチから直接届いたもの）も並べる
@@ -1406,7 +1416,9 @@ async function viewLesson(id, back = 'history') {
     const { error } = await sb.rpc('mark_lesson_read', { p_lesson: l.id });
     if (!error) state.unread = Math.max(0, state.unread - 1);
   }
-  const jumps = [l.video_url && ['ls-video', '▶ 解説動画'], l.feedback && ['ls-fb', '✎ フィードバック'], l.practice && ['ls-practice', '✓ 練習'], cur && ['ls-mine', '◉ 送った動画']].filter(Boolean);
+  const cvUrl = await coachVideoUrl(l);
+  const hasCv = !!l.coach_video_path;
+  const jumps = [(l.video_url || hasCv) && ['ls-video', '▶ 解説動画'], l.feedback && ['ls-fb', '✎ フィードバック'], l.practice && ['ls-practice', '✓ 練習'], cur && ['ls-mine', '◉ 送った動画']].filter(Boolean);
   return header('レッスン詳細', back) + `<div class="content wide lesson-page">
     <div class="blk" style="--o:0">
     <div class="lesson-head">
@@ -1420,7 +1432,9 @@ async function viewLesson(id, back = 'history') {
   <div class="cols">
   <div class="col-main">
     <div class="blk" style="--o:1">
-    ${l.video_url ? `<section class="card lesson-sec" id="ls-video">${secTitle('▶', 'コーチの解説動画')}${videoEmbed(l.video_url)}</section>` : ''}
+    ${l.video_url || hasCv ? `<section class="card lesson-sec" id="ls-video">${secTitle('▶', 'コーチの解説動画')}
+        ${cvUrl ? coachVideoTag(cvUrl) : hasCv ? `<p class="muted small">保存期間（${RETENTION_LABEL}）を過ぎたため、解説動画は削除されました。下の文章のフィードバックはいつでも見られます。</p>` : ''}
+        ${l.video_url ? videoEmbed(l.video_url) : ''}</section>` : ''}
     </div>
     <div class="blk" style="--o:2">
     ${drills.length ? `<section class="card lesson-sec">${secTitle('◎', 'ドリル動画')}
@@ -1458,7 +1472,7 @@ async function viewSubmission(id) {
   const sub = await must(sb.from('submissions').select('*').eq('id', id).maybeSingle());
   if (!sub) return header('送った動画', 'history') + '<div class="content"><div class="empty">動画が見つかりません</div></div>' + memberNav('history');
   const [lessons, urls] = await Promise.all([
-    must(sb.from('lessons').select('id, title, lesson_date, point, practice, practice_done, read_at, video_url').eq('submission_id', sub.id).order('lesson_date', { ascending: false })),
+    must(sb.from('lessons').select('*').eq('submission_id', sub.id).order('lesson_date', { ascending: false })),
     signedVideoUrls([sub]),
   ]);
   const expiry = videoExpiry(sub.created_at);
@@ -3533,6 +3547,7 @@ async function viewLessonForm(route) {
   if (restored) LESSON_FIELDS.forEach((n) => { lesson[n] = draft[n] ?? lesson[n]; });
   else if (draft) local.del(dKey);
   const brief = await memberBrief(memberId, member?.name, lesson.id);
+  const cvUrl = await coachVideoUrl(lesson);
   return header(lesson.id ? 'レッスン編集' : 'レッスン作成', back) + `<div class="content wide"><div class="cols"><div class="col-main">
     <div class="blk" style="--o:0">
     <div class="between"><div class="muted">会員：<b>${esc(member?.name || '')}</b></div><a class="muted small" href="#/admin/templates">テンプレートを管理 ›</a></div>
@@ -3550,6 +3565,17 @@ async function viewLessonForm(route) {
       <label for="feedback">フィードバック</label><textarea id="feedback" name="feedback" rows="7" maxlength="5000">${esc(lesson.feedback)}</textarea>${tplPicker('feedback')}
       <p class="muted small" style="margin:4px 0 0">空行で段落が分かれます。行の先頭に「・」を付けると箇条書きになり、その直前の短い行（例：ポイント）は見出しになります。</p>
       <label for="practice">次回までの練習</label><textarea id="practice" name="practice" rows="4" maxlength="2000" placeholder="① ハーフスイング 20球&#10;② 7I 30球">${esc(lesson.practice)}</textarea>${tplPicker('practice')}
+      <fieldset class="coach-vid" data-had="${lesson.coach_video_path ? '1' : ''}" data-saved="${esc(lesson.coach_video_path || '')}">
+        <legend>🎙 音声と線の解説動画（おすすめ）</legend>
+        <input type="hidden" name="coach_video_path" value="${esc(lesson.coach_video_path && !lesson.coach_video_deleted_at ? lesson.coach_video_path : '')}">
+        <div class="cv-preview">${cvUrl ? coachVideoTag(cvUrl) : ''}</div>
+        <div class="cv-status muted small" aria-live="polite"></div>
+        ${submission && !submission.video_deleted_at
+          ? `<div class="cv-btns"><button type="button" class="btn-sm btn-gold" data-action="rec-open" data-member="${esc(memberId)}" data-title="${esc(`${member?.name || ''}さん　${submission.club} / ${submission.angle}`)}">🎙 ${cvUrl ? '解説動画を作り直す' : '提出動画で解説動画を作る'}</button>
+              ${cvUrl ? '<button type="button" class="btn-sm btn-sub" data-action="rec-remove">この解説動画を外す</button>' : ''}</div>
+            <p class="muted small" style="margin:6px 0 0">提出動画を再生しながら、線・矢印・円・角度を書き込み、話した声と一緒に録画します。1〜3分がおすすめです。</p>`
+          : '<p class="muted small" style="margin:0">提出動画があるレッスンで作れます。</p>'}
+      </fieldset>
       <label for="video_url">コーチの解説動画（YouTube・任意）</label><input id="video_url" name="video_url" type="url" value="${esc(lesson.video_url || '')}" placeholder="https://youtu.be/...">
       <fieldset class="drill-pick"><legend>ドリル動画（任意）</legend>
         <div class="between small"><span>ドリル集から選ぶ（<b>${library.length}</b>件）</span><span class="drill-count" id="drill-count" aria-live="polite">選択中 <b>${pickedIds.size}</b>件</span></div>
@@ -3787,6 +3813,39 @@ const actions = {
     document.getElementById('word-day')?.replaceWith(Object.assign(document.createElement('div'), { innerHTML: wordCard() }).firstElementChild);
     await sb.from('word_checks').upsert({ member_id: state.profile.id, checked_on: key }, { onConflict: 'member_id,checked_on', ignoreDuplicates: true }).then(() => {}, () => {});
     checkNewBadges();
+  },
+  'rec-open': async (el) => {
+    const box = el.closest('.coach-vid');
+    const srcEl = document.querySelector('.col-main .swing-video');
+    const src = (srcEl?.getAttribute('src') || '').replace(/#.*$/, '');
+    if (!src) { toast('提出動画を読み込めませんでした。ページを再読み込みしてください。', true); return; }
+    const rec = await import('./recorder.js');
+    if (!rec.canRecord()) { toast('このブラウザでは録画できません。パソコンの Chrome か、iPad・iPhone の Safari（最新）でお試しください。', true); return; }
+    const blob = await rec.openRecorder({ src, title: el.dataset.title || '' });
+    if (!blob) return;
+    const status = box.querySelector('.cv-status');
+    const ext = /mp4/.test(blob.type) ? 'mp4' : 'webm';
+    const path = `${el.dataset.member}/${Date.now()}-coach.${ext}`;
+    const file = new File([blob], `coach.${ext}`, { type: blob.type || `video/${ext}` });
+    el.disabled = true;
+    try {
+      await uploadVideo(file, path, (r) => { status.textContent = `解説動画を保存しています… ${Math.round(r * 100)}%`; }, LESSON_VIDEO_BUCKET);
+      // 作り直したときは、保存前の作りかけを消す（保存済みのものはレッスンを保存したときに置き換わる）
+      const prev = box.querySelector('[name="coach_video_path"]').value;
+      if (prev && prev !== box.dataset.saved) sb.storage.from(LESSON_VIDEO_BUCKET).remove([prev]).then(() => {}, () => {});
+      box.querySelector('[name="coach_video_path"]').value = path;
+      box.querySelector('.cv-preview').innerHTML = coachVideoTag(URL.createObjectURL(blob));
+      status.textContent = `✓ 解説動画を付けました（${Math.round(file.size / 1048576 * 10) / 10}MB）。「レッスンを保存」で会員に届きます。`;
+      el.textContent = '🎙 解説動画を作り直す';
+    } catch (e) { status.textContent = ''; toast(e.message || '解説動画を保存できませんでした', true); }
+    el.disabled = false;
+  },
+  'rec-remove': (el) => {
+    const box = el.closest('.coach-vid');
+    box.querySelector('[name="coach_video_path"]').value = '';
+    box.querySelector('.cv-preview').innerHTML = '';
+    box.querySelector('.cv-status').textContent = 'この解説動画を外しました。「レッスンを保存」で反映されます。';
+    el.remove();
   },
   'stats-range': (el) => { state.statsRange = el.dataset.range; render(); },
   'stats-plan': (el) => { state.statsPlan = el.dataset.plan; render(); },
@@ -4617,6 +4676,8 @@ const forms = {
       lesson_date: f.lesson_date.value, title: f.title.value.trim(), point: f.point.value.trim(),
       feedback: f.feedback.value.trim(), practice: f.practice.value.trim(), video_url: videoUrl,
     };
+    const cvBox = f.querySelector('.coach-vid');
+    if (cvBox && (f.coach_video_path.value || cvBox.dataset.had)) { row.coach_video_path = f.coach_video_path.value || null; row.coach_video_deleted_at = null; }
     const diag = [...f.querySelectorAll('input[name="diag"]:checked')].map((i) => i.value);
     if (diag.length || f.querySelector('.diag-pick')?.dataset.had) row.diag_tags = diag;
     // 新しいドリルが入力されていれば、先にドリル集へ登録しておく
