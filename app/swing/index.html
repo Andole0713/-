@@ -376,7 +376,7 @@ a.hbtn{text-decoration:none;color:inherit;box-sizing:border-box}
       <h1>SwingFrame</h1>
       <p>スイング撮影・スイング分析</p>
       <!-- 表示用の版数。sw.js の CACHE と必ずそろえること（片方だけ上げると更新に気づけません） -->
-      <div id="hVer">v45</div>
+      <div id="hVer">v46</div>
     </div>
     <button class="hbtn pri" id="hShoot"><i>●</i><span>スイングを撮影<em>ガイドに合わせて自動で録画</em></span></button>
     <button class="hbtn" id="hLib"><i>▤</i><span>ライブラリ<em id="hLibSub">保存した動画と画像</em></span></button>
@@ -997,6 +997,36 @@ function fixMp4(blob){
     return Promise.all([view(moov.o,moov.o+moov.n)].concat(moofs.map(function(b){return view(b.o,b.o+b.n)})))
     .then(function(vs){
       var mv=vs[0],trk={},defDur={},end={};
+      /* the header first: the per-track default sample length (trex) is needed
+         to measure fragments that do not list each sample's length. Reading it
+         after the fragments left those fragments measured as zero.
+         The header:  movie and track time scales, and where the lengths live */
+      var out=new Uint8Array(mv.buffer.slice(0)),w=new DataView(out.buffer),mts=0,mvhd=0,mehd=0,had=0;
+      function put(o,v,big){
+        if(big){w.setUint32(o,Math.floor(v/4294967296));w.setUint32(o+4,v>>>0)}
+        else if(v<=0xffffffff)w.setUint32(o,v);
+      }
+      kids(mv,0,mv.byteLength,function(t,b,e){
+        if(t!=='moov')return;
+        kids(mv,b,e,function(t2,p,q){
+          if(t2==='mvhd'){mvhd=p;mts=mv.getUint32(p+(mv.getUint8(p)?20:12));
+            had=mv.getUint8(p)?u64(mv,p+24):mv.getUint32(p+16)}
+          else if(t2==='mvex')kids(mv,p,q,function(t3,r){
+            if(t3==='trex')defDur[mv.getUint32(r+4)]=mv.getUint32(r+12);
+            else if(t3==='mehd')mehd=r;
+          });
+          else if(t2==='trak'){
+            var tk={};
+            kids(mv,p,q,function(t3,r,s2){
+              if(t3==='tkhd'){tk.tkhd=r;tk.id=mv.getUint32(r+(mv.getUint8(r)?20:12))}
+              else if(t3==='mdia')kids(mv,r,s2,function(t4,u){
+                if(t4==='mdhd'){tk.mdhd=u;tk.ts=mv.getUint32(u+(mv.getUint8(u)?20:12))}
+              });
+            });
+            if(tk.id)trk[tk.id]=tk;
+          }
+        });
+      });
       /* every fragment: where each track's run starts and how long it lasts */
       vs.slice(1).forEach(function(d){
         kids(d,0,d.byteLength,function(t,b,e){
@@ -1026,33 +1056,11 @@ function fixMp4(blob){
           });
         });
       });
-      /* the header: movie and track time scales, and where the lengths live */
-      var out=new Uint8Array(mv.buffer.slice(0)),w=new DataView(out.buffer),mts=0,mvhd=0,mehd=0;
-      function put(o,v,big){
-        if(big){w.setUint32(o,Math.floor(v/4294967296));w.setUint32(o+4,v>>>0)}
-        else if(v<=0xffffffff)w.setUint32(o,v);
-      }
-      kids(mv,0,mv.byteLength,function(t,b,e){
-        if(t!=='moov')return;
-        kids(mv,b,e,function(t2,p,q){
-          if(t2==='mvhd'){mvhd=p;mts=mv.getUint32(p+(mv.getUint8(p)?20:12))}
-          else if(t2==='mvex')kids(mv,p,q,function(t3,r){
-            if(t3==='trex')defDur[mv.getUint32(r+4)]=mv.getUint32(r+12);
-            else if(t3==='mehd')mehd=r;
-          });
-          else if(t2==='trak'){
-            var tk={};
-            kids(mv,p,q,function(t3,r,s2){
-              if(t3==='tkhd'){tk.tkhd=r;tk.id=mv.getUint32(r+(mv.getUint8(r)?20:12))}
-              else if(t3==='mdia')kids(mv,r,s2,function(t4,u){
-                if(t4==='mdhd'){tk.mdhd=u;tk.ts=mv.getUint32(u+(mv.getUint8(u)?20:12))}
-              });
-            });
-            if(tk.id)trk[tk.id]=tk;
-          }
-        });
-      });
       if(!mvhd||!mts)return blob;
+      /* Only a header that really says "unknown" (or nothing) is touched. A take
+         whose length is already written is left exactly as it is, so the repair
+         can never shorten a video that was fine. */
+      if(had>0&&had/mts<21600)return blob;
       var longest=0;
       Object.keys(trk).forEach(function(id){
         var tk=trk[id],e=end[id];
