@@ -38,7 +38,7 @@ export function openRecorder({ src, title = '' }) {
           <span class="rec-grp">${[[0.25, '¼'], [0.5, '½'], [1, '等速']].map(([r, l]) => `<button type="button" data-r="rate" data-v="${r}" class="${r === 1 ? 'on' : ''}">${l}</button>`).join('')}</span>
           <span class="rec-grp"><button type="button" data-r="step" data-v="-1" aria-label="1コマ戻す">◀</button><button type="button" data-r="step" data-v="1" aria-label="1コマ進める">▶</button></span>
           <span class="rec-grp zoom"><button type="button" data-r="zoom" data-v="-1" aria-label="縮小">－</button><button type="button" data-r="zoom" data-v="0" class="rec-zv" title="全体を表示">1.0倍</button><button type="button" data-r="zoom" data-v="1" aria-label="拡大">＋</button></span>
-          <span class="rec-grp"><button type="button" data-r="stab" class="rec-stab" title="撮った人の手ぶれを打ち消して、お客様がいつも画面の同じ位置に映るようにします">手ぶれ補正</button></span>
+          <span class="rec-grp"><button type="button" data-r="stab" class="rec-stab" title="動かない目印をタップすると、撮った人の手ぶれを打ち消して、お客様がいつも画面の同じ位置に映るようにします">手ぶれ補正</button></span>
           <input type="range" class="rec-seek" min="0" max="1000" value="0" aria-label="再生位置">
         </div>
         <div class="rec-row">
@@ -48,7 +48,7 @@ export function openRecorder({ src, title = '' }) {
         </div>
         <div class="rec-row rec-main">
           <button type="button" data-r="rec" class="rec-go">● 録画を始める</button>
-          <span class="rec-hint">撮った人の手ぶれで線が体からずれるときは「手ぶれ補正」（押したときの画面が基準。目印は録画に映りません）。「✥ 動かす」で、書いた線や円をつかんで移動、端をつまんで長さ・大きさ・角度を変えられます。＋－で拡大・縮小（2本指でつまむ・マウスのホイールでも）。拡大中は「✥ 動かす」で何もない所をドラッグすると、見る場所を動かせます。録画中も操作できます。</span>
+          <span class="rec-hint">撮った人の手ぶれで線が体からずれるときは「手ぶれ補正」を押して、動かない目印（マットの角・線、ティーなど）をタップ（目印は録画に映りません）。「✥ 動かす」で、書いた線や円をつかんで移動、端をつまんで長さ・大きさ・角度を変えられます。＋－で拡大・縮小（2本指でつまむ・マウスのホイールでも）。拡大中は「✥ 動かす」で何もない所をドラッグすると、見る場所を動かせます。録画中も操作できます。</span>
         </div>
       </div>
       <div class="rec-review" hidden>
@@ -161,6 +161,13 @@ export function openRecorder({ src, title = '' }) {
         if (tool === 'move' && sel && shapes.includes(sel) && !(rec && rec.state === 'recording')) {
           handles(sel).forEach((h) => { ctx.beginPath(); ctx.arc(h.x, h.y, lw() * 2.8, 0, Math.PI * 2); ctx.fillStyle = '#fff'; ctx.fill(); ctx.lineWidth = 2 / view.z; ctx.strokeStyle = '#111'; ctx.stroke(); });
         }
+        // 手ぶれ補正の目印（自分の画面だけ。録画中は出さない）
+        if (stab && !(rec && rec.state === 'recording')) {
+          const m = stab.mark; const r = lw() * 3;
+          ctx.strokeStyle = '#00e5ff'; ctx.lineWidth = lw() * 0.5; ctx.setLineDash([lw(), lw()]);
+          ctx.beginPath(); ctx.arc(m.x, m.y, r, 0, Math.PI * 2); ctx.moveTo(m.x - r * 1.6, m.y); ctx.lineTo(m.x + r * 1.6, m.y); ctx.moveTo(m.x, m.y - r * 1.6); ctx.lineTo(m.x, m.y + r * 1.6); ctx.stroke();
+          ctx.setLineDash([]);
+        }
         ctx.setTransform(1, 0, 0, 1, 0, 0);
         if (!$('.rec-seek').matches(':active') && video.duration) $('.rec-seek').value = String(Math.round(video.currentTime / video.duration * 1000));
       }
@@ -168,12 +175,14 @@ export function openRecorder({ src, title = '' }) {
     raf = requestAnimationFrame(frame);
 
     // ---- 手ぶれ補正 ----
-    // 押したときに映っている画面を基準にする。動画を最初から最後まで1コマずつ読んで、
-    // 画面をマス目に分け、多くのマスがそろってずれた量を「カメラのぶれ」とみなす
-    // （スイングしている人のマスはばらばらに動くので、多数決で外れる）。
-    // 表示するときは、そのぶれの分だけ映像を逆にずらす。線は景色に付いたままになるので、
+    // スタッフが、押したときに映っている画面で「動かない目印」（マットの角・線、ティーなど）をタップする。
+    // 動画を最初から最後まで1コマずつ読んで、その目印のまわりの小さなマスがどこへ動いたかを追いかけ、
+    // それを「カメラのぶれ」とみなす（マスは複数あり、多数決にするので、クラブが一瞬かぶっても外れにくい）。
+    // 表示するときは、そのぶれの分だけ映像を逆にずらし、目印を画面の真ん中に置く。線は景色に付いたままになるので、
     // カメラが揺れても体からずれない。頭が本当に動いたときは、線からはみ出して見える。
-    // 目印は何も描かないので、録画にもお客様の動画にも映らない。
+    // 目印の印は自分の画面にだけ出し、録画中は消す（お客様の動画には映らない）。
+    let picking = false;
+    const STAB_TIP = '手ぶれ補正：動かない目印（マットの角・線、ティーなど）をタップ';
     function shakeAt(t) {
       if (!stab) return { x: 0, y: 0 };
       // 1コマごとに読んであるので、いま映っているコマの値をそのまま使う
@@ -189,6 +198,7 @@ export function openRecorder({ src, title = '' }) {
       if (scanning) return;
       if (rec && rec.state === 'recording') { alert('手ぶれ補正の切り替えは、録画していないときにしてください。'); return; }
       const btn = $('.rec-stab');
+      if (picking) { picking = false; btn.classList.remove('on'); angleTip(); return; }
       if (stab) {
         // 補正をやめると、線は今映っている位置のまま、映像の座標に直す
         const o = shakeAt(video.currentTime);
@@ -198,22 +208,32 @@ export function openRecorder({ src, title = '' }) {
         return;
       }
       if (!video.duration || !cv.width) return;
+      // まず目印をタップしてもらう（次に画面を押したときに startStab が呼ばれる）
+      video.pause(); $('.rec-play').textContent = '▶';
+      picking = true; btn.classList.add('on');
+      const tip = $('.rec-tip'); tip.hidden = false; tip.textContent = STAB_TIP;
+    }
+    async function startStab(mark) {
+      const btn = $('.rec-stab');
+      picking = false; angleTip();
       scanning = true; scanStop = false;
-      const was = { t: video.currentTime, paused: video.paused }; video.pause(); $('.rec-play').textContent = '▶';
+      const was = { t: video.currentTime }; video.pause();
       const box = $('.rec-scan'); const bar = box.querySelector('s'); box.hidden = false; bar.style.width = '0%';
       try {
-        const res = await scanShake(was.t, (r) => { bar.style.width = `${Math.round(r * 100)}%`; });
-        if (res) {
-          // 押したときの画面を基準（ずれ 0）にしたので、いま書いてある線もそのまま合う
-          stab = res; btn.classList.add('on'); btn.textContent = '手ぶれ補正 ON';
-          aim.z = Math.max(aim.z, stab.zMin); clampView(aim); Object.assign(view, aim); zv();
-          if (stab.weak) alert('背景に模様が少なく、手ぶれを読み取りにくい動画でした。補正が合っていない所があるかもしれません。');
+        const res = await scanShake(was.t, mark, (r) => { bar.style.width = `${Math.round(r * 100)}%`; });
+        if (res === 'flat') alert('タップした所は模様が少なく、追いかけられません。マットの角や線、ティーなど、はっきりした所をタップしてください。');
+        else if (res) {
+          // 押したときの画面を基準（ずれ 0）にしたので、いま書いてある線もそのまま合う。目印を画面の真ん中に
+          stab = res; btn.textContent = '手ぶれ補正 ON';
+          aim.z = Math.max(aim.z, stab.zMin); aim.cx = mark.x; aim.cy = mark.y; clampView(aim); Object.assign(view, aim); zv();
+          if (stab.weak) alert('目印が隠れたり見えにくくなったりした所がありました。補正が合っていない所があるかもしれません。別の目印で試すと良くなることがあります。');
         }
       } catch (err) { console.error(err); alert('手ぶれを読み取れませんでした。'); }
+      if (!stab) btn.classList.remove('on');
       box.hidden = true; scanning = false;
       await seekTo(was.t);
     }
-    async function scanShake(tRef, progress) {
+    async function scanShake(tRef, mark, progress) {
       const dur = video.duration;
       const AW = Math.min(320, cv.width); const AH = Math.round(AW * cv.height / cv.width);
       const ac = document.createElement('canvas'); ac.width = AW; ac.height = AH;
@@ -245,20 +265,19 @@ export function openRecorder({ src, title = '' }) {
         }
         return best === Infinity ? null : [bx, by];
       }
-      // 模様のあるマスだけを使う（真っ白な壁などは、どこに動いたか分からない）
+      // 目印のまわりの 3×3 のマスのうち、模様のあるものだけを使う（真っ白な所は、どこに動いたか分からない）
+      const k = cv.width / AW;
       function texturedBlocks(A) {
-        const out = []; const cols = 9; const rows = Math.max(6, Math.round(cols * A.h / A.w));
-        for (let r = 0; r < rows; r++) {
-          for (let c = 0; c < cols; c++) {
-            const px = Math.round((A.w - B) * (c + 0.5) / cols); const py = Math.round((A.h - B) * (r + 0.5) / rows);
-            let s1 = 0; let s2 = 0;
-            for (let y = 0; y < B; y += 2) for (let x = 0; x < B; x += 2) { const v = A.g[(py + y) * A.w + px + x]; s1 += v; s2 += v * v; }
-            const n = (B / 2) * (B / 2); if (s2 / n - (s1 / n) ** 2 > 40) out.push([px, py]);
-          }
-        }
+        const sc = A.w / AW; const mx = mark.x / k * sc; const my = mark.y / k * sc; const out = [];
+        [-10, 0, 10].forEach((oy) => [-10, 0, 10].forEach((ox) => {
+          const px = Math.round(Math.max(0, Math.min(A.w - B, mx - B / 2 + ox))); const py = Math.round(Math.max(0, Math.min(A.h - B, my - B / 2 + oy)));
+          let s1 = 0; let s2 = 0;
+          for (let y = 0; y < B; y += 2) for (let x = 0; x < B; x += 2) { const v = A.g[(py + y) * A.w + px + x]; s1 += v; s2 += v * v; }
+          const n = (B / 2) * (B / 2); if (s2 / n - (s1 / n) ** 2 > 40) out.push([px, py]);
+        }));
         return out;
       }
-      // 多くのマスがそろって動いた量（多数決）。ばらばらに動くマス（スイングしている人）は外れる
+      // マスがそろって動いた量（多数決）。クラブなどが一部にかぶったマスは外れる
       function vote(A, Bi, cx, cy, S) {
         const blocks = texturedBlocks(A); const v = [];
         blocks.forEach(([px, py]) => { const m = blockShift(A, Bi, px, py, cx, cy, S); if (m) v.push(m); });
@@ -271,6 +290,7 @@ export function openRecorder({ src, title = '' }) {
       // 1秒に30コマ読む（長い動画は最大900コマ）。各コマの真ん中の時刻を見る
       const dt = Math.max(1 / 30, dur / 900); const n = Math.max(1, Math.ceil(dur / dt));
       await seekTo(tRef); const ref = gray();
+      if (texturedBlocks(ref.full).length < 3) return 'flat';
       const xs = new Float32Array(n); const ys = new Float32Array(n);
       let prev = null; let px = 0; let py = 0; let weakN = 0;
       for (let i = 0; i < n; i++) {
@@ -284,21 +304,20 @@ export function openRecorder({ src, title = '' }) {
           // 最初のコマは前のコマがないので、基準の画面から広く探す
           const from = prev || ref; if (!prev) { gx = 0; gy = 0; }
           const c = vote(from.half, cur.half, 0, 0, 12);
-          if (c && c.share > 0.2) {
+          if (c && c.share > 0.3) {
             const d = vote(from.full, cur.full, Math.round(c.x * 2), Math.round(c.y * 2), 2);
-            const m = d && d.share > 0.2 ? d : { x: c.x * 2, y: c.y * 2 };
+            const m = d && d.share > 0.3 ? d : { x: c.x * 2, y: c.y * 2 };
             gx = px + m.x; gy = py + m.y;
           }
         }
         const r = vote(ref.full, cur.full, Math.round(gx), Math.round(gy), 4);
-        if (r && r.share > 0.2) { px = r.x; py = r.y; } else { px = gx; py = gy; weakN++; }
+        if (r && r.share > 0.3) { px = r.x; py = r.y; } else { px = gx; py = gy; weakN++; }
         xs[i] = px; ys[i] = py; prev = cur;
         progress((i + 1) / n);
       }
-      const k = cv.width / AW;
       let mx = 0; let my = 0; xs.forEach((v) => { mx = Math.max(mx, Math.abs(v) * k); }); ys.forEach((v) => { my = Math.max(my, Math.abs(v) * k); });
       const need = Math.max(1 / Math.max(0.4, 1 - 2 * mx / cv.width), 1 / Math.max(0.4, 1 - 2 * my / cv.height));
-      return { x: xs, y: ys, dt, k, zMin: Math.min(ZMAX, need * 1.02), weak: weakN > n * 0.3 };
+      return { x: xs, y: ys, dt, k, zMin: Math.min(ZMAX, need * 1.02), weak: weakN > n * 0.15, mark: { ...mark } };
     }
 
     // 書き込み（指・マウス・ペン）
@@ -385,6 +404,7 @@ export function openRecorder({ src, title = '' }) {
     const ANGLE_STEPS = ['角度：① 片方の端をタップ', '角度：② 角の頂点（曲がっている所）をタップ', '角度：③ もう片方の端をタップ'];
     function angleTip() {
       const tip = $('.rec-tip');
+      if (picking) { tip.hidden = false; tip.textContent = STAB_TIP; return; }
       tip.hidden = tool !== 'angle';
       tip.textContent = ANGLE_STEPS[anglePts.length] || '';
     }
@@ -403,6 +423,7 @@ export function openRecorder({ src, title = '' }) {
       }
       if (touches.size > 2) return;
       const p = pt(e);
+      if (picking) { touches.delete(e.pointerId); startStab(p); return; }
       if (tool === 'move') {
         const f = hit(p);
         sel = f ? f.s : null; showDel();
