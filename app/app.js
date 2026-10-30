@@ -1260,7 +1260,7 @@ async function viewSubmit() {
 function lessonCard(l) {
   const yt = l.video_url ? youtubeId(l.video_url) : null;
   return `<a class="lesson-card${l.read_at ? '' : ' unread'}" href="#/lesson/${l.id}">
-    <div class="lc-top"><span class="lc-date">${fmtDate(l.lesson_date)}</span>${newBadge(l)}</div>
+    <div class="lc-top"><span class="lc-date">${mmdd(l.lesson_date)}に届いた解説</span>${newBadge(l)}</div>
     <h3>${esc(l.title)}</h3>
     ${l.point ? `<p class="lc-point">${esc(l.point)}</p>` : ''}
     ${yt ? `<div class="lc-video">
@@ -1276,19 +1276,42 @@ function keepLabel(s) {
   const left = daysLeft(videoExpiry(s.created_at));
   return s.video_deleted_at || left === 0 ? '保存期間終了' : `あと${left}日見られます`;
 }
-// 送った動画と、その動画へのレッスンをセットにしたカード
+// 1回の相談を1枚のカードにまとめる：何の相談か（クラブ・角度・相談内容）と今の状態を一番上に、
+// その下に ① 送った動画 → ② コーチの解説 の順で並べる。どの解説がどの動画への答えかが一目で分かる
+const mmdd = (d) => { const t = String(d).slice(0, 10).split('-'); return `${Number(t[1])}/${Number(t[2])}`; };
+function caseStatus(lessons) {
+  if (!lessons.length) return '<span class="case-st wait"><i aria-hidden="true"></i>コーチが確認中</span>';
+  if (lessons.some((l) => !l.read_at)) return '<span class="case-st new">解説が届きました</span>';
+  return '<span class="case-st done">✓ 解説あり</span>';
+}
 function swingPair(s, lessons) {
-  return `<div class="pair">
-    <a class="pair-sub" href="#/submission/${s.id}">
+  const unread = lessons.some((l) => !l.read_at);
+  return `<article class="case${lessons.length ? '' : ' waiting'}${unread ? ' unread' : ''}">
+    <div class="case-head">
+      <span class="case-title">${esc(s.club || 'スイング')}<small>・${esc(s.angle || '')}</small></span>
+      ${caseStatus(lessons)}
+    </div>
+    ${s.question ? `<p class="case-q"><b>相談</b>${esc(s.question)}</p>` : ''}
+    <a class="case-mine" href="#/submission/${s.id}">
+      <span class="case-n" aria-hidden="true">1</span>
       <span class="pair-icon" aria-hidden="true">▶</span>
-      <span class="grow"><b>送った動画</b>　${fmtDate(s.created_at)}${s.quota_exempt ? ' <span class="pill quota-free">回数外</span>' : ''}<br>
-        <span class="muted small">${esc(s.club)} / ${esc(s.angle)}・${keepLabel(s)}</span></span>
+      <span class="grow"><b>あなたのスイング</b>${s.quota_exempt ? ' <span class="pill quota-free">回数外</span>' : ''}<br>
+        <span class="muted small">${mmdd(s.created_at)}に送信・${keepLabel(s)}</span></span>
       <span class="pair-go" aria-hidden="true">›</span>
     </a>
-    <div class="pair-arrow" aria-hidden="true"></div>
-    ${lessons.length ? lessons.map(lessonCard).join('')
-      : '<div class="pair-wait"><span class="dot" aria-hidden="true"></span>コーチが確認中です。解説が届くとここに表示されます。</div>'}
-  </div>`;
+    <div class="case-coach">
+      <div class="case-label"><span class="case-n" aria-hidden="true">2</span><b>コーチの解説</b></div>
+      ${lessons.length ? lessons.map(lessonCard).join('')
+        : '<div class="pair-wait"><span class="dot" aria-hidden="true"></span>確認中です。解説が届くとここに表示され、お知らせします。</div>'}
+    </div>
+  </article>`;
+}
+// 動画なしでコーチから直接届いたレッスン
+function looseCase(l) {
+  return `<article class="case${l.read_at ? '' : ' unread'}">
+    <div class="case-head"><span class="case-title">コーチからのレッスン</span>${caseStatus([l])}</div>
+    <div class="case-coach">${lessonCard(l)}</div>
+  </article>`;
 }
 const monthLabel = (iso) => `${iso.slice(0, 4)}年${Number(iso.slice(5, 7))}月`;
 
@@ -1304,7 +1327,7 @@ async function viewHistory() {
   lessons.forEach((l) => (bySub.has(l.submission_id) ? bySub.get(l.submission_id).push(l) : loose.push(l)));
   const items = [
     ...subs.map((s) => ({ date: s.created_at.slice(0, 10), club: s.club, html: swingPair(s, bySub.get(s.id)) })),
-    ...loose.map((l) => ({ date: String(l.lesson_date), club: '', html: `<div class="pair">${lessonCard(l)}</div>` })),
+    ...loose.map((l) => ({ date: String(l.lesson_date), club: '', html: looseCase(l) })),
   ].sort((x, y) => (x.date < y.date ? 1 : x.date > y.date ? -1 : 0));
 
   const clubs = [...new Set(subs.map((s) => s.club).filter(Boolean))];
@@ -1319,8 +1342,8 @@ async function viewHistory() {
   }).join('');
 
   return header('レッスン・送った動画') + `<div class="content wide">
-    <p class="page-lead">コーチから届いたレッスンと、これまでに送った動画をまとめて見返せます。</p>
-    <p class="muted small" style="margin:0 0 8px">送った動画と、その動画へのコーチの解説をセットで表示しています。動画は送信から${RETENTION_LABEL}見られます。</p>
+    <p class="page-lead">1枚のカードが1回の相談です。<b>① あなたのスイング</b> と、それへの <b>② コーチの解説</b> がセットになっています。</p>
+    <p class="muted small" style="margin:0 0 8px">送った動画は送信から${RETENTION_LABEL}見られます。</p>
     ${clubs.length > 1 ? `<div class="filter-chips" role="group" aria-label="クラブで絞り込む">
       ${[['', 'すべて'], ...clubs.map((c) => [c, c])].map(([v, label]) => `<button type="button" data-action="history-filter" data-club="${esc(v)}" class="${filter === v ? 'on' : ''}" aria-pressed="${filter === v}">${esc(label)}</button>`).join('')}
     </div>` : ''}
