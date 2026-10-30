@@ -12,6 +12,7 @@ function requireEnv(name: string): string {
 }
 
 const BUCKET = "swing-videos";
+const LESSON_BUCKET = "lesson-videos"; // コーチの解説動画（お客様のスイングが映るため、同じく3か月で削除）
 const RETENTION_MONTHS = 3;
 const BATCH = 100;
 const DELETE_AFTER_DAYS = 30;
@@ -40,14 +41,16 @@ async function purgeAccounts(db: Db): Promise<number> {
           }
         }
       }
-      // 動画ファイル（会員ごとのフォルダ）をすべて削除
-      for (;;) {
-        const { data: files, error: le } = await db.storage.from(BUCKET).list(m.id, { limit: BATCH });
-        if (le) throw le;
-        if (!files?.length) break;
-        const { error: re } = await db.storage.from(BUCKET).remove(files.map((f) => `${m.id}/${f.name}`));
-        if (re) throw re;
-        if (files.length < BATCH) break;
+      // 動画ファイル（会員ごとのフォルダ）をすべて削除（送った動画・コーチの解説動画）
+      for (const bucket of [BUCKET, LESSON_BUCKET]) {
+        for (;;) {
+          const { data: files, error: le } = await db.storage.from(bucket).list(m.id, { limit: BATCH });
+          if (le) throw le;
+          if (!files?.length) break;
+          const { error: re } = await db.storage.from(bucket).remove(files.map((f) => `${m.id}/${f.name}`));
+          if (re) throw re;
+          if (files.length < BATCH) break;
+        }
       }
       // 再登録のときに分かるよう、メールアドレスのハッシュだけ残してから削除（記録はすべて一緒に消える）
       const { error: fe } = await db.rpc("remember_former_member", { p_member: m.id });
@@ -98,6 +101,28 @@ Deno.serve(async (req) => {
         .in("id", rows.map((r) => r.id));
       if (updateError) throw updateError;
 
+      deleted += rows.length;
+      if (rows.length < BATCH) break;
+    }
+    // コーチの解説動画（レッスンを送ってから3か月）。データベースが未更新なら何もしない
+    for (;;) {
+      const { data: rows, error } = await db
+        .from("lessons")
+        .select("id, coach_video_path")
+        .not("coach_video_path", "is", null)
+        .is("coach_video_deleted_at", null)
+        .lt("created_at", cutoff.toISOString())
+        .order("created_at")
+        .limit(BATCH);
+      if (error) { console.warn("解説動画の削除をスキップしました", error.message); break; }
+      if (!rows?.length) break;
+      const { error: removeError } = await db.storage.from(LESSON_BUCKET).remove(rows.map((r) => r.coach_video_path));
+      if (removeError) throw removeError;
+      const { error: updateError } = await db
+        .from("lessons")
+        .update({ coach_video_deleted_at: new Date().toISOString() })
+        .in("id", rows.map((r) => r.id));
+      if (updateError) throw updateError;
       deleted += rows.length;
       if (rows.length < BATCH) break;
     }
