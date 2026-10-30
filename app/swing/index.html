@@ -376,7 +376,7 @@ a.hbtn{text-decoration:none;color:inherit;box-sizing:border-box}
       <h1>SwingFrame</h1>
       <p>スイング撮影・スイング分析</p>
       <!-- 表示用の版数。sw.js の CACHE と必ずそろえること（片方だけ上げると更新に気づけません） -->
-      <div id="hVer">v44</div>
+      <div id="hVer">v45</div>
     </div>
     <button class="hbtn pri" id="hShoot"><i>●</i><span>スイングを撮影<em>ガイドに合わせて自動で録画</em></span></button>
     <button class="hbtn" id="hLib"><i>▤</i><span>ライブラリ<em id="hLibSub">保存した動画と画像</em></span></button>
@@ -2097,7 +2097,7 @@ function dl(blob,name){
 /* One destination at a time: the app's own library, the camera roll, or
    handing the file to another app. */
 function destHintFor(d){
-  return d==='coach' ? 'オンラインレッスンの提出画面に、この動画をそのまま渡します（線・骨格・長さの調整も入ります）。'
+  return d==='coach' ? 'オンラインレッスンの提出画面に、この動画をそのまま渡します（線・長さの調整は入ります。骨格はコーチが見やすいよう入りません）。'
        : d==='roll' ? '共有メニューが開きます。「ビデオを保存」を選ぶとカメラロールに入ります。'
        : d==='app'  ? '撮った動画は自動でライブラリに入ります。ここは線を入れた動画と画像の保存用です。'
        : '';
@@ -2276,8 +2276,12 @@ $('#rSave').onclick=function(){
   if(cutOn()){t0=cutA();t1=cutB()}
   var needTrim=(t0>0.3||(dur&&t1<dur-0.3));
   /* the skeleton is drawn, not part of the file, so it has to be re-encoded in
-     just like the lines do — without this it silently vanishes on save */
-  if(!lines.length&&!needTrim&&!skelOn){
+     just like the lines do — without this it silently vanishes on save.
+     A video going to the coach is sent without it: the coach studies the swing
+     itself and the overlay gets in the way. Lines and the trim still go. */
+  var withSkel=skelOn&&dest!=='coach';
+  if(dest==='coach'&&skelOn)toast('骨格は外して、コーチに送ります');
+  if(!lines.length&&!needTrim&&!withSkel){
     saveTo(cur.blob,'swing_'+cur.id+'.'+ext,'video',{guide:cur.guide,note:cur.note,original:true});
     return;
   }
@@ -2315,7 +2319,7 @@ $('#rSave').onclick=function(){
     else offerSave(b,nm);
   };
   function frame(){
-    try{x.drawImage(rv,0,0,W,H);paintSkeleton(x,W,H,k);paintShapes(x,W,H,k)}catch(e){}
+    try{x.drawImage(rv,0,0,W,H);if(withSkel)paintSkeleton(x,W,H,k);paintShapes(x,W,H,k)}catch(e){}
     if(!stopped&&rv.currentTime>=t1-0.02)return finish();
     raf=requestAnimationFrame(frame);
   }
