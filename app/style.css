@@ -1644,6 +1644,7 @@ body.rec-open{overflow:hidden}
 .rec-grp.tools button{display:flex;flex-direction:column;align-items:center;line-height:1.1;padding:4px 10px}
 .rec-grp.tools b{font-size:16px}.rec-grp.tools small{font-size:10.5px}
 .rec-grp .sw{width:36px;padding:0}
+.rec-grp.zoom button{font-size:16px;font-weight:700;padding:5px 12px}.rec-grp.zoom .rec-zv{font-size:12.5px;min-width:52px}
 .rec-grp .sw::before{content:"";display:block;width:18px;height:18px;margin:auto;border-radius:50%;background:var(--c);box-shadow:0 0 0 2px rgba(255,255,255,.25)}
 .rec-grp .sw.on::before{box-shadow:0 0 0 3px #fff}
 .rec-seek{flex:1;min-width:140px;accent-color:var(--gold)}
