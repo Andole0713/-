@@ -3782,14 +3782,24 @@ async function render() {
 
 // ---------- 操作 ----------
 
+// ログアウト：サーバーへの連絡に失敗しても（電波が弱い・アプリを開き直した直後など）、この端末からは必ずログアウトする。
+// サーバーへの連絡が失敗すると、ライブラリはログイン情報を端末に残したままにするため、ホームに戻ってしまっていた
+async function signOutHere() {
+  try { await Promise.race([sb.auth.signOut(), new Promise((ok) => setTimeout(ok, 4000))]); } catch { /* noop */ }
+  try { await sb.auth.signOut({ scope: 'local' }); } catch { /* noop */ }
+  try { Object.keys(localStorage).filter((k) => /^sb-.+-auth-token/.test(k)).forEach((k) => localStorage.removeItem(k)); } catch { /* noop */ }
+  state.session = null; state.profile = null;
+}
+// ログイン画面を出す
+function toLogin() {
+  state.authTab = 'login'; state.authMessage = '';
+  history.replaceState(null, '', `${location.pathname}#/home`);
+  render();
+}
+
 const actions = {
   'continue-go': () => playCupIn() || go(state.profile?.role === 'admin' ? 'admin/dashboard' : 'home'),
-  'switch-account': async () => {
-    await sb.auth.signOut();
-    state.authTab = 'login'; state.authMessage = '';
-    history.replaceState(null, '', `${location.pathname}#/home`);
-    render();
-  },
+  'switch-account': async () => { await signOutHere(); toLogin(); },
   'auth-tab': (el) => { state.authTab = el.dataset.tab; state.authMessage = ''; render(); },
   'history-filter': (el) => { state.historyClub = el.dataset.club; render(); },
   'toggle-practice': async (el) => {
@@ -3961,7 +3971,7 @@ const actions = {
     el.setAttribute('aria-label', show ? 'パスワードを隠す' : 'パスワードを表示');
   },
   reload: () => location.reload(),
-  logout: async () => { await sb.auth.signOut(); location.hash = ''; },
+  logout: async () => { await signOutHere(); toLogin(); },
   'plan-detail': (el) => showPlanDetail(PLANS.find((p) => p.id === el.dataset.plan)),
   checkout: async (el) => {
     el.disabled = true; el.textContent = '決済ページへ移動中…';
@@ -4213,9 +4223,9 @@ const actions = {
     const { error: authError } = await sb.auth.signInWithPassword({ email: p.email || state.session.user.email, password: v.password });
     if (authError) { toast('パスワードが違います', true); return; }
     const until = await must(sb.rpc('request_account_deletion'));
-    await sb.auth.signOut();
+    await signOutHere();
     toast(`削除を受け付けました。${fmtDate(until)} に完全に削除されます`);
-    location.hash = '';
+    toLogin();
   },
   'account-restore': async () => {
     await must(sb.rpc('cancel_account_deletion'));
