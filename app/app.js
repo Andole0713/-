@@ -563,7 +563,8 @@ function creditDetails(rows, { admin = false } = {}) {
   return `<details class="credit-list"${admin ? ' open' : ''}><summary>権利の明細を見る（${live.length}回 使えます）</summary>
     <ul>${live.map(line).join('')}</ul>${past.length ? `<p class="muted small" style="margin:8px 0 4px">最近使った・期限切れ</p><ul>${past.map(line).join('')}</ul>` : ''}</details>`;
 }
-const CREDIT_SOURCE = { monthly: '毎月の付与', first_free: '初回無料', purchase: '追加（都度購入など）', manual: '手動' };
+const CREDIT_SOURCE = { monthly: '毎月の付与', first_free: '初回無料', purchase: '追加（都度購入など）', manual: '手動', gift: '🎁 無料プレゼント' };
+const GIFT_REASONS = [['こちらのミスのお詫び', 'お詫び'], ['特典・キャンペーン', '特典'], ['その他', 'その他']];
 const lineBtn = (label) => `<a class="btn btn-block btn-line" href="${esc(CONTACT.lineUrl)}" target="_blank" rel="noopener">${label}</a>`;
 
 function getRoute() {
@@ -2511,6 +2512,7 @@ function creditCard(m, rows) {
       ${pc && !granted ? `<button type="button" class="btn btn-sm btn-gold" data-action="credit-grant-month" data-member="${m.id}">今月分を付与</button>` : ''}
       <button type="button" class="btn btn-sm btn-sub" data-action="credit-add" data-member="${m.id}" data-kind="video">＋ 動画1回</button>
       <button type="button" class="btn btn-sm btn-sub" data-action="credit-add" data-member="${m.id}" data-kind="meeting">＋ 面談1回</button>
+      <button type="button" class="btn btn-sm credit-gift" data-action="credit-gift" data-member="${m.id}" data-name="${esc(m.name || '')}">🎁 動画1回を無料で付与</button>
     </div>
     ${pc && !granted ? '<p class="muted small" style="margin:6px 0 0">今月分はまだ付与されていません（11日以降に契約した会員は、初月は自動で付与されません）。</p>' : ''}
     ${creditDetails(rows, { admin: true })}
@@ -4058,6 +4060,28 @@ const actions = {
     if (!v) return;
     await must(sb.rpc('admin_add_credits', { p_member: el.dataset.member, p_kind: el.dataset.kind, p_count: 1, p_note: v.note.trim() }));
     toast(`${label}の権利を1回追加しました`); render();
+  },
+  // こちらのミス・特典などで、動画1回分を無料で配る（お金をいただく「追加」とは別に記録）
+  'credit-gift': async (el) => {
+    const v = await confirmDialog({
+      title: '動画1回を無料で付与',
+      body: `<p><b>${esc(el.dataset.name)}</b>さんに、動画を送る権利を1回、無料で付与します。有効期限は今月から半年後の月末です。</p>
+        <div class="form modal-form"><label>理由</label>
+          <select name="reason">${GIFT_REASONS.map(([l]) => `<option>${esc(l)}</option>`).join('')}</select>
+          <label>くわしく <span class="muted">（任意・会員の権利の明細にも表示されます）</span></label>
+          <input name="note" maxlength="80" placeholder="例：10/28 解説の送付が遅れたため"></div>`,
+      ok: '無料で付与する',
+    });
+    if (!v) return;
+    const short = GIFT_REASONS.find(([l]) => l === v.reason)?.[1] || 'その他';
+    const note = `${short}${v.note.trim() ? `：${v.note.trim()}` : ''}`;
+    try {
+      await must(sb.rpc('admin_gift_credit', { p_member: el.dataset.member, p_kind: 'video', p_note: note }));
+    } catch (e) {
+      if (/admin_gift_credit|function|schema cache/i.test(e.message || '')) throw new Error('データベースの更新（20261031000000_credit_gift.sql の実行）が必要です');
+      throw e;
+    }
+    toast('🎁 動画1回を無料で付与しました'); render();
   },
   'credit-delete': async (el) => {
     if (!(await confirmDialog({ title: 'この権利を取り消しますか？', body: '<p>まだ使っていない権利を1回分なくします（間違えて追加したときなど）。</p>', ok: '取り消す' }))) return;
