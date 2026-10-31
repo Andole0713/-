@@ -521,6 +521,11 @@ function addMonths(ymd, n) {
   const t = new Date(y, m - 1 + n, Math.min(d, 28));
   return t.toLocaleDateString('sv-SE');
 }
+// ロードマップの公開日は毎月1日が基本：今日が1日なら今日、それ以外は来月の1日
+function nextFirst() {
+  const t = today();
+  return t.slice(8, 10) === '01' ? t : addMonths(`${t.slice(0, 7)}-01`, 1);
+}
 function addDays(ymd, n) {
   const [y, m, d] = ymd.split('-').map(Number);
   return new Date(y, m - 1, d + n).toLocaleDateString('sv-SE');
@@ -2732,9 +2737,10 @@ async function viewMemberDetail(id) {
       <p class="muted small" style="margin:0">初回カウンセリングで決めた内容をもとに、毎月1本ずつ公開するドリルの計画を作ります。あとから自由に変更できます。</p>
       <form class="form" data-form="roadmap-create" data-id="${m.id}">
         <div class="grid">
-          <div><label for="rm-start">最初の公開日</label><input id="rm-start" name="start" type="date" value="${today()}" required></div>
+          <div><label for="rm-start">最初の公開日 <span class="muted">（基本は毎月1日）</span></label><input id="rm-start" name="start" type="date" value="${nextFirst()}" required></div>
           <div><label for="rm-months">月数</label><input id="rm-months" name="months" type="number" min="1" max="36" value="12" required></div>
         </div>
+        <p class="muted small" style="margin:2px 0 8px">入会日にかかわらず、毎月1日に公開する形で作ります。2か月目以降も同じ日付で並びます。公開日はあとから1か月ずつ変えられます。</p>
         <button class="btn-block" type="submit">ロードマップを作成する</button>
       </form>`}</div>
 
@@ -4431,7 +4437,7 @@ const actions = {
   'rm-add': () => {
     const rows = document.querySelectorAll('#rm-rows [data-row]');
     const last = rows[rows.length - 1]?.querySelector('[name="publish_on"]').value;
-    const html = rmRow({ publish_on: last ? addMonths(last, 1) : today(), theme: '', drill_id: null, note: '' }, rows.length, true);
+    const html = rmRow({ publish_on: last ? addMonths(last, 1) : nextFirst(), theme: '', drill_id: null, note: '' }, rows.length, true);
     document.getElementById('rm-rows').insertAdjacentHTML('beforeend', html);
     rmDirty();
   },
