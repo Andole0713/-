@@ -4844,8 +4844,33 @@ document.addEventListener('click', async (ev) => {
   const el = ev.target.closest('[data-action]');
   if (!el || !actions[el.dataset.action] || el.tagName === 'INPUT') return;
   ev.preventDefault();
+  // 長押しのコマ送りで、押した時点でもう1コマ進めてある（指を離したときのクリックでは動かさない）
+  if (el.dataset.held) { delete el.dataset.held; return; }
   try { await actions[el.dataset.action](el); } catch (e) { console.error(e); toast(e.message || 'エラーが発生しました', true); }
 });
+
+// コマ送りのボタン：押すと1コマ、長押しで連続（押している時間が長いほど速く。SwingFrame と同じ）
+const HOLD_STEP = ['vid-step', 'cmp-step'];
+let stepTimer = null; let stepEl = null;
+function stopStepHold() { clearTimeout(stepTimer); stepTimer = null; stepEl?.classList.remove('holding'); stepEl = null; }
+document.addEventListener('pointerdown', (ev) => {
+  const el = ev.target.closest('[data-action]');
+  if (!el || !HOLD_STEP.includes(el.dataset.action) || ev.button > 0) return;
+  ev.preventDefault();
+  stopStepHold();
+  stepEl = el; el.classList.add('holding'); el.dataset.held = '1';
+  const t0 = Date.now();
+  actions[el.dataset.action](el);
+  const tick = () => {
+    if (stepEl !== el) return;
+    actions[el.dataset.action](el);
+    const held = (Date.now() - t0) / 1000;
+    stepTimer = setTimeout(tick, held > 2.5 ? 45 : held > 1.2 ? 75 : 115);
+  };
+  stepTimer = setTimeout(tick, 330);
+});
+['pointerup', 'pointercancel', 'blur'].forEach((t) => (t === 'blur' ? window : document).addEventListener(t, stopStepHold));
+document.addEventListener('contextmenu', (ev) => { if (ev.target.closest(HOLD_STEP.map((a) => `[data-action="${a}"]`).join(','))) ev.preventDefault(); });
 
 let courseTimer;
 document.addEventListener('input', (ev) => {
