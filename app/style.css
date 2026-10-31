@@ -1728,3 +1728,6 @@ body.rec-open{overflow:hidden}
 /* コマ送りのボタン：長押しで連続。長押しで文字が選ばれたりメニューが出たりしないように */
 [data-action="vid-step"],[data-action="cmp-step"],.rec [data-r="step"]{touch-action:manipulation;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
 [data-action="vid-step"].holding,[data-action="cmp-step"].holding{filter:brightness(.9)}
+/* コマ送り：◀◀ ◀ ｜ ▶ ▶▶（戻す側と進める側の間を少し広く） */
+.vt-step button{min-width:42px;padding-left:10px;padding-right:10px;font-weight:700}
+.vt-step button:nth-child(3){border-left:3px solid var(--hair)}

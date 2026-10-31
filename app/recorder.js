@@ -35,7 +35,7 @@ export function openRecorder({ src, title = '' }) {
         <div class="rec-row">
           <button type="button" data-r="play" class="rec-play" aria-label="再生・一時停止">▶</button>
           <span class="rec-grp">${[[0.25, '¼'], [0.5, '½'], [1, '等速']].map(([r, l]) => `<button type="button" data-r="rate" data-v="${r}" class="${r === 1 ? 'on' : ''}">${l}</button>`).join('')}</span>
-          <span class="rec-grp"><button type="button" data-r="step" data-v="-1" aria-label="1コマ戻す">◀</button><button type="button" data-r="step" data-v="1" aria-label="1コマ進める">▶</button></span>
+          <span class="rec-grp">${[[-1, 1, '◀◀', '速く戻す'], [-1, 0, '◀', '1コマ戻す'], [1, 0, '▶', '1コマ進める'], [1, 1, '▶▶', '速く進める']].map(([v, f, l, a]) => `<button type="button" data-r="step" data-v="${v}"${f ? ' data-fast="1"' : ''} aria-label="${a}（長押しで連続）">${l}</button>`).join('')}</span>
           <span class="rec-grp zoom"><button type="button" data-r="zoom" data-v="-1" aria-label="縮小">－</button><button type="button" data-r="zoom" data-v="0" class="rec-zv" title="全体を表示">1.0倍</button><button type="button" data-r="zoom" data-v="1" aria-label="拡大">＋</button></span>
           <input type="range" class="rec-seek" min="0" max="1000" value="0" aria-label="再生位置">
         </div>
@@ -374,16 +374,16 @@ export function openRecorder({ src, title = '' }) {
     const onKey = (e) => { if (e.key === 'Escape' && !(rec && rec.state === 'recording')) close(null); };
     document.addEventListener('keydown', onKey, true);
 
-    // コマ送り：押すと1コマ、長押しで連続（押している時間が長いほど速く）
+    // コマ送り：押すと1コマ、長押しで一定の速さで連続（◀・▶ は1秒に8コマ、◀◀・▶▶ は1秒に15コマ）
     const stepOnce = (b) => { video.pause(); $('.rec-play').textContent = '▶'; video.currentTime = Math.max(0, Math.min(video.duration || 0, video.currentTime + Number(b.dataset.v) / 30)); };
     let holdT = null; let holdB = null;
     const endHold = () => { clearTimeout(holdT); holdT = null; holdB = null; };
     wrap.addEventListener('pointerdown', (e) => {
       const b = e.target.closest('[data-r="step"]'); if (!b || e.button > 0) return;
       e.preventDefault(); endHold(); holdB = b; b.dataset.held = '1';
-      const t0 = Date.now(); stepOnce(b);
-      const tick = () => { if (holdB !== b) return; stepOnce(b); const s = (Date.now() - t0) / 1000; holdT = setTimeout(tick, s > 2.5 ? 45 : s > 1.2 ? 75 : 115); };
-      holdT = setTimeout(tick, 330);
+      const every = b.dataset.fast ? 66 : 125; stepOnce(b);
+      const tick = () => { if (holdB !== b) return; stepOnce(b); holdT = setTimeout(tick, every); };
+      holdT = setTimeout(tick, 300);
     });
     ['pointerup', 'pointercancel'].forEach((t) => wrap.addEventListener(t, endHold));
     wrap.addEventListener('contextmenu', (e) => { if (e.target.closest('[data-r="step"]')) e.preventDefault(); });
