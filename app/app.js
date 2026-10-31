@@ -1914,8 +1914,10 @@ function filterGlossary() {
     g.hidden = vis === 0;
     g.open = !!(q || cat) && vis > 0;
     const c = g.querySelector('.gl-count');
-    if (c) c.textContent = q ? `${vis}語が見つかりました` : `${c.dataset.total}語`;
+    if (c) c.textContent = q ? `${vis}語が見つかりました` : `${c.dataset.total}語${g.dataset.cat === 'rule' ? '・マナーの心得' : ''}`;
   });
+  // 言葉を探している間は、マナーの心得はしまっておく（言葉の結果を見やすく）
+  document.querySelectorAll('.gl-manners').forEach((b) => { b.hidden = !!q; });
   const none = document.querySelector('.gl-none');
   if (none) none.hidden = n > 0;
   // 見つからなかった言葉は、入力が止まってから記録する（用語を追加するときの参考に）

@@ -1693,3 +1693,16 @@ body.rec-open{overflow:hidden}
 .case-coach .pair-wait{margin:0 0 8px}
 .history-list .case{margin:0 0 16px}
 @media (prefers-reduced-motion:reduce){.case-st.wait i{animation:none}}
+
+/* 用語集：ルール・マナーの先頭の「マナーと心がけ」 */
+.gl-manners{margin:0 12px 12px;padding:12px;border-radius:12px;background:color-mix(in srgb,var(--gl) 8%,#fff);border:1px solid color-mix(in srgb,var(--gl) 30%,#fff)}
+.gl-mn-lead{margin:0 0 10px;font-size:13.5px;line-height:1.75;color:var(--text)}
+.gl-mn-lead b{display:block;font-size:15.5px;color:var(--gl);margin-bottom:2px}
+.gl-mn{background:#fff;border:1px solid var(--line);border-radius:10px;margin:0 0 6px}
+.gl-mn>summary{list-style:none;cursor:pointer;padding:10px 36px 10px 12px;font-weight:700;font-size:14.5px;position:relative;display:flex;align-items:center;gap:8px}
+.gl-mn>summary::-webkit-details-marker{display:none}
+.gl-mn>summary small{font-size:11.5px;font-weight:700;color:#fff;background:var(--gl);border-radius:99px;padding:0 7px}
+.gl-mn>summary::after{content:"";position:absolute;right:14px;top:50%;width:7px;height:7px;border-right:1.5px solid var(--muted);border-bottom:1.5px solid var(--muted);transform:translateY(-70%) rotate(45deg)}
+.gl-mn[open]>summary::after{transform:translateY(-30%) rotate(-135deg)}
+.gl-mn ul{margin:0;padding:0 12px 10px 30px}
+.gl-mn li{font-size:13.5px;line-height:1.7;margin:4px 0}
