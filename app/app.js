@@ -527,6 +527,31 @@ const fmtMD = (ymd) => `${Number(ymd.slice(5, 7))}/${Number(ymd.slice(8, 10))}`;
 // ロードマップの月が会員に公開済みか（公開日が来た、または前倒しで公開した）
 // 取り消した月（hidden）は、公開日を過ぎていても公開しない
 const rmOpen = (r) => !r.hidden && (Boolean(r.published_at) || r.publish_on <= today());
+// ロードマップの今の位置（何か月目か）と、これから公開する月の設定もれ。
+// soon＝今月・来月に公開なのにテーマかドリルが未定、later＝再来月に公開で未定
+function rmStatus(items) {
+  const list = (items || []).filter((r) => !r.hidden).sort((a, b) => (a.publish_on < b.publish_on ? -1 : 1));
+  if (!list.length) return null;
+  // 月単位で数える：来月中に公開＝1か月以内、再来月中＝2か月以内
+  const [y, mo] = today().slice(0, 7).split('-').map(Number);
+  const firstOf = (k) => { const d = new Date(Date.UTC(y, mo - 1 + k, 1)); return d.toISOString().slice(0, 10); };
+  const in1 = firstOf(2); const in2 = firstOf(3);
+  const unset = (r) => !r.theme || !r.drill_id;
+  const ahead = list.filter((r) => !rmOpen(r));
+  return {
+    cur: list.length - ahead.length, total: list.length,
+    soon: ahead.filter((r) => r.publish_on < in1 && unset(r)),
+    later: ahead.filter((r) => r.publish_on >= in1 && r.publish_on < in2 && unset(r)),
+  };
+}
+const rmMissing = (r) => [!r.theme && 'テーマ', !r.drill_id && 'ドリル'].filter(Boolean).join('・') + '未定';
+// ホームに出す「今月のテーマ」：スタッフがその月に書いたテーマがあればそれ、なければロードマップのその月のテーマ。
+// 書いたテーマは書いた月だけ出す（月が変わると自動でロードマップのテーマに戻る）
+function themeOfMonth(p, rmNow) {
+  const set = p.theme_set_on;
+  const manual = p.theme && (set === undefined || (set && String(set).slice(0, 7) === today().slice(0, 7)));
+  return manual ? p.theme : (rmNow?.theme || '');
+}
 // ---------- 権利（動画・面談の回数）----------
 // 毎月プランごとの回数が付与され、付与された月から半年後の月末まで使える。使うときは期限が近いものから
 const planCredits = (planId) => planOf(planId)?.credits || null;
@@ -916,7 +941,7 @@ async function viewMemberHome() {
     <div class="hero hero-home">
       <div class="hh-top">${plan ? `<span class="pill">${esc(plan.name)}</span>` : ''}<a class="hh-badge" href="#/badges">🏅 バッジ</a>${celes.length ? `<a class="hh-badge" href="#/celebrations">🏆 お祝い ${celes.length}</a>` : ''}</div>
       <h1>${esc(p.name)}さん、おかえりなさい。</h1>
-      <div class="hh-goal"><span>目標</span><b>${esc(p.goal || '未設定')}</b>${p.theme ? `<small>今月のテーマ：${esc(p.theme)}</small>` : ''}</div>
+      <div class="hh-goal"><span>目標</span><b>${esc(p.goal || '未設定')}</b>${themeOfMonth(p, rmNow) ? `<small>今月のテーマ：${esc(themeOfMonth(p, rmNow))}</small>` : ''}</div>
       ${nextAction({ latest, rmNow, practicedToday, cr, pending: subs, tasks, done })}
     </div>
     </div>
@@ -2126,7 +2151,7 @@ async function viewDashboard() {
     must(sb.from('submissions').select('*, profiles(name)').eq('status', 'pending').order('created_at')),
     must(sb.from('meetings').select('*, profiles(name)').gte('scheduled_at', isoDaysFrom(-45)).order('scheduled_at')),
     must(sb.from('roadmap_items').select('id, member_id, publish_on, theme, profiles(name)').is('drill_id', null).eq('hidden', false).gte('publish_on', today()).lte('publish_on', isoDaysFrom(14).slice(0, 10)).order('publish_on')),
-    must(sb.from('roadmap_items').select('member_id')),
+    must(sb.from('roadmap_items').select('member_id, publish_on, theme, drill_id, hidden, published_at')),
     must(sb.from('submissions').select('member_id, created_at').gte('created_at', isoDaysFrom(-30))),
     must(sb.from('roadmap_practice').select('member_id, practiced_on').gte('practiced_on', isoDaysFrom(-30).slice(0, 10))),
     must(sb.from('rounds').select('member_id, played_on, created_at, score, course_name, profiles(name)').gte('created_at', isoDaysFrom(-30)).order('created_at', { ascending: false })),
@@ -2208,7 +2233,28 @@ async function viewDashboard() {
     ...people.filter((m) => daysAgo(m.created_at) <= 7).map((m) => ({ t: m.created_at, html: `☆ ${memberLink(m.id, m.name)} が新規登録しました` })),
   ].sort((a, b) => (a.t < b.t ? 1 : -1)).slice(0, 12);
 
+  // 月末（25日〜）のお知らせ：来月の設定に変更がないかの確認。「確認しました」でその月は出さない
+  const monthKey = today().slice(0, 7);
+  let monthEnd = '';
+  if (Number(today().slice(8, 10)) >= 25 && local.get('atg-monthend') !== monthKey) {
+    const byMember = rmAll.reduce((a, r) => a.set(r.member_id, [...(a.get(r.member_id) || []), r]), new Map());
+    const nameOf = new Map(members.map((m) => [m.id, m.name || '（名前未設定）']));
+    const missing = [...byMember].map(([id, items]) => [id, rmStatus(items)]).filter(([, rs]) => rs && (rs.soon.length || rs.later.length));
+    const manual = await sb.from('profiles').select('id, name, theme, theme_set_on').neq('theme', '').then((r) => (r.data || []).filter((x) => x.theme && x.theme_set_on && String(x.theme_set_on).slice(0, 7) === monthKey), () => []);
+    monthEnd = `<section class="card month-end">
+      <div class="dash-h"><span class="dash-i" aria-hidden="true">📅</span><b>月末のお知らせ：来月の設定に変更はありませんか？</b></div>
+      <ul class="me-check">
+        <li>来月のロードマップの<b>テーマ・ドリル</b>は決まっていますか？</li>
+        <li>プランの変更・<b>利用期限</b>・面談の予定に変更はありませんか？</li>
+        <li>今月のテーマを手で書いた会員は、来月は自動で<b>ロードマップのテーマ</b>に戻ります。</li>
+      </ul>
+      ${missing.length ? `<p class="me-h">設定がまだの会員（${missing.length}名）</p><div class="dash-list">${missing.map(([id, rs]) => `<div class="dash-row"><div class="grow">${memberLink(id, nameOf.get(id))}<small>${[...rs.soon, ...rs.later].map((r) => `${fmtMD(r.publish_on)} ${rmMissing(r)}`).join('、')}</small></div><a class="btn btn-sm" href="#/admin/roadmap/${id}">設定する</a></div>`).join('')}</div>` : '<p class="muted small">2か月先までのロードマップは、すべて設定されています。</p>'}
+      ${manual.length ? `<p class="me-h">今月のテーマを手で書いた会員（${manual.length}名）</p><div class="dash-list">${manual.map((x) => `<div class="dash-row"><div class="grow">${memberLink(x.id, x.name)}<small>「${esc(x.theme)}」</small></div></div>`).join('')}</div>` : ''}
+      <button type="button" class="btn btn-sm btn-sub" data-action="monthend-ok" data-month="${monthKey}">確認しました（今月は表示しない）</button>
+    </section>`;
+  }
   return header('やること') + `<div class="content wide">
+    ${monthEnd}
     <div class="kpis">
       <a class="kpi${pending.length ? ' alert' : ''}" href="#/admin/inbox"><span>確認待ちの動画</span><b>${pending.length}</b><small>${overdue.length ? `<b class="late">返信目標（${REPLY_TARGET_H}時間）超過 ${overdue.length}件</b>` : pending.length ? `いちばん古いもの ${oldestWait}日前` : 'なし'}</small></a>
       <a class="kpi" href="#/admin/meetings"><span>今日の面談</span><b>${todayMeetings.length}</b><small>今後7日で ${upcoming.length}件</small></a>
@@ -2485,11 +2531,13 @@ function applyMemberFilter() {
 }
 
 async function viewMembers() {
-  const [members, pend, mtgs] = await Promise.all([
+  const [members, pend, mtgs, rms] = await Promise.all([
     must(sb.from('profiles').select('*').order('created_at', { ascending: false })),
     must(sb.from('submissions').select('member_id').eq('status', 'pending')),
     must(sb.from('meetings').select('member_id, status').gte('scheduled_at', monthStart()).in('status', ['scheduled', 'done'])),
+    sb.from('roadmap_items').select('member_id, publish_on, theme, drill_id, hidden, published_at').then((r) => r.data || []),
   ]);
+  const rmBy = rms.reduce((a, r) => a.set(r.member_id, [...(a.get(r.member_id) || []), r]), new Map());
   const pendBy = pend.reduce((a, x) => a.set(x.member_id, (a.get(x.member_id) || 0) + 1), new Map());
   const metBy = new Set(mtgs.map((x) => x.member_id));
   const flags = (m) => {
@@ -2503,6 +2551,13 @@ async function viewMembers() {
     if (m.deletion_requested_at) f.push(`<span class="flag red">削除予定 ${fmtDate(deleteOn(m))}</span>`);
     else if (m.cancel_at) f.push(`<span class="flag yellow">解約予定 ${fmtDate(m.cancel_at)}</span>`);
     if (!isActive(m) && daysAgo(m.created_at) <= 30) f.push('<span class="flag blue">新規登録</span>');
+    // ロードマップ：何か月目か。1か月以内に公開する月の設定もれは赤、2か月以内は黄
+    const rs = rmStatus(rmBy.get(m.id));
+    if (rs) {
+      f.push(`<span class="flag rm">ロードマップ ${rs.cur ? `${rs.cur}/${rs.total}か月目` : `開始前（全${rs.total}か月）`}${rs.cur >= rs.total ? '・最終月' : ''}</span>`);
+      if (rs.soon.length) f.push(`<span class="flag red">来月の設定もれ：${rs.soon.map((r) => `${fmtMD(r.publish_on)} ${rmMissing(r)}`).join('、')}</span>`);
+      if (rs.later.length) f.push(`<span class="flag yellow">再来月の設定もれ：${rs.later.map((r) => `${fmtMD(r.publish_on)} ${rmMissing(r)}`).join('、')}</span>`);
+    }
     return f.length ? `<div class="flags">${f.join('')}</div>` : '';
   };
   const needs = (m) => /flag (red|yellow)/.test(flags(m));
@@ -2591,7 +2646,13 @@ async function viewMemberDetail(id) {
       </div>
       ${mRounds.length ? `<details class="admin-rounds"><summary>最近のラウンドを見る</summary>${mRounds.slice(0, 10).map((r) => `<div class="list-item small"><span>${fmtDate(r.played_on)}　${esc(r.course_name)}${r.holes === 9 ? '（9H）' : ''}</span><b>${r.score}</b></div>`).join('')}</details>`
         : '<p class="muted small" style="margin:4px 0 0">スコアは会員がラウンドごとに入力すると、自動で計算されます。</p>'}
-      <label for="theme">今月のテーマ</label><input id="theme" name="theme" value="${esc(m.theme)}" maxlength="100">
+      ${(() => {
+        const rmCur = roadmap.filter(rmOpen).at(-1);
+        const stale = m.theme && m.theme_set_on && String(m.theme_set_on).slice(0, 7) !== today().slice(0, 7);
+        return `<label for="theme">今月のテーマ <span class="muted">（空欄なら、ロードマップのその月のテーマが出ます）</span></label>
+      ${m.theme_set_on !== undefined ? '<input type="hidden" name="theme_month" value="1">' : ''}<input id="theme" name="theme" value="${esc(stale ? '' : m.theme)}" maxlength="100" placeholder="${esc(rmCur?.theme ? `ロードマップ：${rmCur.theme}` : '例：アドレスと前傾角度を安定させる')}">
+      <p class="muted small" style="margin:2px 0 0">ここに書いたテーマは、書いた月だけホームに出ます。月が変わると、自動でロードマップのテーマに戻ります。${stale ? `<br>（${esc(String(m.theme_set_on).slice(5, 7).replace(/^0/, ''))}月に書いた「${esc(m.theme)}」は、今月は表示されていません）` : ''}</p>`;
+      })()}
       <label for="access_until">利用期限 <span class="muted">（LINE・電話で申し込んだ会員用。カード決済の会員は空欄）</span></label>
       <input id="access_until" name="access_until" type="date" value="${esc(m.access_until || '')}">
       ${(() => {
@@ -4189,6 +4250,7 @@ const actions = {
     setTimeout(() => wizGo(el.dataset.field === 'club' ? 3 : 4), 180);
   },
   'open-glossary': () => { state.helpFrom = location.hash.replace(/^#\/?/, ''); go('help/words'); },
+  'monthend-ok': (el) => { local.set('atg-monthend', el.dataset.month); render(); },
   'glossary-cat': (el) => {
     document.querySelectorAll('.gl-cat').forEach((b) => b.classList.toggle('on', b === el));
     filterGlossary();
@@ -4629,6 +4691,8 @@ const forms = {
       access_until: f.access_until.value || null,
     };
     if (f.role) update.role = f.role.value;
+    // テーマを書いた月を記録（データベースの更新後だけ。同じテーマを翌月にもう一度書いたときも、その月のテーマになる）
+    if (f.theme_month) update.theme_set_on = update.theme ? today() : null;
     await must(sb.from('profiles').update(update).eq('id', f.dataset.id));
     toast('保存しました'); render();
   },
