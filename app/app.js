@@ -2649,9 +2649,13 @@ async function viewMemberDetail(id) {
       ${(() => {
         const rmCur = roadmap.filter(rmOpen).at(-1);
         const stale = m.theme && m.theme_set_on && String(m.theme_set_on).slice(0, 7) !== today().slice(0, 7);
-        return `<label for="theme">今月のテーマ <span class="muted">（空欄なら、ロードマップのその月のテーマが出ます）</span></label>
-      ${m.theme_set_on !== undefined ? '<input type="hidden" name="theme_month" value="1">' : ''}<input id="theme" name="theme" value="${esc(stale ? '' : m.theme)}" maxlength="100" placeholder="${esc(rmCur?.theme ? `ロードマップ：${rmCur.theme}` : '例：アドレスと前傾角度を安定させる')}">
-      <p class="muted small" style="margin:2px 0 0">ここに書いたテーマは、書いた月だけホームに出ます。月が変わると、自動でロードマップのテーマに戻ります。${stale ? `<br>（${esc(String(m.theme_set_on).slice(5, 7).replace(/^0/, ''))}月に書いた「${esc(m.theme)}」は、今月は表示されていません）` : ''}</p>`;
+        // 欄には、今月ホームに出ているテーマ（手で書いたものがなければ、ロードマップの今月のテーマ）を入れておく。
+        // ロードマップのテーマのまま保存したときは「手で書いた」扱いにしない
+        const shown = stale || !m.theme ? (rmCur?.theme || '') : m.theme;
+        return `<label for="theme">今月のテーマ <span class="muted">（ロードマップの今月のテーマ。書き換えると、今月だけそちらが出ます）</span></label>
+      ${m.theme_set_on !== undefined ? '<input type="hidden" name="theme_month" value="1">' : ''}<input type="hidden" name="theme_rm" value="${esc(rmCur?.theme || '')}">
+      <input id="theme" name="theme" value="${esc(shown)}" maxlength="100" placeholder="例：アドレスと前傾角度を安定させる">
+      <p class="muted small" style="margin:2px 0 0">${!rmCur ? 'ロードマップがないため、ここに書いたテーマがホームに出ます。' : 'ロードマップのテーマから書き換えた場合は、その月だけホームに出ます。月が変わると、自動でロードマップのテーマに戻ります。'}</p>`;
       })()}
       <label for="access_until">利用期限 <span class="muted">（LINE・電話で申し込んだ会員用。カード決済の会員は空欄）</span></label>
       <input id="access_until" name="access_until" type="date" value="${esc(m.access_until || '')}">
@@ -4687,7 +4691,8 @@ const forms = {
   'admin-profile': async (f) => {
     const update = {
       name: f.name.value.trim(), plan: f.plan.value || null, goal: f.goal.value.trim(),
-      theme: f.theme.value.trim(),
+      // ロードマップのテーマのままなら、手で書いたテーマとしては保存しない
+      theme: f.theme.value.trim() === (f.theme_rm?.value || '').trim() && f.theme_rm?.value ? '' : f.theme.value.trim(),
       access_until: f.access_until.value || null,
     };
     if (f.role) update.role = f.role.value;
