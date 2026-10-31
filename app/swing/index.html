@@ -376,7 +376,7 @@ a.hbtn{text-decoration:none;color:inherit;box-sizing:border-box}
       <h1>SwingFrame</h1>
       <p>スイング撮影・スイング分析</p>
       <!-- 表示用の版数。sw.js の CACHE と必ずそろえること（片方だけ上げると更新に気づけません） -->
-      <div id="hVer">v47</div>
+      <div id="hVer">v48</div>
     </div>
     <button class="hbtn pri" id="hShoot"><i>●</i><span>スイングを撮影<em>ガイドに合わせて撮影</em></span></button>
     <button class="hbtn" id="hLib"><i>▤</i><span>ライブラリ<em id="hLibSub">保存した動画と画像</em></span></button>
@@ -479,7 +479,7 @@ a.hbtn{text-decoration:none;color:inherit;box-sizing:border-box}
     <div class="row"><div class="lb">スイング後</div><div class="seg" id="segPost">
       <button data-v="1.5">1.5秒</button><button data-v="2.5">2.5秒</button><button data-v="5">5秒</button>
     </div></div>
-    <div class="note">「自動録画」を有効にすると、構えに入った時点で録画を開始し、<b style="color:var(--fg)">スイングを検知してから指定秒数後に自動停止</b>します。スイングが検知されなかった録画は自動的に破棄されるため、誤作動しても不要な動画は残りません。<br><b style="color:var(--fg)">判定方法</b>：<b style="color:var(--fg)">打球音</b>（推奨）＝人が枠に入った時点で録画を開始し、打球音がしたら指定秒数後に停止します。撮影後は自動でチェック画面が開きます。動きの大きさを判定に使わないため最も安定します。<b style="color:var(--fg)">動き＋音</b>＝構えてから録画を開始し、スイングの動きと衝撃音が揃った時に停止（録画時間は短くなります）。<b style="color:var(--fg)">動きのみ</b>＝音を使いません。マイクが使えない場合は自動的に「動き」側で動作します。<br><b style="color:var(--fg)">人がいるかの判定</b>：ガイド枠内が「無人の背景」とどれだけ違うかで人の有無を判断します。背景は起動後に自動記録されますが、その時に人が写っていた場合は上のボタンで記録し直してください。<br><b style="color:var(--fg)">初回の調整方法</b>：構えに入ると画面右上に「スイング待ち 4/13」のように<b style="color:var(--fg)">現在の動き値／発火しきい値</b>が出ます。1球打って、スイング時の数値がしきい値を超えていなければ検知感度を上げ、構えているだけで発火するなら下げてください。</div>
+    <div class="note">「自動録画」を有効にすると、<b style="color:var(--fg)">オフにするまで続けて何本でも</b>撮影できます。構えに入った時点で録画を開始し、<b style="color:var(--fg)">スイングを検知してから指定秒数後に自動停止</b>します。スイングが検知されなかった録画は自動的に破棄されるため、誤作動しても不要な動画は残りません。<br><b style="color:var(--fg)">判定方法</b>：<b style="color:var(--fg)">打球音</b>（推奨）＝人が枠に入った時点で録画を開始し、打球音がしたら指定秒数後に停止します。撮った動画は「履歴」に入り、そのまま次のスイングを待ちます。動きの大きさを判定に使わないため最も安定します。<b style="color:var(--fg)">動き＋音</b>＝構えてから録画を開始し、スイングの動きと衝撃音が揃った時に停止（録画時間は短くなります）。<b style="color:var(--fg)">動きのみ</b>＝音を使いません。マイクが使えない場合は自動的に「動き」側で動作します。<br><b style="color:var(--fg)">人がいるかの判定</b>：ガイド枠内が「無人の背景」とどれだけ違うかで人の有無を判断します。背景は起動後に自動記録されますが、その時に人が写っていた場合は上のボタンで記録し直してください。<br><b style="color:var(--fg)">初回の調整方法</b>：構えに入ると画面右上に「スイング待ち 4/13」のように<b style="color:var(--fg)">現在の動き値／発火しきい値</b>が出ます。1球打って、スイング時の数値がしきい値を超えていなければ検知感度を上げ、構えているだけで発火するなら下げてください。</div>
     <div class="row"><div class="lb">カウント</div><div class="seg" id="segCd">
       <button data-v="0">なし</button><button data-v="3">3秒</button><button data-v="5">5秒</button><button data-v="10">10秒</button>
     </div></div>
@@ -939,10 +939,18 @@ function onStop(){
     rWarn('カメラの映像が途中で止まったため、録画を止めました。止まる前の '+fz.toFixed(1)+' 秒ぶんは保存されています。');
   }
   clip.fixed=true;
+  /* Automatic recording stays on until the person turns it off, so a session
+     at the range is one take after another. Jumping to the review screen
+     after each one would mean walking back to the phone every swing, so the
+     camera stays up and the take is a tap away in the toast or the history. */
+  /* after a freeze the camera has to restart, which happens on the way back
+     from the review screen, so that case still goes there */
+  var keepGoing=wasAuto&&S.auto!=='off'&&!fz;
   fixMp4(blob).then(function(b){clip.blob=b;return addClip(clip)}).then(function(){
-    openReview(clip.id,'cam');
+    if(!keepGoing){openReview(clip.id,'cam');return}
+    autoTakes++;
+    toast(autoTakes+'本目を保存しました。続けて撮影できます','見る',function(){openReview(clip.id,'cam')});
   });
-  if(S.auto==='one'){S.auto='off';save();applyAll()}
   autoReset(true);
 }
 
@@ -1087,6 +1095,7 @@ var mCv=document.createElement('canvas'),mCx=null,prevF=null;
 mCv.width=48;mCv.height=84;
 try{mCx=mCv.getContext('2d',{willReadFrequently:true})}catch(e){mCx=mCv.getContext('2d')}
 var autoState='idle',stillN=0,moveN=0,coolUntil=0,autoTimer=null,warmUntil=0;
+var autoTakes=0;   /* takes saved in this run of automatic recording */
 var autoRec=false,discard=false,swingT=-1,baseM=0,baseN=0,hotN=0,hotStart=0;
 var emptyRef=null,refSig='',occ=-1,quietMs=0,presN=0;
 /* sound-only needs a working mic; without one it degrades to the motion path */
@@ -1394,7 +1403,7 @@ var sgFace=seg('#segFace',function(){return S.face},function(v){if(S.face!==v){S
 var rDur=rng('#rDur','#vDur',function(){return S.dur},function(v){S.dur=v},function(v){return v+'秒'});
 var sgCd=seg('#segCd',function(){return S.cd},function(v){S.cd=+v});
 var sgQ=seg('#segQ',function(){return S.q},function(v){S.q=v});
-var sgAuto=seg('#segAuto',function(){return S.auto},function(v){S.auto=v;autoReset(false)});
+var sgAuto=seg('#segAuto',function(){return S.auto},function(v){S.auto=v;autoTakes=0;autoReset(false)});
 var sgPost=seg('#segPost',function(){return S.post},function(v){S.post=+v});
 var sgTrig=seg('#segTrig',function(){return S.trig},function(v){S.trig=v});
 var sgCut=seg('#segCut',function(){return S.cut?1:0},function(v){S.cut=v==='1';reCut()});
