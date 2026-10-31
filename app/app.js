@@ -555,11 +555,30 @@ function rmStatus(items) {
   const in1 = firstOf(2); const in2 = firstOf(3);
   const unset = (r) => !r.theme || !r.drill_id;
   const ahead = list.filter((r) => !rmOpen(r));
+  const mm = rmMonths(list);
   return {
-    cur: list.length - ahead.length, total: list.length,
+    cur: mm.cur, total: mm.total,
     soon: ahead.filter((r) => r.publish_on < in1 && unset(r)),
     later: ahead.filter((r) => r.publish_on >= in1 && r.publish_on < in2 && unset(r)),
   };
+}
+// ロードマップを月で数える：1つ目のお題を公開した月を1か月目として、今が何か月目か・全部で何か月か。
+// （11日以降に入会した人は1つ目のお題が2か月続くので、お題の数と月の数はずれる）
+const monthGap = (a, b) => (Number(b.slice(0, 4)) - Number(a.slice(0, 4))) * 12 + Number(b.slice(5, 7)) - Number(a.slice(5, 7));
+function rmMonths(items) {
+  const list = (items || []).filter((r) => !r.hidden).sort((a, b) => (a.publish_on < b.publish_on ? -1 : 1));
+  if (!list.length) return null;
+  const first = list[0].publish_on;
+  const total = monthGap(first, list[list.length - 1].publish_on) + 1;
+  const cur = today() < first ? 0 : Math.min(total, monthGap(first, today()) + 1);
+  // お題ごとの月の範囲（例：1〜2か月目）
+  const label = (r) => {
+    const i = list.indexOf(r); if (i < 0) return '';
+    const a = monthGap(first, r.publish_on) + 1;
+    const b = i + 1 < list.length ? monthGap(first, list[i + 1].publish_on) : a;
+    return b > a ? `${a}〜${b}か月目` : `${a}か月目`;
+  };
+  return { cur, total, label };
 }
 const rmMissing = (r) => [!r.theme && 'テーマ', !r.drill_id && 'ドリル'].filter(Boolean).join('・') + '未定';
 // ホームに出す「今月のテーマ」：スタッフがその月に書いたテーマがあればそれ、なければロードマップのその月のテーマ。
@@ -973,7 +992,7 @@ async function viewMemberHome() {
     <div class="blk" style="--o:3">
     ${rmNow ? `<a class="rm-home cat-drill" href="#/drills">
         <div class="rm-home-head"><span class="rm-badge">今月のドリル</span>${rmNow.seen_at ? '' : '<span class="new-badge">NEW</span>'}
-          <span class="rm-home-step"><b>${rmOpened.length}</b>/${roadmap.length}か月目</span></div>
+          <span class="rm-home-step"><b>${rmMonths(roadmap)?.cur || 0}</b>/${rmMonths(roadmap)?.total || roadmap.length}か月目</span></div>
         <h3>${esc(rmNow.theme || rmNow.drills?.title || 'ドリル')}</h3>
         ${rmNow.drills && rmNow.theme ? `<p class="rm-home-drill">🎯 ${esc(rmNow.drills.title)}</p>` : ''}
         <div class="rm-home-meter" aria-hidden="true"><i style="width:${Math.round((rmOpened.length / roadmap.length) * 100)}%"></i></div>
@@ -1798,14 +1817,15 @@ function roadmapView(items, urls, extra = {}) {
   const refOf = (id) => reflections.find((x) => x.item_id === id)?.body || '';
   const open = items.filter(rmOpen);
   const current = open[open.length - 1];
-  const step = open.length;
+  const mm = rmMonths(items);
+  const step = mm?.cur || 0;
   const last = items[items.length - 1];
   return `<section class="roadmap" data-current="${items.indexOf(current)}">
     <div class="rm-head">
       <div><div class="eyebrow">Roadmap</div><h2>あなたのロードマップ</h2></div>
-      <div class="rm-step"><b>${step}</b><small>/${items.length}か月</small></div>
+      <div class="rm-step"><b>${step}</b><small>/${mm?.total || items.length}か月</small></div>
     </div>
-    <div class="meter"><i style="width:${Math.round((step / items.length) * 100)}%"></i></div>
+    <div class="meter"><i style="width:${Math.round((step / (mm?.total || items.length)) * 100)}%"></i></div>
     ${goal ? `<p class="rm-goal-top">🏁 ゴール：<b>${esc(goal)}</b></p>` : ''}
     <p class="muted small" style="margin:8px 0 0">毎月1本、あなた専用のドリルが公開されます。ご契約中はいつでも見返せます。</p>
     <div class="rm-grid" id="rm-grid">${items.map((r, i) => {
@@ -1815,7 +1835,7 @@ function roadmapView(items, urls, extra = {}) {
       const cls = isCurrent ? 'current' : isOpen ? 'done' : 'locked';
       const icon = isCurrent ? '▶' : isOpen ? '✓' : '🔒';
       return `<button type="button" class="rm-tile ${cls}" data-action="rm-open" data-i="${i}" aria-expanded="false" aria-controls="rm-panel-${i}">
-          ${isCurrent ? '<span class="now">今月</span>' : ''}<span class="no">${i + 1}か月目</span><span class="st" aria-hidden="true">${icon}</span>
+          ${isCurrent ? '<span class="now">今月</span>' : ''}<span class="no">${mm?.label(r) || `${i + 1}か月目`}</span><span class="st" aria-hidden="true">${icon}</span>
           ${isNew ? '<span class="dot" aria-label="NEW"></span>' : ''}
           <b>${esc(r.theme || (r.drills?.title ?? 'テーマ準備中'))}</b></button>`;
     }).join('')}
@@ -1827,7 +1847,7 @@ function roadmapView(items, urls, extra = {}) {
       const isNew = isOpen && !r.seen_at;
       const days = logOf(r.id).length;
       const head = `${isCurrent ? '<span class="rm-badge">今月のドリル</span>' : ''}
-        <div class="rm-month">${i + 1}か月目・${fmtMonth(r.publish_on)}${isNew ? '<span class="new-badge">NEW</span>' : ''}${!isCurrent && isOpen && days ? `<span class="rm-days">練習 ${days}日</span>` : ''}</div>
+        <div class="rm-month">${mm?.label(r) || `${i + 1}か月目`}・${fmtMonth(r.publish_on)}${isNew ? '<span class="new-badge">NEW</span>' : ''}${!isCurrent && isOpen && days ? `<span class="rm-days">練習 ${days}日</span>` : ''}</div>
         <h3>${esc(r.theme || (r.drills?.title ?? 'テーマ準備中'))}</h3>`;
       const body = isOpen
         ? `${r.note ? `<p class="rm-note pre">${esc(r.note)}</p>` : ''}${r.drills ? drillCard(r.drills, urls) : '<p class="muted small">ドリルは準備中です。もうしばらくお待ちください。</p>'}
