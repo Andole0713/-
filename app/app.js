@@ -1415,6 +1415,137 @@ async function viewHistory() {
 
 // コーチの文章を読みやすく整形する（空行で段落、「・」などで始まる行は箇条書き、箇条書き直前の短い行は小見出し）
 const BULLET = /^[・•●◆■\-*]\s*/;
+// ---------- お知らせ（スタッフ → 会員全体） ----------
+const ANN_KIND = { update: ['アップデート', 'video'], apology: ['お詫び', 'celebrate'], info: ['お知らせ', 'help'], question: ['アンケート', 'score'] };
+const annTag = (k) => `<span class="ann-tag cat-${(ANN_KIND[k] || ANN_KIND.info)[1]}">${(ANN_KIND[k] || ANN_KIND.info)[0]}</span>`;
+// まだ確認していないお知らせ（入会より前に送られたものは出さない）
+async function loadAnnouncements(p) {
+  const [list, reads] = await Promise.all([
+    sb.from('announcements').select('*').eq('active', true).order('created_at').then((r) => r.data || [], () => []),
+    sb.from('announcement_reads').select('announcement_id').eq('member_id', p.id).then((r) => r.data || [], () => []),
+  ]);
+  const done = new Set(reads.map((x) => x.announcement_id));
+  return list.filter((a) => !done.has(a.id) && a.created_at >= p.created_at && (a.audience === 'all' || isActive(p)));
+}
+function viewAnnouncement() {
+  const q = state.annQueue; const a = q[0];
+  const choices = a.choices || [];
+  return `<div class="content ann-page">
+    <div class="ann-card card">
+      <div class="ann-head">${annTag(a.kind)}<span class="muted small">${fmtDate(a.created_at)}${q.length > 1 ? `・${q.length}件のうち1件目` : ''}</span></div>
+      <h1>${esc(a.title)}</h1>
+      ${a.body ? `<div class="ann-body">${richText(a.body)}</div>` : ''}
+      <form class="form" data-form="ann-ack" data-id="${a.id}">
+        ${choices.length ? `<fieldset class="ann-choices"><legend>あてはまるものを選んでください</legend>${choices.map((c, i) => `<label class="ann-choice"><input type="radio" name="choice" value="${esc(c)}"${i === 0 ? ' required' : ''}><span>${esc(c)}</span></label>`).join('')}</fieldset>` : ''}
+        ${a.allow_comment ? '<label for="ann-comment">ひと言あればどうぞ（任意）</label><textarea id="ann-comment" name="comment" rows="3" maxlength="1000"></textarea>' : ''}
+        <button class="btn-block btn-gold" type="submit">${choices.length ? '回答して進む' : '確認しました'}</button>
+      </form>
+    </div>
+    <p class="muted small center">確認すると、次からは表示されません。あとから「メニュー」→「お知らせ」で見返せます。</p>
+  </div>`;
+}
+async function viewNotices() {
+  const p = state.profile;
+  const [list, reads] = await Promise.all([
+    sb.from('announcements').select('*').eq('active', true).order('created_at', { ascending: false }).then((r) => r.data || [], () => []),
+    sb.from('announcement_reads').select('announcement_id, choice').eq('member_id', p.id).then((r) => r.data || [], () => []),
+  ]);
+  const ans = new Map(reads.map((x) => [x.announcement_id, x.choice]));
+  const mine = list.filter((a) => a.created_at >= p.created_at && (a.audience === 'all' || isActive(p)));
+  return header('お知らせ', 'menu') + `<div class="content">
+    <p class="page-lead">運営からのお知らせ（アップデート・お詫びなど）です。</p>
+    ${mine.length ? mine.map((a) => `<details class="card ann-past"><summary><span>${annTag(a.kind)} <b>${esc(a.title)}</b></span><span class="muted small">${fmtDate(a.created_at)}</span></summary>
+      ${a.body ? `<div class="ann-body">${richText(a.body)}</div>` : ''}${ans.get(a.id) ? `<p class="small muted">あなたの回答：${esc(ans.get(a.id))}</p>` : ''}</details>`).join('') : emptyBox('📣', 'お知らせはまだありません。')}
+  </div>` + memberNav('menu');
+}
+async function viewAnnounceAdmin() {
+  const [list, reads, people] = await Promise.all([
+    sb.from('announcements').select('*').order('created_at', { ascending: false }).then((r) => r, (e) => ({ error: e })),
+    sb.from('announcement_reads').select('announcement_id, member_id, choice, comment, read_at').then((r) => r.data || [], () => []),
+    must(sb.from('profiles').select('id, name, role, plan, subscription_status, access_until, created_at')),
+  ]);
+  if (list.error) return header('お知らせを送る', 'admin/dashboard') + '<div class="content"><div class="error">データベースの設定（20261102000000_announcements_feedback.sql）がまだのため使えません。</div></div>' + adminNav('admin/dashboard');
+  const members = people.filter((m) => m.role !== 'admin');
+  const nameOf = new Map(people.map((m) => [m.id, m.name || '（名前未設定）']));
+  const byAnn = reads.reduce((a, x) => a.set(x.announcement_id, [...(a.get(x.announcement_id) || []), x]), new Map());
+  const card = (a) => {
+    const rs = byAnn.get(a.id) || [];
+    const target = members.filter((m) => m.created_at <= a.created_at && (a.audience === 'all' || isActive(m))).length;
+    const tally = (a.choices || []).map((c) => [c, rs.filter((x) => x.choice === c).length]);
+    const comments = rs.filter((x) => x.comment);
+    return `<div class="card ann-admin${a.active ? '' : ' off'}">
+      <div class="between"><span>${annTag(a.kind)} <b>${esc(a.title)}</b>${a.active ? '' : ' <span class="pill mute">取り下げ済み</span>'}</span><span class="muted small">${fmtShort(a.created_at)}</span></div>
+      <p class="small" style="margin:6px 0">確認 <b>${rs.length}</b> / ${target}名（${a.audience === 'all' ? '全員' : '契約中の会員'}）</p>
+      ${tally.length ? `<div class="ann-tally">${tally.map(([c, n]) => `<div><span>${esc(c)}</span><b>${n}</b><i style="width:${rs.length ? Math.round((n / rs.length) * 100) : 0}%"></i></div>`).join('')}</div>` : ''}
+      ${comments.length ? `<details><summary class="small">ひと言 ${comments.length}件</summary>${comments.map((x) => `<p class="small"><b>${esc(nameOf.get(x.member_id) || '')}</b>：${esc(x.comment)}</p>`).join('')}</details>` : ''}
+      ${a.body ? `<details><summary class="small">本文を見る</summary><div class="ann-body small">${richText(a.body)}</div></details>` : ''}
+      ${a.active ? `<button type="button" class="btn-sm btn-sub" data-action="ann-stop" data-id="${a.id}" data-title="${esc(a.title)}">取り下げる</button>` : ''}
+    </div>`;
+  };
+  return header('お知らせを送る', 'admin/dashboard') + `<div class="content wide"><div class="cols"><div class="col-main">
+    <p class="page-lead">会員全体にアプリでお知らせを送ります。送ると、会員がアプリを開いたときに必ずこの内容の画面を通ります（確認すると次からは出ません）。</p>
+    <form class="card form" data-form="ann-create">
+      <label for="ann-kind">種類</label>
+      <select id="ann-kind" name="kind">${Object.entries(ANN_KIND).map(([k, [l]]) => `<option value="${k}">${l}</option>`).join('')}</select>
+      <label for="ann-title">見出し</label><input id="ann-title" name="title" maxlength="80" required placeholder="例：アプリを新しくしました">
+      <label for="ann-body">本文</label><textarea id="ann-body" name="body" rows="6" maxlength="3000" placeholder="例：レッスンの画面が見やすくなりました。&#10;・送った動画とコーチの解説が1枚のカードに&#10;・コマ送りが長押しで連続に"></textarea>
+      <label for="ann-choices">選んで答えてもらう（任意・1行に1つ）</label>
+      <textarea id="ann-choices" name="choices" rows="3" maxlength="500" placeholder="例：使いたい&#10;どちらでもない&#10;使わない"></textarea>
+      <label class="switch small"><input type="checkbox" name="allow_comment"><span>ひと言の自由記入欄を出す</span></label>
+      <label for="ann-aud">送る相手</label>
+      <select id="ann-aud" name="audience"><option value="active">契約中の会員</option><option value="all">登録している全員</option></select>
+      <p class="muted small" style="margin:0">これから入会する人には、送った日より前のお知らせは出ません。</p>
+      <button class="btn-block btn-gold" type="submit">📣 お知らせを送る</button>
+    </form>
+  </div><div class="col-side">
+    <div class="section-title"><h2>送ったお知らせ</h2></div>
+    ${list.data.length ? list.data.map(card).join('') : '<div class="card muted">まだ送っていません。</div>'}
+  </div></div></div>` + adminNav('admin/dashboard');
+}
+
+// ---------- 不具合・ご要望（会員 → スタッフ） ----------
+const FB_KIND = { bug: '不具合', request: 'ご要望', other: 'その他' };
+async function viewFeedback() {
+  const p = state.profile;
+  const mine = await sb.from('feedback').select('*').eq('member_id', p.id).order('created_at', { ascending: false }).limit(20).then((r) => r.data || [], () => null);
+  return header('不具合・ご要望', 'menu') + `<div class="content">
+    <p class="page-lead">アプリの不具合や「こうなったらいいな」を送ってください。いただいた内容はスタッフが確認し、改善に使わせていただきます。</p>
+    ${mine === null ? '<div class="card muted">ただいま準備中です。お急ぎの場合は LINE でお問い合わせください。</div>' : `
+    <form class="card form" data-form="feedback-send">
+      <label>種類</label>
+      <div class="fb-kinds">${Object.entries(FB_KIND).map(([k, l], i) => `<label class="fb-kind"><input type="radio" name="kind" value="${k}"${i === 0 ? ' checked' : ''}><span>${l}</span></label>`).join('')}</div>
+      <label for="fb-body">内容</label>
+      <textarea id="fb-body" name="body" rows="6" maxlength="2000" required placeholder="例：レッスンの画面で動画が再生されません。&#10;（どの画面で・何をしたら・どうなったか を書いていただくと助かります）"></textarea>
+      <p class="muted small" style="margin:0">不具合を調べるため、お使いの端末の種類も一緒に送られます。</p>
+      <button class="btn-block" type="submit">送る</button>
+    </form>
+    ${mine.length ? `<div class="section-title"><h2>送った内容</h2></div>${mine.map((f) => `<div class="card fb-item">
+      <div class="between"><span><span class="pill">${FB_KIND[f.kind] || ''}</span> <span class="muted small">${fmtDate(f.created_at)}</span></span>${f.status === 'done' ? '<span class="pill ok">対応しました</span>' : '<span class="pill mute">確認中</span>'}</div>
+      <p class="pre small">${esc(f.body)}</p>${f.reply ? `<div class="fb-reply"><b>スタッフより</b><p class="pre">${esc(f.reply)}</p></div>` : ''}</div>`).join('')}` : ''}`}
+    <p class="muted small">すぐに相談したいことは、<a href="${CONTACT.lineUrl}" target="_blank" rel="noopener">LINE</a>からどうぞ。</p>
+  </div>` + memberNav('menu');
+}
+async function viewFeedbackAdmin() {
+  const res = await sb.from('feedback').select('*, profiles(name)').order('created_at', { ascending: false }).limit(200).then((r) => r, (e) => ({ error: e }));
+  if (res.error) return header('不具合・要望', 'admin/dashboard') + '<div class="content"><div class="error">データベースの設定（20261102000000_announcements_feedback.sql）がまだのため使えません。</div></div>' + adminNav('admin/dashboard');
+  const open = res.data.filter((f) => f.status === 'open'); const done = res.data.filter((f) => f.status !== 'open');
+  const item = (f) => `<div class="card fb-item${f.status === 'open' ? ' open' : ''}">
+    <div class="between"><span><span class="pill">${FB_KIND[f.kind] || ''}</span> ${f.member_id ? memberLink(f.member_id, f.profiles?.name) : '（退会済み）'}</span><span class="muted small">${fmtShort(f.created_at)}</span></div>
+    <p class="pre">${esc(f.body)}</p>
+    ${f.device ? `<details><summary class="small muted">端末の情報</summary><p class="small muted">${esc(f.device)}</p></details>` : ''}
+    <form class="form" data-form="feedback-reply" data-id="${f.id}">
+      <label class="small">会員への返事（任意・会員のアプリに表示されます）</label>
+      <textarea name="reply" rows="2" maxlength="1000" placeholder="例：ご連絡ありがとうございます。修正しました。">${esc(f.reply || '')}</textarea>
+      <div class="row" style="gap:8px">${f.status === 'open' ? '<button class="btn-sm btn-gold" type="submit" name="done" value="1">対応済みにする</button>' : '<button class="btn-sm btn-sub" type="submit">返事を保存</button>'}</div>
+    </form></div>`;
+  return header('不具合・要望', 'admin/dashboard') + `<div class="content">
+    <p class="page-lead">会員がアプリから送った不具合・ご要望です。</p>
+    <div class="section-title"><h2>未対応（${open.length}件）</h2></div>
+    ${open.length ? open.map(item).join('') : '<div class="card muted">未対応のものはありません。</div>'}
+    ${done.length ? `<div class="section-title"><h2>対応済み</h2></div>${done.map(item).join('')}` : ''}
+  </div>` + adminNav('admin/dashboard');
+}
+
 function richText(text) {
   return text.replace(/\r\n?/g, '\n').trim().split(/\n\s*\n/).map((block) => {
     const lines = block.split('\n').map((l) => l.trim()).filter(Boolean);
@@ -2026,9 +2157,11 @@ function viewMenu() {
       mini('help', 'book', '用語集', '#/help/words'),
       mini('help', 'video', '使い方ガイド', '#/guide'),
       mini('help', 'home', 'ホーム画面に追加', '#/install'),
+      mini('help', 'chat', 'お知らせ', '#/notices'),
     ], true)}
     ${group('お問い合わせ', [
       tile('line', 'chat', 'LINEで問い合わせる', '分からないこと・ご相談はこちら', CONTACT.lineUrl, 0, true),
+      tile('menu', 'help', '不具合・ご要望を送る', 'アプリの不具合や「こうなったらいいな」をお知らせください', '#/feedback'),
     ])}
     ${LEGAL_LINKS.replace('legal-links', 'legal-links in-app')}
   </div>` + memberNav('menu');
@@ -2271,6 +2404,8 @@ async function viewDashboard() {
     ...people.filter((m) => daysAgo(m.created_at) <= 7).map((m) => ({ t: m.created_at, html: `☆ ${memberLink(m.id, m.name)} が新規登録しました` })),
   ].sort((a, b) => (a.t < b.t ? 1 : -1)).slice(0, 12);
 
+  // 会員からの不具合・要望（未対応の件数。データベースの更新前でも動くように）
+  const fbOpen = await sb.from('feedback').select('id', { count: 'exact', head: true }).eq('status', 'open').then((r) => r.count || 0, () => 0);
   // 月末（25日〜）のお知らせ：来月の設定に変更がないかの確認。「確認しました」でその月は出さない
   const monthKey = today().slice(0, 7);
   let monthEnd = '';
@@ -2300,7 +2435,7 @@ async function viewDashboard() {
       <a class="kpi" href="#/admin/members"><span>契約中の会員</span><b>${active.length}</b><small>登録 ${people.length}名</small></a>
     </div>
     <div class="dash-top"><p class="dash-legend"><span class="lg todo">対応が必要</span><span class="lg watch">様子を見る</span><span class="lg info">お知らせ</span><span class="lg celebrate">お祝い</span></p>
-      <span class="dash-links"><a class="btn btn-sm btn-sub" href="#/admin/templates">✎ テンプレート</a></span></div>
+      <span class="dash-links"><a class="btn btn-sm btn-sub" href="#/admin/templates">✎ テンプレート</a><a class="btn btn-sm btn-sub" href="#/admin/announce">📣 お知らせを送る</a><a class="btn btn-sm ${fbOpen ? 'btn-gold' : 'btn-sub'}" href="#/admin/feedback">🛠 不具合・要望${fbOpen ? ` ${fbOpen}件` : ''}</a></span></div>
     <div class="cols">
       <div class="col-main">${left.map((h, i) => `<div class="blk" style="--o:${i}">${h}</div>`).join('')}</div>
       <div class="col-side">${right.map((h, i) => `<div class="blk" style="--o:${10 + i}">${h}</div>`).join('')}
@@ -3749,6 +3884,8 @@ function navScrollTarget() {
 
 async function render() {
   const seq = ++renderSeq;
+  // 不具合の連絡に「どの画面から来たか」を添えるため、ひとつ前の画面を覚えておく
+  if (location.hash !== state.curRoute) { state.prevRoute = state.curRoute || ''; state.curRoute = location.hash; }
   // 読み込みに時間がかかるときだけ、画面の上に細い読み込みバーを出す
   const slow = setTimeout(() => { if (seq === renderSeq) document.body.classList.add('is-loading'); }, 250);
   const paint = (html) => {
@@ -3800,6 +3937,13 @@ async function render() {
     const r = getRoute();
     if (r[0] !== 'help') state.helpFrom = null;
     if (p.deletion_requested_at && p.role !== 'admin') return paint(viewDeletionPending());
+    // スタッフからのお知らせ：まだ確認していないものがあれば、アプリを開いたときに必ずその画面を通る
+    if (p.role !== 'admin') {
+      if (!state.annQueue) state.annQueue = await loadAnnouncements(p);
+      if (state.annQueue.length && r[0] !== 'help') return paint(viewAnnouncement());
+      if (r[0] === 'notices') return paint(await viewNotices());
+      if (r[0] === 'feedback') return paint(await viewFeedback());
+    }
     if (r[0] === 'continue') return paint(viewContinue());
     if (r[0] === 'account') {
       paint(viewAccount());
@@ -3817,6 +3961,8 @@ async function render() {
       if (r[1] === 'report') return paint(await viewReport(r[2]));
       if (r[1] === 'stats') return paint(await viewStats());
       if (r[1] === 'templates') return paint(await viewTemplates());
+      if (r[1] === 'announce') return paint(await viewAnnounceAdmin());
+      if (r[1] === 'feedback') return paint(await viewFeedbackAdmin());
       if (r[1] === 'members') { paint(await viewMembers()); applyMemberFilter(); return; }
       if (r[1] === 'drills') return paint(await viewDrills());
       if (r[1] === 'drill' && r[2]) return paint(await viewDrillDetail(r[2]));
@@ -4293,6 +4439,12 @@ const actions = {
     setTimeout(() => wizGo(el.dataset.field === 'club' ? 3 : 4), 180);
   },
   'open-glossary': () => { state.helpFrom = location.hash.replace(/^#\/?/, ''); go('help/words'); },
+  'ann-stop': async (el) => {
+    const ok = await confirmDialog({ title: 'お知らせを取り下げますか？', body: `<p>「${esc(el.dataset.title)}」を、まだ見ていない会員にも表示しないようにします。</p>`, ok: '取り下げる' });
+    if (!ok) return;
+    await must(sb.from('announcements').update({ active: false }).eq('id', el.dataset.id));
+    toast('取り下げました'); render();
+  },
   'monthend-ok': (el) => { local.set('atg-monthend', el.dataset.month); render(); },
   'glossary-cat': (el) => {
     document.querySelectorAll('.gl-cat').forEach((b) => b.classList.toggle('on', b === el));
@@ -4727,6 +4879,35 @@ const forms = {
     toast('⛳ 動画を送信しました。コーチからの解説をお待ちください。');
     go('home');
   },
+  'ann-create': async (f) => {
+    const choices = f.choices.value.split('\n').map((x) => x.trim()).filter(Boolean).slice(0, 8);
+    const row = { kind: f.kind.value, title: f.title.value.trim(), body: f.body.value.trim(), choices, allow_comment: f.allow_comment.checked, audience: f.audience.value, created_by: state.profile.id };
+    const ok = await confirmDialog({ title: 'お知らせを送りますか？', body: `<p><b>${esc(row.title)}</b></p><p>${row.audience === 'all' ? '登録している全員' : '契約中の会員'}が、次にアプリを開いたときにこの画面を通ります。</p>`, ok: '送る' });
+    if (!ok) return;
+    await must(sb.from('announcements').insert(row));
+    toast('📣 お知らせを送りました'); render();
+  },
+  'ann-ack': async (f) => {
+    const id = Number(f.dataset.id);
+    const choice = f.querySelector('input[name="choice"]:checked')?.value || null;
+    const comment = f.comment?.value.trim() || null;
+    await sb.from('announcement_reads').insert({ announcement_id: id, member_id: state.profile.id, choice, comment }).then(() => {}, () => {});
+    state.annQueue = (state.annQueue || []).filter((a) => a.id !== id);
+    if (choice) toast('ご回答ありがとうございました');
+    render();
+  },
+  'feedback-send': async (f) => {
+    const kind = f.querySelector('input[name="kind"]:checked')?.value || 'other';
+    const device = `${navigator.userAgent} / 画面 ${screen.width}×${screen.height}`.slice(0, 500);
+    await must(sb.from('feedback').insert({ member_id: state.profile.id, kind, body: f.body.value.trim(), page: (state.prevRoute || '').slice(0, 200), device }));
+    toast('送りました。ご協力ありがとうございます'); render();
+  },
+  'feedback-reply': async (f, ev) => {
+    const update = { reply: f.reply.value.trim() };
+    if (ev?.submitter?.name === 'done') { update.status = 'done'; update.resolved_at = new Date().toISOString(); }
+    await must(sb.from('feedback').update(update).eq('id', f.dataset.id));
+    toast(update.status ? '対応済みにしました' : '保存しました'); render();
+  },
   'admin-profile': async (f) => {
     const update = {
       name: f.name.value.trim(), plan: f.plan.value || null, goal: f.goal.value.trim(),
@@ -4962,7 +5143,7 @@ document.addEventListener('submit', async (ev) => {
   if (!sb) { toast('会員ログインは現在準備中です', true); return; }
   const btn = f.querySelector('button[type="submit"]');
   if (btn) btn.disabled = true;
-  try { await forms[f.dataset.form](f); } catch (e) { console.error(e); toast(e.message || 'エラーが発生しました', true); }
+  try { await forms[f.dataset.form](f, ev); } catch (e) { console.error(e); toast(e.message || 'エラーが発生しました', true); }
   if (btn && btn.isConnected) btn.disabled = false;
 });
 

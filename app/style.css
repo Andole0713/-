@@ -1734,3 +1734,34 @@ body.rec-open{overflow:hidden}
 /* コマ送り：◀◀ ◀ ｜ ▶ ▶▶（戻す側と進める側の間を少し広く） */
 .vt-step button{min-width:42px;padding-left:10px;padding-right:10px;font-weight:700}
 .vt-step button:nth-child(3){border-left:3px solid var(--hair)}
+
+/* お知らせ（スタッフ → 会員全体） */
+.ann-page{padding-top:18px}
+.ann-card{border:2px solid var(--gold)}
+.ann-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.ann-card h1{font-family:var(--serif);font-weight:600;font-size:22px;line-height:1.45;margin:10px 0 6px;color:var(--ink)}
+.ann-body{font-size:15px;line-height:1.85}
+.ann-tag{display:inline-block;font-size:12px;font-weight:700;color:#fff;background:var(--cat);border-radius:6px;padding:1px 8px;letter-spacing:.04em}
+.ann-choices{border:0;padding:0;margin:8px 0 4px;display:grid;gap:8px}
+.ann-choices legend{font-weight:700;font-size:14px;margin-bottom:6px}
+.ann-choice{display:flex;align-items:center;gap:10px;border:1px solid var(--line);border-radius:12px;padding:12px 14px;background:#fff;cursor:pointer;font-weight:700}
+.ann-choice:has(input:checked){border-color:var(--gold);background:#fffaf0}
+.ann-past summary{display:flex;justify-content:space-between;gap:8px;cursor:pointer;list-style:none}
+.ann-past summary::-webkit-details-marker{display:none}
+.ann-admin.off{opacity:.6}
+.ann-tally{display:grid;gap:6px;margin:6px 0}
+.ann-tally div{position:relative;display:flex;justify-content:space-between;padding:4px 8px;border-radius:8px;background:var(--paper);overflow:hidden;font-size:13.5px}
+.ann-tally i{position:absolute;left:0;top:0;bottom:0;background:color-mix(in srgb,var(--gold) 30%,transparent);z-index:0}
+.ann-tally span,.ann-tally b{position:relative;z-index:1}
+/* 不具合・ご要望 */
+.fb-kinds{display:flex;gap:8px;flex-wrap:wrap}
+.fb-kind{display:flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:999px;padding:8px 14px;background:#fff;cursor:pointer;font-weight:700;font-size:14px}
+.fb-kind:has(input:checked){border-color:var(--ink);background:var(--ink);color:#fff}
+.fb-kind input{display:none}
+.fb-item.open{border-left:4px solid var(--gold)}
+.fb-reply{background:var(--paper);border-radius:10px;padding:8px 12px;margin-top:6px}
+.fb-reply b{font-size:12.5px;color:var(--gold-deep,#8a6a2c)}
+.fb-reply p{margin:2px 0 0;font-size:14px}
+.ann-choice input{width:20px;height:20px;min-height:0;margin:0;flex:none;padding:0;accent-color:var(--ink)}
+.form label.ann-choice,.form label.fb-kind{display:flex;align-items:center;margin:0}
+.form .ann-choices{gap:8px}
