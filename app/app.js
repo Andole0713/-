@@ -1965,7 +1965,7 @@ function viewMenu() {
       mini('help', 'home', 'ホーム画面に追加', '#/install'),
     ], true)}
     ${group('お問い合わせ', [
-      tile('menu', 'chat', 'LINEで問い合わせる', '分からないこと・ご相談はこちら', CONTACT.lineUrl, 0, true),
+      tile('line', 'chat', 'LINEで問い合わせる', '分からないこと・ご相談はこちら', CONTACT.lineUrl, 0, true),
     ])}
     ${LEGAL_LINKS.replace('legal-links', 'legal-links in-app')}
   </div>` + memberNav('menu');

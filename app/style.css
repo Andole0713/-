@@ -1706,3 +1706,12 @@ body.rec-open{overflow:hidden}
 .gl-mn[open]>summary::after{transform:translateY(-30%) rotate(-135deg)}
 .gl-mn ul{margin:0;padding:0 12px 10px 30px}
 .gl-mn li{font-size:13.5px;line-height:1.7;margin:4px 0}
+
+/* メニュー：ボタンごとに機能の色の薄い背景を付けて、ぱっと見で区別できるように
+   （撮影・送る＝青、レッスン＝緑、ドリル＝紫、面談＝青緑、記録＝橙、お祝い＝ピンク、使い方＝藍、アカウント＝灰、LINE＝緑） */
+.cat-line{--cat:#06a14b}
+.menu-tile,.menu-mini{background:color-mix(in srgb,var(--cat) 14%,#fff);border-color:color-mix(in srgb,var(--cat) 34%,#fff)}
+.menu-tile{border-left-color:var(--cat)}
+.menu-tile .mt-ic,.menu-mini .mt-ic{background:#fff;box-shadow:0 0 0 1px color-mix(in srgb,var(--cat) 25%,#fff)}
+.menu-mini{border-left:3px solid var(--cat)}
+.menu-tile:hover,.menu-mini:hover{background:color-mix(in srgb,var(--cat) 20%,#fff)}
