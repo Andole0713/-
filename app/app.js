@@ -521,7 +521,16 @@ function addMonths(ymd, n) {
   const t = new Date(y, m - 1 + n, Math.min(d, 28));
   return t.toLocaleDateString('sv-SE');
 }
-// ロードマップの公開日は毎月1日が基本：今日が1日なら今日、それ以外は来月の1日
+// ロードマップの公開日：1つ目のお題は入会（作成）した日に公開。
+// 10日までに始めた人は、2つ目を翌月1日に。11日以降に始めた人は、1つ目を翌月も続けて、2つ目は翌々月の1日に。
+// 3つ目からは毎月1日
+function rmDates(start, months) {
+  const first = `${start.slice(0, 7)}-01`;
+  const base = addMonths(first, Number(start.slice(8, 10)) <= 10 ? 1 : 2);
+  return Array.from({ length: months }, (_, i) => (i === 0 ? start : addMonths(base, i - 1)));
+}
+const rmDatesText = (start, months) => rmDates(start, Math.min(months, 4)).map((d, i) => `${i + 1}つ目 ${fmtMD(d)}`).join('、') + (months > 4 ? ' …' : '');
+// 毎月1日が基本：今日が1日なら今日、それ以外は来月の1日
 function nextFirst() {
   const t = today();
   return t.slice(8, 10) === '01' ? t : addMonths(`${t.slice(0, 7)}-01`, 1);
@@ -2737,10 +2746,10 @@ async function viewMemberDetail(id) {
       <p class="muted small" style="margin:0">初回カウンセリングで決めた内容をもとに、毎月1本ずつ公開するドリルの計画を作ります。あとから自由に変更できます。</p>
       <form class="form" data-form="roadmap-create" data-id="${m.id}">
         <div class="grid">
-          <div><label for="rm-start">最初の公開日 <span class="muted">（基本は毎月1日）</span></label><input id="rm-start" name="start" type="date" value="${nextFirst()}" required></div>
+          <div><label for="rm-start">1つ目の公開日 <span class="muted">（入会した日）</span></label><input id="rm-start" name="start" type="date" value="${today()}" required data-action="rm-dates"></div>
           <div><label for="rm-months">月数</label><input id="rm-months" name="months" type="number" min="1" max="36" value="12" required></div>
         </div>
-        <p class="muted small" style="margin:2px 0 8px">入会日にかかわらず、毎月1日に公開する形で作ります。2か月目以降も同じ日付で並びます。公開日はあとから1か月ずつ変えられます。</p>
+        <p class="muted small" style="margin:2px 0 8px">1つ目のお題は入会した日に公開します。10日までの入会なら2つ目は翌月1日、11日以降の入会なら1つ目を翌月も続けて、2つ目は翌々月の1日に公開します。3つ目からは毎月1日です。公開日はあとから1か月ずつ変えられます。<br><b id="rm-dates-preview">${rmDatesText(today(), 12)}</b></p>
         <button class="btn-block" type="submit">ロードマップを作成する</button>
       </form>`}</div>
 
@@ -4758,7 +4767,7 @@ const forms = {
     const start = f.start.value;
     if (!start) throw new Error('最初の公開日を入力してください');
     await must(sb.from('roadmap_items').insert(Array.from({ length: months }, (_, i) => ({
-      member_id: f.dataset.id, publish_on: addMonths(start, i),
+      member_id: f.dataset.id, publish_on: rmDates(start, months)[i],
     }))));
     toast(`${months}か月分のロードマップを作りました`); go(`admin/roadmap/${f.dataset.id}`);
   },
@@ -4884,6 +4893,11 @@ document.addEventListener('contextmenu', (ev) => { if (ev.target.closest(HOLD_ST
 
 let courseTimer;
 document.addEventListener('input', (ev) => {
+  if (ev.target.dataset.action === 'rm-dates') {
+    const p = document.getElementById('rm-dates-preview');
+    if (p && ev.target.value) p.textContent = rmDatesText(ev.target.value, Number(ev.target.form?.months?.value) || 12);
+    return;
+  }
   if (ev.target.dataset.action === 'round-total') {
     const f = ev.target.form;
     const o = f.out_score.value; const i = f.in_score.value;
