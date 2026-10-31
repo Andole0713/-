@@ -374,6 +374,19 @@ export function openRecorder({ src, title = '' }) {
     const onKey = (e) => { if (e.key === 'Escape' && !(rec && rec.state === 'recording')) close(null); };
     document.addEventListener('keydown', onKey, true);
 
+    // コマ送り：押すと1コマ、長押しで連続（押している時間が長いほど速く）
+    const stepOnce = (b) => { video.pause(); $('.rec-play').textContent = '▶'; video.currentTime = Math.max(0, Math.min(video.duration || 0, video.currentTime + Number(b.dataset.v) / 30)); };
+    let holdT = null; let holdB = null;
+    const endHold = () => { clearTimeout(holdT); holdT = null; holdB = null; };
+    wrap.addEventListener('pointerdown', (e) => {
+      const b = e.target.closest('[data-r="step"]'); if (!b || e.button > 0) return;
+      e.preventDefault(); endHold(); holdB = b; b.dataset.held = '1';
+      const t0 = Date.now(); stepOnce(b);
+      const tick = () => { if (holdB !== b) return; stepOnce(b); const s = (Date.now() - t0) / 1000; holdT = setTimeout(tick, s > 2.5 ? 45 : s > 1.2 ? 75 : 115); };
+      holdT = setTimeout(tick, 330);
+    });
+    ['pointerup', 'pointercancel'].forEach((t) => wrap.addEventListener(t, endHold));
+    wrap.addEventListener('contextmenu', (e) => { if (e.target.closest('[data-r="step"]')) e.preventDefault(); });
     $('.rec-seek').addEventListener('input', (e) => { if (video.duration) video.currentTime = Number(e.target.value) / 1000 * video.duration; });
     video.addEventListener('ended', () => { $('.rec-play').textContent = '▶'; });
     wrap.addEventListener('click', (e) => {
@@ -386,7 +399,7 @@ export function openRecorder({ src, title = '' }) {
       }
       if (r === 'play') { if (video.paused) { video.play(); b.textContent = '❚❚'; } else { video.pause(); b.textContent = '▶'; } }
       if (r === 'rate') { video.playbackRate = Number(b.dataset.v); b.parentElement.querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b)); }
-      if (r === 'step') { video.pause(); $('.rec-play').textContent = '▶'; video.currentTime = Math.max(0, Math.min(video.duration || 0, video.currentTime + Number(b.dataset.v) / 30)); }
+      if (r === 'step') { if (b.dataset.held) { delete b.dataset.held; return; } stepOnce(b); }
       if (r === 'tool') { tool = b.dataset.v; anglePts = []; sel = null; showDel(); angleTip(); cv.style.cursor = tool === 'move' ? 'default' : 'crosshair'; b.parentElement.querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b)); }
       if (r === 'color') { color = b.dataset.v; if (tool === 'move' && sel && shapes.includes(sel)) { snap(); sel.c = color; } b.parentElement.querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b)); }
       if (r === 'undo') {

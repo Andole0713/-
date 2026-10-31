@@ -1724,3 +1724,7 @@ body.rec-open{overflow:hidden}
 .month-end .me-h{margin:10px 0 4px;font-weight:700;font-size:13.5px}
 .month-end .dash-row small{display:block;color:var(--muted)}
 .month-end>button{margin-top:10px}
+
+/* コマ送りのボタン：長押しで連続。長押しで文字が選ばれたりメニューが出たりしないように */
+[data-action="vid-step"],[data-action="cmp-step"],.rec [data-r="step"]{touch-action:manipulation;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+[data-action="vid-step"].holding,[data-action="cmp-step"].holding{filter:brightness(.9)}
