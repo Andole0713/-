@@ -2631,9 +2631,11 @@ async function viewMemberDetail(id) {
           <button type="button" class="btn btn-sm btn-sub" data-action="meeting-done" data-id="${x.id}">${x.status === 'scheduled' ? '結果' : '編集'}</button></div>`).join('')}</div>` : ''}
     </div>
 
-    <div class="section-title cat-celebrate"><h2>お祝い</h2><button type="button" class="btn btn-sm btn-cat cat-celebrate" data-action="cele-send" data-member="${m.id}" data-name="${esc(m.name || '')}">＋ お祝いを送る</button></div>
-    <div class="card">${mCeles.length ? mCeles.map((c) => `<div class="list-item small"><span>${STAMP[c.stamp] || '🏆'} ${esc(c.title)}</span><span class="muted">${fmtDate(c.created_at)} ${c.seen_at ? '<span class="pill ok">見ました</span>' : '<span class="pill mute">未読</span>'}</span></div>`).join('')
-      : '<p class="muted small" style="margin:0">入会1か月・練習の継続・目標達成など、いつでもアプリにお祝いを送れます。</p>'}</div>
+    <div class="section-title"><h2>レッスン</h2><a class="btn btn-sm" href="#/admin/lesson/new/m/${m.id}">＋ 追加</a></div>
+    <div class="card">${lessons.map((l) => `<div class="list-item"><div class="grow">${fmtDate(l.lesson_date)}　<b>${esc(l.title)}</b>
+          ${l.read_at ? `<span class="pill ok">既読 ${fmtMD(l.read_at.slice(0, 10))}</span>` : `<span class="pill ${daysAgo(l.created_at) >= UNREAD_DAYS ? 'warn' : 'mute'}">未読${daysAgo(l.created_at) >= 1 ? `（${daysAgo(l.created_at)}日）` : ''}</span>`}</div>
+        <span class="row" style="gap:6px"><a class="btn btn-sm btn-sub" href="#/admin/lesson/${l.id}">編集</a>
+          <button type="button" class="btn-sm btn-danger" data-action="delete-lesson" data-id="${l.id}" data-member="${m.id}" data-title="${esc(l.title)}" data-stay="1">取り消し</button></span></div>`).join('') || '<div class="muted">レッスンはまだありません</div>'}</div>
 
     ${mExits && (mExits.length || m.cancel_at || !isActive(m)) ? exitCard(m, mExits) : ''}
 
@@ -2678,11 +2680,9 @@ async function viewMemberDetail(id) {
       </form>
     </div>
 
-    <div class="section-title"><h2>レッスン</h2><a class="btn btn-sm" href="#/admin/lesson/new/m/${m.id}">＋ 追加</a></div>
-    <div class="card">${lessons.map((l) => `<div class="list-item"><div class="grow">${fmtDate(l.lesson_date)}　<b>${esc(l.title)}</b>
-          ${l.read_at ? `<span class="pill ok">既読 ${fmtMD(l.read_at.slice(0, 10))}</span>` : `<span class="pill ${daysAgo(l.created_at) >= UNREAD_DAYS ? 'warn' : 'mute'}">未読${daysAgo(l.created_at) >= 1 ? `（${daysAgo(l.created_at)}日）` : ''}</span>`}</div>
-        <span class="row" style="gap:6px"><a class="btn btn-sm btn-sub" href="#/admin/lesson/${l.id}">編集</a>
-          <button type="button" class="btn-sm btn-danger" data-action="delete-lesson" data-id="${l.id}" data-member="${m.id}" data-title="${esc(l.title)}" data-stay="1">取り消し</button></span></div>`).join('') || '<div class="muted">レッスンはまだありません</div>'}</div>
+    <div class="section-title cat-celebrate"><h2>お祝い</h2><button type="button" class="btn btn-sm btn-cat cat-celebrate" data-action="cele-send" data-member="${m.id}" data-name="${esc(m.name || '')}">＋ お祝いを送る</button></div>
+    <div class="card">${mCeles.length ? mCeles.map((c) => `<div class="list-item small"><span>${STAMP[c.stamp] || '🏆'} ${esc(c.title)}</span><span class="muted">${fmtDate(c.created_at)} ${c.seen_at ? '<span class="pill ok">見ました</span>' : '<span class="pill mute">未読</span>'}</span></div>`).join('')
+      : '<p class="muted small" style="margin:0">入会1か月・練習の継続・目標達成など、いつでもアプリにお祝いを送れます。</p>'}</div>
 
     <div class="section-title"><h2>提出動画</h2><span class="muted small">押すと動画が見られます</span></div>
     <div class="card">${subs.map((s) => {
