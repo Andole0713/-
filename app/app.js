@@ -336,10 +336,13 @@ function swingVideo(sub, urls, { tools = false, preload = 'metadata' } = {}) {
   const video = `<video class="swing-video" src="${esc(url)}#t=0.1" controls playsinline preload="${preload}"></video>`;
   return tools ? `<div class="vid-wrap">${video}${videoTools()}</div>` : video;
 }
+// コマ送りのボタン（左に戻す、右に進める）。◀・▶ は長押しで一定の速さ、◀◀・▶▶ は長押しでそれより少し速い一定の速さ
+const stepButtons = (action, who) => [[-1, 1, '◀◀', '速く戻す'], [-1, 0, '◀', '1コマ戻す'], [1, 0, '▶', '1コマ進める'], [1, 1, '▶▶', '速く進める']]
+  .map(([d, f, l, a]) => `<button type="button" data-action="${action}" data-dir="${d}"${f ? ' data-fast="1"' : ''} aria-label="${who}${a}（長押しで連続）">${l}</button>`).join('');
 // スロー再生とコマ送り（1コマ＝1/30秒）
 const videoTools = () => `<div class="vid-tools" role="group" aria-label="再生の速さとコマ送り">
     <span class="vt-group">${[[0.25, '¼'], [0.5, '½'], [1, '等速']].map(([r, l]) => `<button type="button" data-action="vid-rate" data-rate="${r}" aria-pressed="${r === 1}" class="${r === 1 ? 'on' : ''}">${l}</button>`).join('')}</span>
-    <span class="vt-group"><button type="button" data-action="vid-step" data-dir="-1" aria-label="1コマ戻す">◀ コマ</button><button type="button" data-action="vid-step" data-dir="1" aria-label="1コマ進める">コマ ▶</button></span>
+    <span class="vt-group vt-step">${stepButtons('vid-step', '')}</span>
   </div>`;
 
 // ---------- ドリル動画（コーチが作る「ドリル集」。契約中はずっと見られる） ----------
@@ -1440,7 +1443,8 @@ function compareBlock(prev, cur, urls) {
       <p class="muted small">それぞれをアドレスの位置に合わせてから「同時に再生」を押すと、違いがよくわかります。</p>
       <div class="vid-tools" role="group" aria-label="2本まとめて操作">
         <span class="vt-group">${[[0.25, '¼'], [0.5, '½'], [1, '等速']].map(([r, l]) => `<button type="button" data-action="cmp-rate" data-rate="${r}" aria-pressed="${r === 1}" class="${r === 1 ? 'on' : ''}">${l}</button>`).join('')}</span>
-        <span class="vt-group"><button type="button" data-action="cmp-play">▶ 同時に再生</button><button type="button" data-action="cmp-step" data-dir="-1" aria-label="2本とも1コマ戻す">◀</button><button type="button" data-action="cmp-step" data-dir="1" aria-label="2本とも1コマ進める">▶</button></span>
+        <span class="vt-group"><button type="button" data-action="cmp-play">▶ 同時に再生</button></span>
+        <span class="vt-group vt-step">${stepButtons('cmp-step', '2本とも')}</span>
       </div>
     </div>
   </div>`;
@@ -4849,8 +4853,9 @@ document.addEventListener('click', async (ev) => {
   try { await actions[el.dataset.action](el); } catch (e) { console.error(e); toast(e.message || 'エラーが発生しました', true); }
 });
 
-// コマ送りのボタン：押すと1コマ、長押しで連続（押している時間が長いほど速く。SwingFrame と同じ）
+// コマ送りのボタン：押すと1コマ、長押しで一定の速さで連続（◀・▶ は1秒に8コマ、◀◀・▶▶ は1秒に15コマ）
 const HOLD_STEP = ['vid-step', 'cmp-step'];
+const STEP_MS = 125; const STEP_FAST_MS = 66;
 let stepTimer = null; let stepEl = null;
 function stopStepHold() { clearTimeout(stepTimer); stepTimer = null; stepEl?.classList.remove('holding'); stepEl = null; }
 document.addEventListener('pointerdown', (ev) => {
@@ -4859,15 +4864,14 @@ document.addEventListener('pointerdown', (ev) => {
   ev.preventDefault();
   stopStepHold();
   stepEl = el; el.classList.add('holding'); el.dataset.held = '1';
-  const t0 = Date.now();
+  const every = el.dataset.fast ? STEP_FAST_MS : STEP_MS;
   actions[el.dataset.action](el);
   const tick = () => {
     if (stepEl !== el) return;
     actions[el.dataset.action](el);
-    const held = (Date.now() - t0) / 1000;
-    stepTimer = setTimeout(tick, held > 2.5 ? 45 : held > 1.2 ? 75 : 115);
+    stepTimer = setTimeout(tick, every);
   };
-  stepTimer = setTimeout(tick, 330);
+  stepTimer = setTimeout(tick, 300);
 });
 ['pointerup', 'pointercancel', 'blur'].forEach((t) => (t === 'blur' ? window : document).addEventListener(t, stopStepHold));
 document.addEventListener('contextmenu', (ev) => { if (ev.target.closest(HOLD_STEP.map((a) => `[data-action="${a}"]`).join(','))) ev.preventDefault(); });
