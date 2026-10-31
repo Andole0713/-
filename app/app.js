@@ -2680,10 +2680,6 @@ async function viewMemberDetail(id) {
       </form>
     </div>
 
-    <div class="section-title cat-celebrate"><h2>お祝い</h2><button type="button" class="btn btn-sm btn-cat cat-celebrate" data-action="cele-send" data-member="${m.id}" data-name="${esc(m.name || '')}">＋ お祝いを送る</button></div>
-    <div class="card">${mCeles.length ? mCeles.map((c) => `<div class="list-item small"><span>${STAMP[c.stamp] || '🏆'} ${esc(c.title)}</span><span class="muted">${fmtDate(c.created_at)} ${c.seen_at ? '<span class="pill ok">見ました</span>' : '<span class="pill mute">未読</span>'}</span></div>`).join('')
-      : '<p class="muted small" style="margin:0">入会1か月・練習の継続・目標達成など、いつでもアプリにお祝いを送れます。</p>'}</div>
-
     <div class="section-title"><h2>提出動画</h2><span class="muted small">押すと動画が見られます</span></div>
     <div class="card">${subs.map((s) => {
       const sl = lessons.filter((l) => l.submission_id === s.id);
@@ -2696,6 +2692,10 @@ async function viewMemberDetail(id) {
           <button type="button" class="btn-sm btn-sub" data-action="sub-exempt" data-id="${s.id}" data-on="${s.quota_exempt ? 0 : 1}">${s.quota_exempt ? '提出回数に数えるように戻す' : 'この動画を提出回数に数えない（1本戻す）'}</button></div>
       </details>`;
     }).join('') || '<div class="muted">提出はまだありません</div>'}</div>
+
+    <div class="section-title cat-celebrate"><h2>お祝い</h2><button type="button" class="btn btn-sm btn-cat cat-celebrate" data-action="cele-send" data-member="${m.id}" data-name="${esc(m.name || '')}">＋ お祝いを送る</button></div>
+    <div class="card">${mCeles.length ? mCeles.map((c) => `<div class="list-item small"><span>${STAMP[c.stamp] || '🏆'} ${esc(c.title)}</span><span class="muted">${fmtDate(c.created_at)} ${c.seen_at ? '<span class="pill ok">見ました</span>' : '<span class="pill mute">未読</span>'}</span></div>`).join('')
+      : '<p class="muted small" style="margin:0">入会1か月・練習の継続・目標達成など、いつでもアプリにお祝いを送れます。</p>'}</div>
   </div></div>
   </div>` + adminNav('admin/members');
 }
