@@ -521,7 +521,16 @@ function addMonths(ymd, n) {
   const t = new Date(y, m - 1 + n, Math.min(d, 28));
   return t.toLocaleDateString('sv-SE');
 }
-// ロードマップの公開日は毎月1日が基本：今日が1日なら今日、それ以外は来月の1日
+// ロードマップの公開日：1つ目のお題は入会（作成）した日に公開。
+// 10日までに始めた人は、2つ目を翌月1日に。11日以降に始めた人は、1つ目を翌月も続けて、2つ目は翌々月の1日に。
+// 3つ目からは毎月1日
+function rmDates(start, months) {
+  const first = `${start.slice(0, 7)}-01`;
+  const base = addMonths(first, Number(start.slice(8, 10)) <= 10 ? 1 : 2);
+  return Array.from({ length: months }, (_, i) => (i === 0 ? start : addMonths(base, i - 1)));
+}
+const rmDatesText = (start, months) => rmDates(start, Math.min(months, 4)).map((d, i) => `${i + 1}つ目 ${fmtMD(d)}`).join('、') + (months > 4 ? ' …' : '');
+// 毎月1日が基本：今日が1日なら今日、それ以外は来月の1日
 function nextFirst() {
   const t = today();
   return t.slice(8, 10) === '01' ? t : addMonths(`${t.slice(0, 7)}-01`, 1);
@@ -546,11 +555,30 @@ function rmStatus(items) {
   const in1 = firstOf(2); const in2 = firstOf(3);
   const unset = (r) => !r.theme || !r.drill_id;
   const ahead = list.filter((r) => !rmOpen(r));
+  const mm = rmMonths(list);
   return {
-    cur: list.length - ahead.length, total: list.length,
+    cur: mm.cur, total: mm.total,
     soon: ahead.filter((r) => r.publish_on < in1 && unset(r)),
     later: ahead.filter((r) => r.publish_on >= in1 && r.publish_on < in2 && unset(r)),
   };
+}
+// ロードマップを月で数える：1つ目のお題を公開した月を1か月目として、今が何か月目か・全部で何か月か。
+// （11日以降に入会した人は1つ目のお題が2か月続くので、お題の数と月の数はずれる）
+const monthGap = (a, b) => (Number(b.slice(0, 4)) - Number(a.slice(0, 4))) * 12 + Number(b.slice(5, 7)) - Number(a.slice(5, 7));
+function rmMonths(items) {
+  const list = (items || []).filter((r) => !r.hidden).sort((a, b) => (a.publish_on < b.publish_on ? -1 : 1));
+  if (!list.length) return null;
+  const first = list[0].publish_on;
+  const total = monthGap(first, list[list.length - 1].publish_on) + 1;
+  const cur = today() < first ? 0 : Math.min(total, monthGap(first, today()) + 1);
+  // お題ごとの月の範囲（例：1〜2か月目）
+  const label = (r) => {
+    const i = list.indexOf(r); if (i < 0) return '';
+    const a = monthGap(first, r.publish_on) + 1;
+    const b = i + 1 < list.length ? monthGap(first, list[i + 1].publish_on) : a;
+    return b > a ? `${a}〜${b}か月目` : `${a}か月目`;
+  };
+  return { cur, total, label };
 }
 const rmMissing = (r) => [!r.theme && 'テーマ', !r.drill_id && 'ドリル'].filter(Boolean).join('・') + '未定';
 // ホームに出す「今月のテーマ」：スタッフがその月に書いたテーマがあればそれ、なければロードマップのその月のテーマ。
@@ -964,7 +992,7 @@ async function viewMemberHome() {
     <div class="blk" style="--o:3">
     ${rmNow ? `<a class="rm-home cat-drill" href="#/drills">
         <div class="rm-home-head"><span class="rm-badge">今月のドリル</span>${rmNow.seen_at ? '' : '<span class="new-badge">NEW</span>'}
-          <span class="rm-home-step"><b>${rmOpened.length}</b>/${roadmap.length}か月目</span></div>
+          <span class="rm-home-step"><b>${rmMonths(roadmap)?.cur || 0}</b>/${rmMonths(roadmap)?.total || roadmap.length}か月目</span></div>
         <h3>${esc(rmNow.theme || rmNow.drills?.title || 'ドリル')}</h3>
         ${rmNow.drills && rmNow.theme ? `<p class="rm-home-drill">🎯 ${esc(rmNow.drills.title)}</p>` : ''}
         <div class="rm-home-meter" aria-hidden="true"><i style="width:${Math.round((rmOpened.length / roadmap.length) * 100)}%"></i></div>
@@ -1789,14 +1817,15 @@ function roadmapView(items, urls, extra = {}) {
   const refOf = (id) => reflections.find((x) => x.item_id === id)?.body || '';
   const open = items.filter(rmOpen);
   const current = open[open.length - 1];
-  const step = open.length;
+  const mm = rmMonths(items);
+  const step = mm?.cur || 0;
   const last = items[items.length - 1];
   return `<section class="roadmap" data-current="${items.indexOf(current)}">
     <div class="rm-head">
       <div><div class="eyebrow">Roadmap</div><h2>あなたのロードマップ</h2></div>
-      <div class="rm-step"><b>${step}</b><small>/${items.length}か月</small></div>
+      <div class="rm-step"><b>${step}</b><small>/${mm?.total || items.length}か月</small></div>
     </div>
-    <div class="meter"><i style="width:${Math.round((step / items.length) * 100)}%"></i></div>
+    <div class="meter"><i style="width:${Math.round((step / (mm?.total || items.length)) * 100)}%"></i></div>
     ${goal ? `<p class="rm-goal-top">🏁 ゴール：<b>${esc(goal)}</b></p>` : ''}
     <p class="muted small" style="margin:8px 0 0">毎月1本、あなた専用のドリルが公開されます。ご契約中はいつでも見返せます。</p>
     <div class="rm-grid" id="rm-grid">${items.map((r, i) => {
@@ -1806,7 +1835,7 @@ function roadmapView(items, urls, extra = {}) {
       const cls = isCurrent ? 'current' : isOpen ? 'done' : 'locked';
       const icon = isCurrent ? '▶' : isOpen ? '✓' : '🔒';
       return `<button type="button" class="rm-tile ${cls}" data-action="rm-open" data-i="${i}" aria-expanded="false" aria-controls="rm-panel-${i}">
-          ${isCurrent ? '<span class="now">今月</span>' : ''}<span class="no">${i + 1}か月目</span><span class="st" aria-hidden="true">${icon}</span>
+          ${isCurrent ? '<span class="now">今月</span>' : ''}<span class="no">${mm?.label(r) || `${i + 1}か月目`}</span><span class="st" aria-hidden="true">${icon}</span>
           ${isNew ? '<span class="dot" aria-label="NEW"></span>' : ''}
           <b>${esc(r.theme || (r.drills?.title ?? 'テーマ準備中'))}</b></button>`;
     }).join('')}
@@ -1818,7 +1847,7 @@ function roadmapView(items, urls, extra = {}) {
       const isNew = isOpen && !r.seen_at;
       const days = logOf(r.id).length;
       const head = `${isCurrent ? '<span class="rm-badge">今月のドリル</span>' : ''}
-        <div class="rm-month">${i + 1}か月目・${fmtMonth(r.publish_on)}${isNew ? '<span class="new-badge">NEW</span>' : ''}${!isCurrent && isOpen && days ? `<span class="rm-days">練習 ${days}日</span>` : ''}</div>
+        <div class="rm-month">${mm?.label(r) || `${i + 1}か月目`}・${fmtMonth(r.publish_on)}${isNew ? '<span class="new-badge">NEW</span>' : ''}${!isCurrent && isOpen && days ? `<span class="rm-days">練習 ${days}日</span>` : ''}</div>
         <h3>${esc(r.theme || (r.drills?.title ?? 'テーマ準備中'))}</h3>`;
       const body = isOpen
         ? `${r.note ? `<p class="rm-note pre">${esc(r.note)}</p>` : ''}${r.drills ? drillCard(r.drills, urls) : '<p class="muted small">ドリルは準備中です。もうしばらくお待ちください。</p>'}
@@ -2737,10 +2766,10 @@ async function viewMemberDetail(id) {
       <p class="muted small" style="margin:0">初回カウンセリングで決めた内容をもとに、毎月1本ずつ公開するドリルの計画を作ります。あとから自由に変更できます。</p>
       <form class="form" data-form="roadmap-create" data-id="${m.id}">
         <div class="grid">
-          <div><label for="rm-start">最初の公開日 <span class="muted">（基本は毎月1日）</span></label><input id="rm-start" name="start" type="date" value="${nextFirst()}" required></div>
+          <div><label for="rm-start">1つ目の公開日 <span class="muted">（入会した日）</span></label><input id="rm-start" name="start" type="date" value="${today()}" required data-action="rm-dates"></div>
           <div><label for="rm-months">月数</label><input id="rm-months" name="months" type="number" min="1" max="36" value="12" required></div>
         </div>
-        <p class="muted small" style="margin:2px 0 8px">入会日にかかわらず、毎月1日に公開する形で作ります。2か月目以降も同じ日付で並びます。公開日はあとから1か月ずつ変えられます。</p>
+        <p class="muted small" style="margin:2px 0 8px">1つ目のお題は入会した日に公開します。10日までの入会なら2つ目は翌月1日、11日以降の入会なら1つ目を翌月も続けて、2つ目は翌々月の1日に公開します。3つ目からは毎月1日です。公開日はあとから1か月ずつ変えられます。<br><b id="rm-dates-preview">${rmDatesText(today(), 12)}</b></p>
         <button class="btn-block" type="submit">ロードマップを作成する</button>
       </form>`}</div>
 
@@ -4758,7 +4787,7 @@ const forms = {
     const start = f.start.value;
     if (!start) throw new Error('最初の公開日を入力してください');
     await must(sb.from('roadmap_items').insert(Array.from({ length: months }, (_, i) => ({
-      member_id: f.dataset.id, publish_on: addMonths(start, i),
+      member_id: f.dataset.id, publish_on: rmDates(start, months)[i],
     }))));
     toast(`${months}か月分のロードマップを作りました`); go(`admin/roadmap/${f.dataset.id}`);
   },
@@ -4884,6 +4913,11 @@ document.addEventListener('contextmenu', (ev) => { if (ev.target.closest(HOLD_ST
 
 let courseTimer;
 document.addEventListener('input', (ev) => {
+  if (ev.target.dataset.action === 'rm-dates') {
+    const p = document.getElementById('rm-dates-preview');
+    if (p && ev.target.value) p.textContent = rmDatesText(ev.target.value, Number(ev.target.form?.months?.value) || 12);
+    return;
+  }
   if (ev.target.dataset.action === 'round-total') {
     const f = ev.target.form;
     const o = f.out_score.value; const i = f.in_score.value;
