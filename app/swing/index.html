@@ -376,7 +376,7 @@ a.hbtn{text-decoration:none;color:inherit;box-sizing:border-box}
       <h1>SwingFrame</h1>
       <p>スイング撮影・スイング分析</p>
       <!-- 表示用の版数。sw.js の CACHE と必ずそろえること（片方だけ上げると更新に気づけません） -->
-      <div id="hVer">v49</div>
+      <div id="hVer">v50</div>
     </div>
     <button class="hbtn pri" id="hShoot"><i>●</i><span>スイングを撮影<em>ガイドに合わせて撮影</em></span></button>
     <button class="hbtn" id="hLib"><i>▤</i><span>ライブラリ<em id="hLibSub">保存した動画と画像</em></span></button>
@@ -822,8 +822,12 @@ function watchFrames(){
 }
 function median(a){var b=a.slice().sort(function(x,y){return x-y});return b[b.length>>1]||0}
 function onChunk(sz){
-  /* iPhone only: there the size per second is steady; other encoders
-     shrink a still scene far enough to look like a freeze */
+  /* Turned off: judging a freeze from the size of each second of video also
+     fired on takes where nothing moved for a few seconds (standing at address
+     with the phone on a tripod) — the encoder makes those seconds tiny — and
+     cut good takes down to about a second. A stalled preview is the only
+     sign of a freeze that is still used (see tick). */
+  if(true)return;
   if(!recording||!stream||!stream.getVideoTracks().length||!IOS)return;
   chunkSz.push(sz);
   if(chunkSz.length<3){smallN=0;return}
@@ -833,6 +837,18 @@ function onChunk(sz){
   if(sz<150000&&sz<good*0.15)smallN++; else smallN=0;
   if(smallN>=2)onFreeze((Date.now()-recT0)/1000-2);
 }
+var visSince=Date.now(),hiddenStop=false;
+document.addEventListener('visibilitychange',function(){
+  if(document.visibilityState==='visible'){
+    visSince=Date.now();lastFrameAt=Date.now();
+    /* the screen lock is let go while the page is hidden; ask again */
+    try{if(started&&navigator.wakeLock)navigator.wakeLock.request('screen').catch(function(){})}catch(e){}
+  }else if(recording){
+    /* the screen turned off or another app came in front: end the take here,
+       keeping everything recorded so far, rather than call it a freeze later */
+    hiddenStop=true;stopRec();
+  }
+});
 function onFreeze(sec){
   if(!recording||frozenAt)return;
   frozenAt=Math.max(0.5,sec);
@@ -905,8 +921,12 @@ function mmss(s){
 function tick(){
   if(!recording)return;
   var el=(Date.now()-recT0)/1000;
-  /* the preview has been delivering frames, and now it has stopped */
-  if(frameN>10&&Date.now()-lastFrameAt>1500){onFreeze((lastFrameAt-recT0)/1000);return}
+  /* the preview has been delivering frames, and now it has stopped. Only while
+     the page has been on screen for a while: when the screen locks or another
+     app comes in front, frames stop for that reason, not because the camera
+     froze, and the take is stopped there as it is (see visibilitychange) */
+  if(document.visibilityState==='visible'&&Date.now()-visSince>3000&&
+     frameN>10&&Date.now()-lastFrameAt>2500){onFreeze((lastFrameAt-recT0)/1000);return}
   var p=Math.min(1,el/((autoRec?(soundOnly()?MAXREC_SND:MAXREC):S.dur)||1));
   $('#recArc').setAttribute('stroke-dashoffset',(295.31*(1-p)).toFixed(1));
   $('#recTime').textContent='● '+mmss(el)+(autoRec?'':'　もう一度押して停止');
@@ -922,8 +942,8 @@ function stopRec(){
 
 }
 function onStop(){
-  var wasAuto=autoRec,drop=discard,fz=frozenAt;
-  autoRec=false;discard=false;frozenAt=0;
+  var wasAuto=autoRec,drop=discard,fz=frozenAt,hid=hiddenStop;
+  autoRec=false;discard=false;frozenAt=0;hiddenStop=false;
   if(fz)recoverCam();
   if(!chunks.length){chunks=[];toast('録画データがありません');autoReset(true);return}
   var type=(mr&&mr.mimeType)||'video/webm';
@@ -954,6 +974,7 @@ function onStop(){
      from the review screen, so that case still goes there */
   var keepGoing=wasAuto&&S.auto!=='off'&&!fz;
   fixMp4(blob).then(function(b){clip.blob=b;return addClip(clip)}).then(function(){
+    if(hid)setTimeout(function(){toast('画面が消えたため、そこで録画を止めました（それまでの分は保存されています）')},600);
     if(!keepGoing){openReview(clip.id,'cam');return}
     autoTakes++;
     toast(autoTakes+'本目を保存しました。続けて撮影できます','見る',function(){openReview(clip.id,'cam')});
