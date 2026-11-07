@@ -1769,3 +1769,10 @@ body.rec-open{overflow:hidden}
 /* レッスンの一覧：カードの上の帯に送った日 */
 .case-date{flex:none;font-size:13px;font-weight:700;color:var(--ink);background:var(--gold-2);border-radius:8px;padding:2px 8px;margin-right:8px;font-variant-numeric:tabular-nums}
 .case-head .case-title{display:flex;align-items:center;min-width:0}
+
+/* アカウント：かんたんアンケートのカードを少し目立たせる */
+.beginner-card.survey-card{border:2px solid var(--gold);background:linear-gradient(135deg,#fffaf0,#fff);padding:16px 18px}
+.beginner-card.survey-card b{font-size:17px}
+.beginner-card.survey-card .bc-ic{font-size:30px}
+/* アンケートの生年月日 */
+.survey input[type="date"]{max-width:240px}

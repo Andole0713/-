@@ -1749,7 +1749,7 @@ function viewAccount() {
         : isActive(p) ? `<p class="muted small" style="margin:10px 0 0">ご契約内容の変更は、LINE またはお電話（${esc(CONTACT.telDisplay)}）でお問い合わせください。</p>`
         : '<a class="btn btn-block" href="#/plans">プランを選ぶ</a>'}
     </div>`}
-    ${admin ? '' : '<a class="beginner-card" href="#/survey"><span class="bc-ic" aria-hidden="true">📝</span><span><b>かんたんアンケート</b><small>回答の確認・変更はこちら</small></span><i aria-hidden="true">›</i></a>'}
+    ${admin ? '' : '<a class="beginner-card survey-card" href="#/survey"><span class="bc-ic" aria-hidden="true">📝</span><span><b>かんたんアンケート</b><small>30秒ほどで終わります。答えるとバッジがもらえます（回答の確認・変更もこちら）</small></span><i aria-hidden="true">›</i></a>'}
     ${admin ? '' : (() => {
       const mine = p.clubs || [];
       const custom = mine.filter((c) => !CLUB_PRESETS.includes(c));
@@ -3103,7 +3103,7 @@ const SURVEY_OPTS = {
   score_band: [['none', 'コースはまだ'], ['120+', '120以上'], ['110', '110台'], ['100', '100台'], ['90', '90台'], ['80', '80台'], ['lt80', '79以下']],
   store_use: [['now', '今通っている'], ['past', '前に通っていた'], ['never', '通ったことはない']],
 };
-const SURVEY_Q = { referral: 'オルタイムゴルフを何で知りましたか？', age_band: '年代', golf_years: 'ゴルフ歴', score_band: '今のスコア（18ホール）', store_use: 'オルタイムゴルフの店舗に通っていますか？' };
+const SURVEY_Q = { referral: 'オルタイムゴルフを何で知りましたか？', age_band: '年代', birth_date: '生年月日', golf_years: 'ゴルフ歴', score_band: '今のスコア（18ホール）', store_use: 'オルタイムゴルフの店舗に通っていますか？' };
 const PREFS = '北海道 青森県 岩手県 宮城県 秋田県 山形県 福島県 茨城県 栃木県 群馬県 埼玉県 千葉県 東京都 神奈川県 新潟県 富山県 石川県 福井県 山梨県 長野県 岐阜県 静岡県 愛知県 三重県 滋賀県 京都府 大阪府 兵庫県 奈良県 和歌山県 鳥取県 島根県 岡山県 広島県 山口県 徳島県 香川県 愛媛県 高知県 福岡県 佐賀県 長崎県 熊本県 大分県 宮崎県 鹿児島県 沖縄県 海外'.split(' ');
 const EXIT_REASONS = [['price', '料金が合わない'], ['time', '練習やラウンドの時間がとれない'], ['effect', '効果を感じにくい'], ['online', 'オンラインが合わない（対面がいい）'], ['coach', '指導の内容が合わない'], ['app', 'アプリが使いにくい'], ['store', '店舗のレッスンに切り替える'], ['injury', 'けが・体調'], ['quit_golf', 'ゴルフをやめる・休む'], ['other', 'その他']];
 // レッスンの診断の分類（統計の「多い悩み」に使う）
@@ -3125,7 +3125,9 @@ async function viewSurvey() {
     <form class="card form survey" data-form="survey">
       ${chips('referral')}
       <input name="referral_note" maxlength="100" value="${esc(s.referral_note || '')}" placeholder="紹介してくれた方・その他の内容（任意）" aria-label="何で知ったかの補足">
-      ${chips('age_band')}${chips('golf_years')}${chips('score_band')}
+      <fieldset class="sv-q"><legend>${SURVEY_Q.birth_date}</legend>
+        <input type="date" name="birth_date" value="${esc(s.birth_date || '')}" min="1920-01-01" max="${today()}" aria-label="生年月日"></fieldset>
+      ${chips('golf_years')}${chips('score_band')}
       <fieldset class="sv-q"><legend>お住まいの都道府県</legend>
         <select name="prefecture" aria-label="お住まいの都道府県"><option value="">選ぶ</option>${PREFS.map((x) => `<option ${s.prefecture === x ? 'selected' : ''}>${x}</option>`).join('')}</select></fieldset>
       ${chips('store_use')}
@@ -4746,9 +4748,17 @@ const forms = {
   },
   survey: async (f) => {
     const val = (k) => f.querySelector(`[name="${k}"]:checked`)?.value || '';
-    const row = { member_id: state.profile.id, referral: val('referral'), referral_note: f.referral_note.value.trim(), age_band: val('age_band'), golf_years: val('golf_years'),
+    // 生年月日から年代を出す（統計の「年代」はこれを使う）
+    const bd = f.birth_date?.value || '';
+    let age = null;
+    if (bd) { const t = today(); age = Number(t.slice(0, 4)) - Number(bd.slice(0, 4)) - (t.slice(5) < bd.slice(5) ? 1 : 0); }
+    const band = age == null ? '' : age < 20 ? '10s' : age >= 70 ? '70s' : `${Math.floor(age / 10)}0s`;
+    const row = { member_id: state.profile.id, referral: val('referral'), referral_note: f.referral_note.value.trim(), golf_years: val('golf_years'),
       score_band: val('score_band'), prefecture: f.prefecture.value, store_use: val('store_use'), updated_at: new Date().toISOString() };
-    await must(sb.from('member_survey').upsert(row, { onConflict: 'member_id' }));
+    if (band) row.age_band = band;
+    // データベースの更新（生年月日の欄）の前でも、ほかの回答は保存する
+    const { error } = await sb.from('member_survey').upsert({ ...row, birth_date: bd || null }, { onConflict: 'member_id' });
+    if (error) await must(sb.from('member_survey').upsert(row, { onConflict: 'member_id' }));
     toast('ご協力ありがとうございました！');
     go('home');
     setTimeout(() => checkNewBadges().catch(() => {}), 600);
