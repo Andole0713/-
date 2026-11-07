@@ -376,7 +376,7 @@ a.hbtn{text-decoration:none;color:inherit;box-sizing:border-box}
       <h1>SwingFrame</h1>
       <p>スイング撮影・スイング分析</p>
       <!-- 表示用の版数。sw.js の CACHE と必ずそろえること（片方だけ上げると更新に気づけません） -->
-      <div id="hVer">v51</div>
+      <div id="hVer">v52</div>
     </div>
     <button class="hbtn pri" id="hShoot"><i>●</i><span>スイングを撮影<em>ガイドに合わせて撮影</em></span></button>
     <button class="hbtn" id="hLib"><i>▤</i><span>ライブラリ<em id="hLibSub">保存した動画と画像</em></span></button>
@@ -871,6 +871,22 @@ function vbps(f){
   return Math.round(QBPS[q]*((f||fps)>=50?1:0.6)*1e6);
 }
 function tapRec(){
+  if(recording&&autoRec){
+    /* With automatic recording on (and especially when it listens for the
+       impact), a take can already be rolling the moment someone steps into
+       the box, and it stops itself a moment after the shot. Someone pressing
+       the button now means "I am filming this one", so the take becomes a
+       button take: it keeps going until the button is pressed again. */
+    autoRec=false;clearTimeout(recTimer);
+    var left=Math.max(5,S.dur-(Date.now()-recT0)/1000);
+    recTimer=setTimeout(function(){
+      stopRec();
+      toast('最長'+S.dur+'秒に達したので停止しました');
+    },left*1000);
+    autoBadge('ボタンで撮影中');
+    toast('ボタンでの撮影に切り替えました。もう一度押すと止まります');
+    return;
+  }
   if(recording){stopRec();return}
   if(cdTimer){clearInterval(cdTimer);cdTimer=null;$('#count').classList.remove('on');return}
   var n=S.cd;
