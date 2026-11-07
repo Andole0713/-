@@ -988,7 +988,7 @@ async function viewMemberHome() {
       <div class="cele-actions"><button type="button" class="btn btn-cat cat-celebrate" data-action="celebrate-thanks">ありがとう！</button>
         <a class="btn btn-sub" href="#/celebrations">お祝いをすべて見る</a></div>
     </div>` : ''}
-    <div class="blk" style="--o:2">${askCards(asks)}</div>
+    ${asks.exit ? `<div class="blk" style="--o:2">${askCards(asks)}</div>` : ''}
     <div class="blk" style="--o:3">
     ${rmNow ? `<a class="rm-home cat-drill" href="#/drills">
         <div class="rm-home-head"><span class="rm-badge">今月のドリル</span>${rmNow.seen_at ? '' : '<span class="new-badge">NEW</span>'}
@@ -1041,6 +1041,7 @@ async function viewMemberHome() {
     ${subs.length ? `<div class="notice">確認待ちの動画が ${subs.length} 件あります。コーチからのレッスンをお待ちください。
         <a href="#/submission/${subs[0].id}">間違えて送った場合はこちら</a></div>` : ''}
     </div>
+    ${asks.exit ? '' : `<div class="blk" style="--o:8">${askCards(asks)}</div>`}
     <div class="blk" style="--o:8">
     <div class="section-title cat-score"><div><div class="eyebrow">Score</div><h2>${icon('flag')}スコア</h2></div></div>
     <div class="grid cat-score">
