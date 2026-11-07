@@ -376,7 +376,7 @@ a.hbtn{text-decoration:none;color:inherit;box-sizing:border-box}
       <h1>SwingFrame</h1>
       <p>スイング撮影・スイング分析</p>
       <!-- 表示用の版数。sw.js の CACHE と必ずそろえること（片方だけ上げると更新に気づけません） -->
-      <div id="hVer">v50</div>
+      <div id="hVer">v51</div>
     </div>
     <button class="hbtn pri" id="hShoot"><i>●</i><span>スイングを撮影<em>ガイドに合わせて撮影</em></span></button>
     <button class="hbtn" id="hLib"><i>▤</i><span>ライブラリ<em id="hLibSub">保存した動画と画像</em></span></button>
@@ -2306,18 +2306,16 @@ function reviewAudio(){
     return revDest;
   }catch(e){return null}
 }
-/* export the window the golfer actually cares about: PRE seconds before the
-   impact to POST after it, with any drawn lines burned in */
+/* where playback starts on a take with a detected swing: PRE seconds before it */
 var PRE=10;
 $('#rSave').onclick=function(){
   if(!cur)return;
   if(burning){toast('書き出し中です');return}
   var ext=(cur.type||'').indexOf('mp4')>=0?'mp4':'webm';
   var dur=isFinite(rv.duration)?rv.duration:0;
-  var sw=cur.swing||0;
-  var t0=sw?Math.max(0,sw-PRE):0;
-  var t1=sw?Math.min(dur||1e9,sw+(S.post||5)):(dur||0);
-  /* a length the person set themselves wins over the automatic window */
+  /* the whole take goes out unless the person set a length themselves with
+     「長さ」 — nothing is trimmed behind their back */
+  var t0=0,t1=dur||0;
   if(cutOn()){t0=cutA();t1=cutB()}
   var needTrim=(t0>0.3||(dur&&t1<dur-0.3));
   /* the skeleton is drawn, not part of the file, so it has to be re-encoded in
