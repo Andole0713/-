@@ -1181,7 +1181,7 @@ a.btn-block.btn-cat{min-height:52px;display:flex;align-items:center;justify-cont
 .gl-item dt{font-weight:700;font-size:15.5px;display:flex;align-items:center;gap:8px}
 .gl-item dd{margin:4px 0 0;font-size:14px;line-height:1.75}
 .gl-tag{font-size:13px;font-weight:700;color:#fff;background:var(--gl);border-radius:6px;padding:1px 7px;letter-spacing:.04em}
-.c-app{--gl:var(--c-home)} .c-swing{--gl:var(--c-drill)} .c-ball{--gl:var(--c-celebrate)} .c-shot{--gl:var(--c-help)} .c-club{--gl:var(--c-lesson)} .c-course{--gl:var(--c-meeting)} .c-score{--gl:var(--c-score)} .c-rule{--gl:var(--c-member)} .c-play{--gl:var(--c-video)}
+.c-app{--gl:var(--c-home)} .c-swing{--gl:var(--c-drill)} .c-ball{--gl:var(--c-celebrate)} .c-shot{--gl:var(--c-help)} .c-club{--gl:var(--c-lesson)} .c-course{--gl:var(--c-meeting)} .c-score{--gl:var(--c-score)} .c-rule{--gl:var(--c-member)} .c-safety{--gl:#d0542f} .c-play{--gl:var(--c-video)}
 .gl-cat[class*=" c-"]{border-color:var(--gl);color:var(--gl)}
 .gl-cat[class*=" c-"].on{background:var(--gl);color:#fff}
 .zk-fig figcaption b{font-size:13px;letter-spacing:-.02em;white-space:nowrap}
