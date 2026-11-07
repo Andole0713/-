@@ -990,14 +990,21 @@ async function viewMemberHome() {
     </div>` : ''}
     ${asks.exit ? `<div class="blk" style="--o:2">${askCards(asks)}</div>` : ''}
     <div class="blk" style="--o:3">
-    ${rmNow ? `<a class="rm-home cat-drill" href="#/drills">
+    ${rmNow ? `<div class="rm-home cat-drill">
+        <a class="rm-home-link" href="#/drills">
         <div class="rm-home-head"><span class="rm-badge">今月のドリル</span>${rmNow.seen_at ? '' : '<span class="new-badge">NEW</span>'}
           <span class="rm-home-step"><b>${rmMonths(roadmap)?.cur || 0}</b>/${rmMonths(roadmap)?.total || roadmap.length}か月目</span></div>
         <h3>${esc(rmNow.theme || rmNow.drills?.title || 'ドリル')}</h3>
         ${rmNow.drills && rmNow.theme ? `<p class="rm-home-drill">🎯 ${esc(rmNow.drills.title)}</p>` : ''}
-        <div class="rm-home-meter" aria-hidden="true"><i style="width:${Math.round((rmOpened.length / roadmap.length) * 100)}%"></i></div>
-        <div class="rm-home-foot"><span class="rm-home-days">${rmDays ? `✓ 今月の練習 <b>${rmDays}</b>日` : 'まだ練習の記録がありません'}</span>
-          <span class="rm-home-btn">ドリルを見る <i aria-hidden="true">›</i></span></div></a>` : ''}
+        <div class="rm-home-meter" aria-hidden="true"><i style="width:${Math.round((rmOpened.length / roadmap.length) * 100)}%"></i></div></a>
+        <div class="rm-practice">
+          ${practicedToday
+            ? `<span class="rmp-done">✓ 今日は練習済み</span><button type="button" class="rmp-undo" data-action="rm-practice" data-item="${rmNow.id}" data-day="${today()}" data-on="0">取り消す</button>`
+            : `<button type="button" class="rmp-btn" data-action="rm-practice" data-item="${rmNow.id}" data-day="${today()}" data-on="1">✓ 今日練習した</button>`}
+          <button type="button" class="rmp-cal" data-action="practice-cal">📅 詳細</button>
+        </div>
+        <div class="rm-home-foot"><span class="rm-home-days">${rmDays ? `今月の練習 <b>${rmDays}</b>日` : 'まだ練習の記録がありません'}</span>
+          <a class="rm-home-btn" href="#/drills">ドリルを見る <i aria-hidden="true">›</i></a></div></div>` : ''}
     </div>
     <div class="blk" style="--o:6">
     <div class="section-title cat-drill"><div><div class="eyebrow">Practice</div><h2>${icon('pen')}今月の課題</h2></div><span class="muted">${done}/${tasks.length}</span></div>
@@ -1942,6 +1949,93 @@ async function viewScores() {
   </div>` + memberNav('menu');
 }
 
+// ---------- 練習した日のカレンダー（ホームのドリル欄の「詳細」） ----------
+// 付け忘れた日もあとから付けられる（PRACTICE_BACK_DAYS 日前まで。データベースの決まりと同じ日数）
+const PRACTICE_BACK_DAYS = 60;
+async function openPracticeCalendar() {
+  const p = state.profile;
+  const [items, log] = await Promise.all([
+    must(sb.from('roadmap_items').select('id, publish_on, published_at, hidden').eq('member_id', p.id).order('publish_on')),
+    must(sb.from('roadmap_practice').select('item_id, practiced_on').eq('member_id', p.id)),
+  ]);
+  const open = items.filter(rmOpen);
+  // その日がどの月のドリルの期間か（公開日がその日以前で、いちばん新しいもの）
+  const itemOf = (d) => open.filter((r) => r.publish_on <= d).at(-1);
+  const days = new Map(log.map((x) => [x.practiced_on, x.item_id]));
+  let ym = today().slice(0, 7);
+  let changed = false;
+  const minDay = addDays(today(), -PRACTICE_BACK_DAYS);
+  const prev = document.activeElement;
+  const wrap = document.createElement('div');
+  wrap.className = 'modal-backdrop';
+  const draw = () => {
+    const [y, m] = ym.split('-').map(Number);
+    const first = `${ym}-01`;
+    const nDays = new Date(y, m, 0).getDate();
+    const lead = new Date(y, m - 1, 1).getDay();
+    const t = today();
+    const cells = [];
+    for (let i = 0; i < lead; i++) cells.push('<span class="pc-cell blank"></span>');
+    let count = 0;
+    for (let d = 1; d <= nDays; d++) {
+      const ymd = `${ym}-${String(d).padStart(2, '0')}`;
+      const on = days.has(ymd);
+      if (on) count++;
+      const can = ymd <= t && ymd >= minDay && !!itemOf(ymd);
+      const cls = ['pc-cell', on ? 'on' : '', ymd === t ? 'today' : '', ymd > t ? 'future' : '', can ? '' : 'off'].filter(Boolean).join(' ');
+      cells.push(`<button type="button" class="${cls}" data-day="${ymd}"${can ? '' : ' disabled'} aria-pressed="${on}" aria-label="${m}月${d}日${on ? '（練習した）' : ''}">${d}${on ? '<i>✓</i>' : ''}</button>`);
+    }
+    const prevYm = addMonths(first, -1).slice(0, 7);
+    const nextYm = addMonths(first, 1).slice(0, 7);
+    wrap.innerHTML = `<div class="modal pc-sheet" role="dialog" aria-modal="true" aria-labelledby="pc-title">
+      <button type="button" class="sheet-close" data-sheet="close" aria-label="閉じる">×</button>
+      <span class="eyebrow">Practice</span>
+      <h2 id="pc-title">練習した日</h2>
+      <div class="pc-nav">
+        <button type="button" class="pc-move" data-ym="${prevYm}" aria-label="前の月"${prevYm < minDay.slice(0, 7) && ![...days.keys()].some((k) => k.slice(0, 7) <= prevYm) ? ' disabled' : ''}>‹</button>
+        <b>${y}年${m}月</b>
+        <button type="button" class="pc-move" data-ym="${nextYm}" aria-label="次の月"${nextYm > t.slice(0, 7) ? ' disabled' : ''}>›</button>
+      </div>
+      <p class="pc-count">この月の練習 <b>${count}</b>日</p>
+      <div class="pc-week">${WEEK.map((w) => `<span>${w}</span>`).join('')}</div>
+      <div class="pc-grid">${cells.join('')}</div>
+      <p class="muted small" style="margin:10px 0 0">日付を押すと、練習した日に記録できます。もう一度押すと取り消せます。付け忘れた日は${PRACTICE_BACK_DAYS}日前までさかのぼって付けられます。</p>
+      <button type="button" class="btn-block btn-sub" data-sheet="close">閉じる</button>
+    </div>`;
+  };
+  const close = () => { document.removeEventListener('keydown', onKey, true); wrap.remove(); prev?.focus?.(); if (changed) render(); };
+  const onKey = (e) => { if (e.key === 'Escape') { e.preventDefault(); close(); } };
+  wrap.addEventListener('click', async (e) => {
+    if (e.target === wrap || e.target.closest('[data-sheet="close"]')) return close();
+    const mv = e.target.closest('.pc-move');
+    if (mv && !mv.disabled) { ym = mv.dataset.ym; draw(); return; }
+    const c = e.target.closest('.pc-cell[data-day]');
+    if (!c || c.disabled) return;
+    const d = c.dataset.day;
+    c.disabled = true;
+    try {
+      if (days.has(d)) {
+        await must(sb.from('roadmap_practice').delete().eq('item_id', days.get(d)).eq('practiced_on', d));
+        days.delete(d);
+      } else {
+        const it = itemOf(d);
+        await must(sb.from('roadmap_practice').insert({ item_id: it.id, member_id: p.id, practiced_on: d }));
+        days.set(d, it.id);
+        toast(`${fmtMD(d)} を練習した日に記録しました⛳`);
+        checkNewBadges();
+      }
+      changed = true;
+    } catch (err) {
+      toast(d < addDays(today(), -1) ? '過去の日の記録は、データベースの設定のあとで使えるようになります' : '記録できませんでした', true);
+    }
+    draw();
+  });
+  document.addEventListener('keydown', onKey, true);
+  draw();
+  document.body.appendChild(wrap);
+  wrap.querySelector('.sheet-close').focus();
+}
+
 // 会員：ロードマップ（毎月1本のドリルの定期公開）
 // その月の期間（公開日〜次の月の公開日の前日。最大31日）
 function rmPeriod(items, i) {
@@ -1957,8 +2051,9 @@ function practiceBlock(r, days, log) {
   const did = done.has(t);
   return `<div class="practice-log" data-item="${r.id}">
     <div class="between"><b class="small">練習した日 <span class="pl-count">${done.size}</span>日</b>
-      <button type="button" class="btn-sm ${did ? 'btn-sub' : 'btn-gold'} pl-btn" data-action="practice-today" data-item="${r.id}" aria-pressed="${did}">${did ? '✓ 今日は練習済み' : '今日練習した'}</button></div>
+      <button type="button" class="btn-sm btn-sub" data-action="practice-cal">📅 カレンダー</button></div>
     <div class="pl-days" aria-label="練習した日">${days.map((d) => `<i class="${done.has(d) ? 'on' : ''}${d === t ? ' today' : ''}${d > t ? ' future' : ''}" data-day="${d}" title="${fmtMD(d)}"></i>`).join('')}</div>
+    <p class="muted small" style="margin:6px 0 0">${did ? '今日は練習済みです。' : ''}練習した日は、<a href="#/home">ホームのドリル欄</a>から記録できます。</p>
   </div>`;
 }
 function reflectionForm(r, body) {
@@ -4689,6 +4784,20 @@ const actions = {
     const next = grid.dataset.open === String(i) ? null : i;
     rmLayout(next);
     if (next != null) document.getElementById(`rm-panel-${i}`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  },
+  'practice-cal': () => openPracticeCalendar(),
+  // ホームのドリル欄：今日練習した／取り消す
+  'rm-practice': async (el) => {
+    const on = el.dataset.on === '1';
+    const { item, day } = el.dataset;
+    el.disabled = true;
+    try {
+      if (on) await must(sb.from('roadmap_practice').insert({ item_id: item, member_id: state.profile.id, practiced_on: day }));
+      else await must(sb.from('roadmap_practice').delete().eq('item_id', item).eq('practiced_on', day));
+      toast(on ? 'ナイス練習！記録しました⛳' : '今日の練習の記録を取り消しました');
+      if (on) checkNewBadges();
+      render();
+    } catch (e) { toast('記録できませんでした', true); el.disabled = false; }
   },
   'practice-today': async (el) => {
     const item = el.dataset.item;
