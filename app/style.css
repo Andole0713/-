@@ -1812,3 +1812,6 @@ body.rec-open{overflow:hidden}
 .md-goal p{margin:2px 0 0;font-weight:700}
 @media (max-width:699px){.md-goal{gap:6px}.md-goal > div{display:flex;gap:12px;align-items:baseline}.md-goal > div > span{flex:none;width:6.5em}.md-goal p{margin:0}}
 .md-plan{font-size:18px}
+.memo-item .note-foot{margin-top:6px}
+.memo-edit textarea{width:100%}
+.memo-item [hidden]{display:none !important}
