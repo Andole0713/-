@@ -376,7 +376,7 @@ a.hbtn{text-decoration:none;color:inherit;box-sizing:border-box}
       <h1>SwingFrame</h1>
       <p>スイング撮影・スイング分析</p>
       <!-- 表示用の版数。sw.js の CACHE と必ずそろえること（片方だけ上げると更新に気づけません） -->
-      <div id="hVer">v52</div>
+      <div id="hVer">v53</div>
     </div>
     <button class="hbtn pri" id="hShoot"><i>●</i><span>スイングを撮影<em>ガイドに合わせて撮影</em></span></button>
     <button class="hbtn" id="hLib"><i>▤</i><span>ライブラリ<em id="hLibSub">保存した動画と画像</em></span></button>
@@ -909,8 +909,10 @@ function beginRec(){
   mr.ondataavailable=function(e){if(e.data&&e.data.size){chunks.push(e.data);onChunk(e.data.size)}};
   mr.onstop=onStop;
   frozenAt=0;chunkSz=[];smallN=0;frameN=0;lastFrameAt=Date.now();
-  /* hand over the data every second instead of holding the whole take */
-  try{mr.start(1000)}catch(e){mr.start()}
+  /* one piece at the end. Handing the data over every second made iPhone
+     write the first second as a separate file in front of the whole take
+     (see fixMp4), and nothing uses the per-second pieces any more */
+  mr.start();
   recording=true;recT0=Date.now();
   $('#rec').classList.add('recording');
   $('#recTime').classList.add('on');
@@ -981,7 +983,7 @@ function onStop(){
     clip.cut0=0;clip.cut1=fz;
     rWarn('カメラの映像が途中で止まったため、録画を止めました。止まる前の '+fz.toFixed(1)+' 秒ぶんは保存されています。');
   }
-  clip.fixed=true;
+  clip.fixed=true;clip.fixed2=true;
   /* Automatic recording stays on until the person turns it off, so a session
      at the range is one take after another. Jumping to the review screen
      after each one would mean walking back to the phone every swing, so the
@@ -1043,6 +1045,22 @@ function fixMp4(blob){
     });
   }
   return walk(0).then(function(){
+    /* iPhone (Safari) handing the take over a second at a time could deliver
+       the first second as a file of its own and then the whole take again,
+       one after the other in the same blob. Players read only the first
+       file, so a 5-second swing played as the first 2 seconds and stopped
+       before the shot. Keep the copy that holds the most of the take. */
+    var segs=[];
+    tops.forEach(function(b){
+      if(b.t==='ftyp'||!segs.length)segs.push({o:b.o,e:b.o+b.n,f:0});
+      var g=segs[segs.length-1];g.e=b.o+b.n;if(b.t==='moof')g.f++;
+    });
+    if(segs.length>1&&!blob._one){
+      var best=segs[0];
+      segs.forEach(function(g){if(g.f>=best.f)best=g});
+      var one=blob.slice(best.o,best.e,blob.type);one._one=true;
+      return fixMp4(one).then(function(b){return b===one?new Blob([one],{type:blob.type}):b});
+    }
     var moov=tops.filter(function(b){return b.t==='moov'})[0];
     var moofs=tops.filter(function(b){return b.t==='moof'});
     if(!moov||!moofs.length||moov.n>4e6)return blob;
@@ -2006,10 +2024,10 @@ function pick(c){
   };
   rv.addEventListener('loadeddata',seek);
   /* a take saved before the length repair existed: fix it once, keep it */
-  if(!c.fixed&&/mp4/i.test(c.type||'')){
-    c.fixed=true;
+  if(!c.fixed2&&/mp4/i.test(c.type||'')){
+    c.fixed=true;c.fixed2=true;
     fixMp4(c.blob).then(function(b){
-      if(b===c.blob)return;
+      if(b===c.blob){updateClip(c);return}
       c.blob=b;updateClip(c);
       if(cur===c)pick(c);
     });
