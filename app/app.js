@@ -1504,6 +1504,32 @@ async function viewAnnounceAdmin() {
   </div></div></div>` + adminNav('admin/dashboard');
 }
 
+// ---------- メモ（会員が自分で書く。コーチも見られる） ----------
+async function viewMemo() {
+  const p = state.profile;
+  const list = await sb.from('member_memos').select('*').eq('member_id', p.id).order('created_at', { ascending: false }).limit(200).then((r) => (r.error ? null : r.data || []), () => null);
+  return header('メモ', 'menu') + `<div class="content">
+    <p class="page-lead">練習で気づいたこと、レッスンで覚えておきたいこと、ラウンドの反省などを自由に書いておけます。</p>
+    ${list === null ? '<div class="card muted">ただいま準備中です。</div>' : `
+    <form class="card form" data-form="memo-add">
+      <label for="memo-body">新しいメモ</label>
+      <textarea id="memo-body" name="body" rows="4" maxlength="2000" required placeholder="例：アプローチは右足体重のまま打つと、ざっくりしにくい"></textarea>
+      <button class="btn-block" type="submit">メモを残す</button>
+      <p class="muted small" style="margin:0">書いたメモはコーチも見ることができます（レッスンの参考にさせていただきます）。</p>
+    </form>
+    ${list.length ? `<div class="section-title"><h2>書いたメモ</h2><span class="muted small">${list.length}件・新しい順</span></div>
+    ${list.map((n) => `<div class="card memo-item">
+      <p class="pre">${esc(n.body)}</p>
+      <div class="note-foot"><span class="muted small">${fmtShort(n.created_at)}${n.updated_at && n.updated_at.slice(0, 16) !== n.created_at.slice(0, 16) ? '（直しました）' : ''}</span>
+        <button type="button" class="link" data-action="memo-edit" data-id="${n.id}">直す</button>
+        <button type="button" class="link" data-action="memo-delete" data-id="${n.id}">削除</button></div>
+      <form class="form memo-edit" data-form="memo-save" data-id="${n.id}" hidden>
+        <textarea name="body" rows="4" maxlength="2000" required aria-label="メモを直す">${esc(n.body)}</textarea>
+        <div class="row" style="gap:8px;justify-content:flex-end"><button type="button" class="btn-sm btn-sub" data-action="memo-edit" data-id="${n.id}">やめる</button><button class="btn-sm" type="submit">保存する</button></div>
+      </form></div>`).join('')}` : '<p class="muted small center">まだメモはありません。</p>'}`}
+  </div>` + memberNav('menu');
+}
+
 // ---------- 不具合・ご要望（会員 → スタッフ） ----------
 const FB_KIND = { bug: '不具合', request: 'ご要望', other: 'その他' };
 async function viewFeedback() {
@@ -2148,6 +2174,7 @@ function viewMenu() {
       tile('meeting', 'calendar', '面談を予約する', 'コーチとオンラインで話す（LINEで予約）', CONTACT.lineUrl, 0, true),
     ])}
     ${group('記録・お祝い', [
+      mini('score', 'pen', 'メモ', '#/memo'),
       mini('score', 'flag', 'スコア記録', '#/scores'),
       mini('celebrate', 'trophy', 'お祝い', '#/celebrations', state.celebrateUnread),
       mini('celebrate', 'star', 'バッジ', '#/badges'),
@@ -2797,6 +2824,7 @@ async function viewMemberDetail(id, tab) {
   ]);
   const mCredits = await loadCredits(id);
   const mExits = await sb.from('exit_reasons').select('*').eq('member_id', id).order('created_at', { ascending: false }).then((r) => (r.error ? null : r.data || []));
+  const mMemos = await sb.from('member_memos').select('id, body, created_at, updated_at').eq('member_id', id).order('created_at', { ascending: false }).limit(100).then((r) => (r.error ? null : r.data || []), () => null);
   const mCeles = await sb.from('celebrations').select('id, stamp, title, created_at, seen_at').eq('member_id', id).order('created_at', { ascending: false }).limit(5).then((r) => r.data || []);
   const mst = scoreStats(mRounds, m || {});
   const subUrls = await signedVideoUrls(subs.filter((x) => !x.video_deleted_at)).catch(() => ({}));
@@ -2938,6 +2966,12 @@ async function viewMemberDetail(id, tab) {
             <button type="button" class="link" data-action="note-delete" data-id="${n.id}">削除</button></div></div>`).join('') || '<p class="muted small" style="margin:8px 0 0">まだメモはありません</p>'}
     </div>`;
 
+  // ---- タブ：会員のメモ（会員が自分で書いたもの。見るだけ）----
+  const paneUmemo = `<div class="section-title" style="margin-top:0"><h2>会員のメモ</h2><span class="muted small">会員がアプリのメニュー「メモ」に書いたもの</span></div>
+    <div class="card">${mMemos === null ? '<p class="muted small" style="margin:0">データベースの設定（20261104000000_member_memos.sql）がまだのため表示できません。</p>'
+      : mMemos.length ? mMemos.map((n) => `<div class="note"><p class="pre">${esc(n.body)}</p><div class="note-foot"><span class="muted small">${fmtShort(n.created_at)}${n.updated_at && n.updated_at.slice(0, 16) !== n.created_at.slice(0, 16) ? `（${fmtShort(n.updated_at)} に修正）` : ''}</span></div></div>`).join('')
+      : '<p class="muted small" style="margin:0">まだメモはありません。</p>'}</div>`;
+
   // ---- タブ：お祝い ----
   const paneCele = `<div class="section-title cat-celebrate" style="margin-top:0"><h2>お祝い</h2><button type="button" class="btn btn-sm btn-cat cat-celebrate" data-action="cele-send" data-member="${m.id}" data-name="${esc(m.name || '')}">＋ お祝いを送る</button></div>
     <div class="card">${mCeles.length ? mCeles.map((c) => `<div class="list-item small"><span>${STAMP[c.stamp] || '🏆'} ${esc(c.title)}</span><span class="muted">${fmtDate(c.created_at)} ${c.seen_at ? '<span class="pill ok">見ました</span>' : '<span class="pill mute">未読</span>'}</span></div>`).join('')
@@ -2950,6 +2984,7 @@ async function viewMemberDetail(id, tab) {
     ...mRounds.filter((x) => daysAgo(x.played_on) <= 30).map((x) => ({ t: x.played_on, h: `⛳ スコア <b>${x.score}</b>（${esc(x.course_name)}）` })),
     ...rmRefs.filter((x) => daysAgo(x.updated_at) <= 30).map((x) => ({ t: x.updated_at, h: `💬 ふり返り：${esc(x.body.slice(0, 50))}` })),
     ...mMeetings.filter((x) => x.status !== 'scheduled' && daysAgo(x.scheduled_at) <= 30).map((x) => ({ t: x.scheduled_at, h: `◷ 面談 ${meetingPill(x)}` })),
+    ...(mMemos || []).filter((x) => daysAgo(x.created_at) <= 30).map((x) => ({ t: x.created_at, h: `📝 メモ：${esc(x.body.slice(0, 50))}` })),
   ].sort((a, b) => (a.t < b.t ? 1 : -1)).slice(0, 10);
   const tile = (tab, label, value, sub = '', cls = '') => `<button type="button" class="md-tile ${cls}" data-action="md-tab" data-tab="${tab}"><span>${label}</span><b>${value}</b>${sub ? `<small>${sub}</small>` : ''}</button>`;
   const theme = themeOfMonth(m, rmCur);
@@ -2981,6 +3016,7 @@ async function viewMemberDetail(id, tab) {
     ['video', '提出動画', paneVideo, pendingSubs],
     ['karte', 'カウンセリング', paneKarte],
     ['memo', '担当者メモ', paneMemo, mNotes.length ? String(mNotes.length) : 0, 'mute'],
+    ...(staff ? [] : [['umemo', '会員のメモ', paneUmemo, mMemos?.length ? String(mMemos.length) : 0, 'mute']]),
     ['cele', 'お祝い', paneCele],
   ];
   const cur = tabs.some(([k]) => k === tab) ? tab : 'summary';
@@ -4016,6 +4052,7 @@ async function render() {
       if (state.annQueue.length && r[0] !== 'help') return paint(viewAnnouncement());
       if (r[0] === 'notices') return paint(await viewNotices());
       if (r[0] === 'feedback') return paint(await viewFeedback());
+      if (r[0] === 'memo') return paint(await viewMemo());
     }
     if (r[0] === 'continue') return paint(viewContinue());
     if (r[0] === 'account') {
@@ -4610,6 +4647,16 @@ const actions = {
     await must(sb.from('staff_notes').update({ pinned: el.dataset.pinned !== 'true' }).eq('id', el.dataset.id));
     render();
   },
+  'memo-edit': (el) => {
+    const card = el.closest('.memo-item'); const fm = card.querySelector('.memo-edit');
+    fm.hidden = !fm.hidden; card.querySelector('.pre').hidden = !fm.hidden; card.querySelector('.note-foot').hidden = !fm.hidden;
+    if (!fm.hidden) fm.body.focus();
+  },
+  'memo-delete': async (el) => {
+    if (!(await confirmDialog({ title: 'このメモを削除しますか？', body: '<p>削除すると元に戻せません。</p>', ok: '削除する' }))) return;
+    await must(sb.from('member_memos').delete().eq('id', el.dataset.id));
+    toast('メモを削除しました'); render();
+  },
   'note-delete': async (el) => {
     if (!(await confirmDialog({ title: 'このメモを削除しますか？', body: '<p>削除すると元に戻せません。</p>', ok: '削除する' }))) return;
     await must(sb.from('staff_notes').delete().eq('id', el.dataset.id));
@@ -4989,6 +5036,14 @@ const forms = {
     state.annQueue = (state.annQueue || []).filter((a) => a.id !== id);
     if (choice) toast('ご回答ありがとうございました');
     render();
+  },
+  'memo-add': async (f) => {
+    await must(sb.from('member_memos').insert({ member_id: state.profile.id, body: f.body.value.trim() }));
+    toast('メモを残しました'); render();
+  },
+  'memo-save': async (f) => {
+    await must(sb.from('member_memos').update({ body: f.body.value.trim(), updated_at: new Date().toISOString() }).eq('id', f.dataset.id));
+    toast('メモを直しました'); render();
   },
   'feedback-send': async (f) => {
     const kind = f.querySelector('input[name="kind"]:checked')?.value || 'other';
