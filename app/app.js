@@ -2588,7 +2588,7 @@ async function viewRoadmapEdit(memberId) {
     must(sb.from('roadmap_goals').select('goal').eq('member_id', memberId)),
   ]);
   rmLibrary = library;
-  const back = `admin/member/${memberId}`;
+  const back = `admin/member/${memberId}/drill`;
   if (!m) return header('ロードマップ', back) + '<div class="content"><div class="empty">会員が見つかりません</div></div>';
   return header(`ロードマップ：${m.name || ''}`, back) + `<div class="content">
     <p class="muted small" style="margin:0 0 8px">公開日になると、その月のドリルが会員ページに自動で公開されます。変更は「保存する」を押すまで反映されません。</p>
@@ -2772,7 +2772,7 @@ function creditCard(m, rows) {
   </div>`;
 }
 
-async function viewMemberDetail(id) {
+async function viewMemberDetail(id, tab) {
   const [m, tasks, lessons, subs, monthSubs, roadmap] = await Promise.all([
     must(sb.from('profiles').select('*').eq('id', id).maybeSingle()),
     must(sb.from('tasks').select('*').eq('member_id', id).order('sort_order').order('created_at')),
@@ -2801,13 +2801,20 @@ async function viewMemberDetail(id) {
   const subUrls = await signedVideoUrls(subs.filter((x) => !x.video_deleted_at)).catch(() => ({}));
   if (!m) return header('会員詳細', 'admin/members') + '<div class="content"><div class="empty">会員が見つかりません</div></div>';
   const self = m.id === state.profile.id;
-  return header(m.name || '会員詳細', 'admin/members') + `<div class="content wide"><div class="cols"><div class="col-main">
-    ${m.deletion_requested_at ? `<div class="notice warn-box">この会員はアカウントの削除を申し込んでいます。<b>${fmtDate(deleteOn(m))}</b> にすべての記録が削除されます（それまでに会員がログインすると元に戻せます）。</div>`
-      : m.cancel_at ? `<div class="notice">Webで解約済みです。<b>${fmtDate(m.cancel_at)}</b> まで利用できます。</div>` : ''}
-    <div class="card"><div class="between"><div><b>${esc(m.email)}</b><div class="muted">登録日 ${fmtDate(m.created_at)}</div></div>${memberPill(m)}</div>
-      ${m.current_period_end ? `<div class="muted">次回更新日 ${fmtDate(m.current_period_end)}</div>` : ''}</div>
+  const staff = m.role === 'admin';
+  const rmCur = roadmap.filter(rmOpen).at(-1);
+  const rmMm = rmMonths(roadmap);
+  const rmSt = rmStatus(roadmap);
+  const counted = monthSubs.filter((x) => !x.quota_exempt).length;
+  const pendingSubs = subs.filter((x) => x.status === 'pending').length;
+  const unreadLessons = lessons.filter((l) => !l.read_at).length;
+  const pinned = mNotes.filter((n) => n.pinned);
+  const nextMt = mMeetings.filter((x) => x.status === 'scheduled' && new Date(x.scheduled_at).getTime() > Date.now() - 30 * 60000).at(-1);
+  const cs = mCredits ? creditSummary(mCredits) : null;
+  const showExit = mExits && (mExits.length || m.cancel_at || !isActive(m));
 
-    <form class="card form" data-form="admin-profile" data-id="${m.id}">
+  // ---- タブ：基本情報 ----
+  const paneInfo = `<form class="card form" data-form="admin-profile" data-id="${m.id}">
       <b>会員情報</b>
       <label for="name">会員名</label><input id="name" name="name" value="${esc(m.name)}" maxlength="50">
       <label for="plan">プラン <span class="muted">（通常は Stripe から自動で反映）</span></label>
@@ -2821,7 +2828,6 @@ async function viewMemberDetail(id) {
       ${mRounds.length ? `<details class="admin-rounds"><summary>最近のラウンドを見る</summary>${mRounds.slice(0, 10).map((r) => `<div class="list-item small"><span>${fmtDate(r.played_on)}　${esc(r.course_name)}${r.holes === 9 ? '（9H）' : ''}</span><b>${r.score}</b></div>`).join('')}</details>`
         : '<p class="muted small" style="margin:4px 0 0">スコアは会員がラウンドごとに入力すると、自動で計算されます。</p>'}
       ${(() => {
-        const rmCur = roadmap.filter(rmOpen).at(-1);
         const stale = m.theme && m.theme_set_on && String(m.theme_set_on).slice(0, 7) !== today().slice(0, 7);
         // 欄には、今月ホームに出ているテーマ（手で書いたものがなければ、ロードマップの今月のテーマ）を入れておく。
         // ロードマップのテーマのまま保存したときは「手で書いた」扱いにしない
@@ -2833,72 +2839,49 @@ async function viewMemberDetail(id) {
       })()}
       <label for="access_until">利用期限 <span class="muted">（LINE・電話で申し込んだ会員用。カード決済の会員は空欄）</span></label>
       <input id="access_until" name="access_until" type="date" value="${esc(m.access_until || '')}">
-      ${(() => {
-        const counted = monthSubs.filter((x) => !x.quota_exempt).length;
-        const exempt = monthSubs.length - counted;
-        return `<div class="quota-line"><p class="muted small" style="margin:4px 0 0">今月の提出：${counted}本${exempt ? `（回数に数えない ${exempt}本は別）` : ''}</p>
-          ${counted ? `<button type="button" class="btn-sm btn-sub" data-action="quota-reset" data-member="${m.id}" data-count="${counted}">今月の提出回数を0に戻す</button>` : ''}</div>`;
-      })()}
       ${self ? '' : `<label for="role">権限</label><select id="role" name="role">
         <option value="member" ${m.role === 'member' ? 'selected' : ''}>会員</option>
         <option value="admin" ${m.role === 'admin' ? 'selected' : ''}>管理者（コーチ）</option></select>`}
       <button class="btn-block" type="submit">保存する</button>
     </form>
+    ${showExit ? exitCard(m, mExits) : ''}`;
 
-    ${creditCard(m, mCredits)}
-
-    ${m.role === 'admin' ? '' : surveyCard(mSurvey)}
-    ${karteForm(m.id, karte)}
-
-    </div><div class="col-side">
-    ${(() => {
-      const next = mMeetings.filter((x) => x.status === 'scheduled' && new Date(x.scheduled_at).getTime() > Date.now() - 30 * 60000).at(-1);
-      const recent = mMeetings.filter((x) => x !== next).slice(0, 5);
-      // 最近の動き（30日）：動画・レッスン・スコア・ふり返り・面談・練習
-      const feed = [
-        ...subs.filter((x) => daysAgo(x.created_at) <= 30).map((x) => ({ t: x.created_at, h: `▶ 動画を提出（${esc(x.club)} / ${esc(x.angle)}）${x.status === 'pending' ? ' <span class="pill warn">確認待ち</span>' : ''}` })),
-        ...lessons.filter((x) => daysAgo(x.lesson_date) <= 30).map((x) => ({ t: x.lesson_date, h: `✎ レッスン「${esc(x.title)}」を送付${x.read_at ? '' : ' <span class="pill mute">未読</span>'}` })),
-        ...mRounds.filter((x) => daysAgo(x.played_on) <= 30).map((x) => ({ t: x.played_on, h: `⛳ スコア <b>${x.score}</b>（${esc(x.course_name)}）` })),
-        ...rmRefs.filter((x) => daysAgo(x.updated_at) <= 30).map((x) => ({ t: x.updated_at, h: `💬 ふり返り：${esc(x.body.slice(0, 50))}` })),
-        ...mMeetings.filter((x) => x.status !== 'scheduled' && daysAgo(x.scheduled_at) <= 30).map((x) => ({ t: x.scheduled_at, h: `◷ 面談 ${meetingPill(x)}` })),
-      ].sort((a, b) => (a.t < b.t ? 1 : -1)).slice(0, 10);
-      return `<div class="section-title" style="margin-top:0"><h2>面談</h2><button type="button" class="btn btn-sm" data-action="meeting-add" data-member="${m.id}">＋ 予約</button></div>
-    <div class="card">
-      ${next ? `<div class="next-meeting"><span>次回</span><b>${fmtShort(next.scheduled_at)}</b><small>${next.duration_min}分</small>
-          <a class="btn btn-sm btn-gold" href="#/admin/prep/${next.id}">準備メモ</a>
-          <button type="button" class="btn btn-sm btn-sub" data-action="meeting-move" data-id="${next.id}" data-at="${next.scheduled_at}" data-min="${next.duration_min}">日時変更</button></div>`
-        : '<p class="muted small" style="margin:0">次回の面談は入っていません。LINEで日程が決まったら「＋ 予約」から登録します。</p>'}
-      ${next ? `<p class="small" style="margin:6px 0 0">支払い：${payPill(next) || '—'}${next.pay_type === 'unpaid' ? ` <button type="button" class="link inline" data-action="meeting-paid" data-id="${next.id}">支払い済みにする</button>` : ''}</p>` : ''}
-      ${recent.length ? `<div class="mt-history">${recent.map((x) => `<div class="list-item small"><div class="grow">${fmtShort(x.scheduled_at)} ${meetingPill(x)} ${payPill(x)}${x.pay_type === 'unpaid' && x.status !== 'canceled' ? ` <button type="button" class="link inline" data-action="meeting-paid" data-id="${x.id}">支払い済みにする</button>` : ''}${x.summary ? `<div class="muted">${esc(x.summary.slice(0, 60))}</div>` : ''}</div>
-          <button type="button" class="btn btn-sm btn-sub" data-action="meeting-done" data-id="${x.id}">${x.status === 'scheduled' ? '結果' : '編集'}</button></div>`).join('')}</div>` : ''}
+  // ---- タブ：プラン・権利 ----
+  const exempt = monthSubs.length - counted;
+  const panePlan = `<div class="card">
+      <div class="between"><b>プラン</b>${memberPill(m)}</div>
+      <p style="margin:6px 0 0"><b class="md-plan">${esc(planLabel(m.plan) || '—')}</b></p>
+      ${m.current_period_end ? `<p class="muted small" style="margin:4px 0 0">次回更新日 ${fmtDate(m.current_period_end)}</p>` : ''}
+      ${m.access_until ? `<p class="muted small" style="margin:4px 0 0">利用期限 ${fmtDate(m.access_until)}</p>` : ''}
+      ${m.cancel_at ? `<p class="muted small" style="margin:4px 0 0">解約済み（${fmtDate(m.cancel_at)} まで利用できます）</p>` : ''}
+      <p class="muted small" style="margin:6px 0 0">プランと利用期限の変更は「基本情報」から行えます。</p>
+      <div class="quota-line"><p class="muted small" style="margin:8px 0 0">今月の提出：${counted}本${exempt ? `（回数に数えない ${exempt}本は別）` : ''}</p>
+        ${counted ? `<button type="button" class="btn-sm btn-sub" data-action="quota-reset" data-member="${m.id}" data-count="${counted}">今月の提出回数を0に戻す</button>` : ''}</div>
     </div>
+    ${creditCard(m, mCredits)}`;
 
-    <div class="section-title"><h2>レッスン</h2><a class="btn btn-sm" href="#/admin/lesson/new/m/${m.id}">＋ 追加</a></div>
+  // ---- タブ：面談 ----
+  const recentMt = mMeetings.filter((x) => x !== nextMt).slice(0, 10);
+  const paneMeeting = `<div class="section-title" style="margin-top:0"><h2>面談</h2><button type="button" class="btn btn-sm" data-action="meeting-add" data-member="${m.id}">＋ 予約</button></div>
+    <div class="card">
+      ${nextMt ? `<div class="next-meeting"><span>次回</span><b>${fmtShort(nextMt.scheduled_at)}</b><small>${nextMt.duration_min}分</small>
+          <a class="btn btn-sm btn-gold" href="#/admin/prep/${nextMt.id}">準備メモ</a>
+          <button type="button" class="btn btn-sm btn-sub" data-action="meeting-move" data-id="${nextMt.id}" data-at="${nextMt.scheduled_at}" data-min="${nextMt.duration_min}">日時変更</button></div>`
+        : '<p class="muted small" style="margin:0">次回の面談は入っていません。LINEで日程が決まったら「＋ 予約」から登録します。</p>'}
+      ${nextMt ? `<p class="small" style="margin:6px 0 0">支払い：${payPill(nextMt) || '—'}${nextMt.pay_type === 'unpaid' ? ` <button type="button" class="link inline" data-action="meeting-paid" data-id="${nextMt.id}">支払い済みにする</button>` : ''}</p>` : ''}
+      ${recentMt.length ? `<div class="mt-history">${recentMt.map((x) => `<div class="list-item small"><div class="grow">${fmtShort(x.scheduled_at)} ${meetingPill(x)} ${payPill(x)}${x.pay_type === 'unpaid' && x.status !== 'canceled' ? ` <button type="button" class="link inline" data-action="meeting-paid" data-id="${x.id}">支払い済みにする</button>` : ''}${x.summary ? `<div class="muted">${esc(x.summary.slice(0, 60))}</div>` : ''}</div>
+          <button type="button" class="btn btn-sm btn-sub" data-action="meeting-done" data-id="${x.id}">${x.status === 'scheduled' ? '結果' : '編集'}</button></div>`).join('')}</div>` : ''}
+    </div>`;
+
+  // ---- タブ：レッスン ----
+  const paneLesson = `<div class="section-title" style="margin-top:0"><h2>レッスン</h2><a class="btn btn-sm" href="#/admin/lesson/new/m/${m.id}">＋ 追加</a></div>
     <div class="card">${lessons.map((l) => `<div class="list-item"><div class="grow">${fmtDate(l.lesson_date)}　<b>${esc(l.title)}</b>
           ${l.read_at ? `<span class="pill ok">既読 ${fmtMD(l.read_at.slice(0, 10))}</span>` : `<span class="pill ${daysAgo(l.created_at) >= UNREAD_DAYS ? 'warn' : 'mute'}">未読${daysAgo(l.created_at) >= 1 ? `（${daysAgo(l.created_at)}日）` : ''}</span>`}</div>
         <span class="row" style="gap:6px"><a class="btn btn-sm btn-sub" href="#/admin/lesson/${l.id}">編集</a>
-          <button type="button" class="btn-sm btn-danger" data-action="delete-lesson" data-id="${l.id}" data-member="${m.id}" data-title="${esc(l.title)}" data-stay="1">取り消し</button></span></div>`).join('') || '<div class="muted">レッスンはまだありません</div>'}</div>
+          <button type="button" class="btn-sm btn-danger" data-action="delete-lesson" data-id="${l.id}" data-member="${m.id}" data-title="${esc(l.title)}" data-stay="1">取り消し</button></span></div>`).join('') || '<div class="muted">レッスンはまだありません</div>'}</div>`;
 
-    ${mExits && (mExits.length || m.cancel_at || !isActive(m)) ? exitCard(m, mExits) : ''}
-
-    <div class="section-title"><h2>担当者メモ</h2><span class="muted small">会員には見えません</span></div>
-    <div class="card">
-      <form class="form note-form" data-form="staff-note" data-member="${m.id}">
-        <textarea name="body" rows="2" maxlength="2000" placeholder="例：10/5 LINEで追加動画1本の申し込み。振込確認済み" aria-label="担当者メモ"></textarea>
-        <div class="between"><label class="switch small"><input type="checkbox" name="pinned"><span>上に固定する</span></label>
-          <button class="btn-sm" type="submit">メモを残す</button></div>
-      </form>
-      ${mNotes.map((n) => `<div class="note${n.pinned ? ' pinned' : ''}"><p class="pre">${esc(n.body)}</p>
-          <div class="note-foot"><span class="muted small">${n.pinned ? '📌 ' : ''}${fmtShort(n.created_at)}</span>
-            <button type="button" class="link" data-action="note-pin" data-id="${n.id}" data-pinned="${n.pinned}">${n.pinned ? '固定を外す' : '固定'}</button>
-            <button type="button" class="link" data-action="note-delete" data-id="${n.id}">削除</button></div></div>`).join('') || '<p class="muted small" style="margin:8px 0 0">まだメモはありません</p>'}
-    </div>
-
-    <div class="section-title"><h2>最近の動き（30日）</h2><span class="muted small">練習記録 ${new Set(mPractice.map((x) => x.practiced_on)).size}日</span></div>
-    <div class="card">${feed.length ? feed.map((f) => `<div class="list-item small feed"><div class="grow">${f.h}</div><span class="muted">${fmtDate(f.t)}</span></div>`).join('') : '<p class="muted small" style="margin:0">30日間、動きがありません</p>'}</div>
-    `;
-    })()}
-    <div class="section-title"><h2>ドリル定期公開</h2>${roadmap.length ? `<a class="btn btn-sm" href="#/admin/roadmap/${m.id}">編集する</a>` : ''}</div>
+  // ---- タブ：ドリル（定期公開・今月の課題）----
+  const paneDrill = `<div class="section-title" style="margin-top:0"><h2>ドリル定期公開</h2>${roadmap.length ? `<a class="btn btn-sm" href="#/admin/roadmap/${m.id}">編集する</a>` : ''}</div>
     <div class="card">${roadmap.length ? adminRoadmapSummary(roadmap, { practice: rmPractice, reflections: rmRefs, goal: rmGoals[0]?.goal }) : `
       <p class="muted small" style="margin:0">初回カウンセリングで決めた内容をもとに、毎月1本ずつ公開するドリルの計画を作ります。あとから自由に変更できます。</p>
       <form class="form" data-form="roadmap-create" data-id="${m.id}">
@@ -2921,9 +2904,10 @@ async function viewMemberDetail(id) {
         </div>
         <button class="btn-block btn-sub" type="submit">＋ 課題を追加</button>
       </form>
-    </div>
+    </div>`;
 
-    <div class="section-title"><h2>提出動画</h2><span class="muted small">押すと動画が見られます</span></div>
+  // ---- タブ：提出動画 ----
+  const paneVideo = `<div class="section-title" style="margin-top:0"><h2>提出動画</h2><span class="muted small">押すと動画が見られます</span></div>
     <div class="card">${subs.map((s) => {
       const sl = lessons.filter((l) => l.submission_id === s.id);
       return `<details class="sub-item"><summary class="list-item"><div><span class="sub-open" aria-hidden="true">▶</span>${fmtDate(s.created_at)}　${esc(s.club)} / ${esc(s.angle)}${s.quota_exempt ? ' <span class="pill mute">回数外</span>' : ''}</div>
@@ -2934,12 +2918,77 @@ async function viewMemberDetail(id) {
           ${sl.length ? `<p class="small">この動画のレッスン：${sl.map((l) => `<a href="#/admin/lesson/${l.id}">${fmtDate(l.lesson_date)}「${esc(l.title)}」</a>`).join('、')}</p>` : ''}
           <button type="button" class="btn-sm btn-sub" data-action="sub-exempt" data-id="${s.id}" data-on="${s.quota_exempt ? 0 : 1}">${s.quota_exempt ? '提出回数に数えるように戻す' : 'この動画を提出回数に数えない（1本戻す）'}</button></div>
       </details>`;
-    }).join('') || '<div class="muted">提出はまだありません</div>'}</div>
+    }).join('') || '<div class="muted">提出はまだありません</div>'}</div>`;
 
-    <div class="section-title cat-celebrate"><h2>お祝い</h2><button type="button" class="btn btn-sm btn-cat cat-celebrate" data-action="cele-send" data-member="${m.id}" data-name="${esc(m.name || '')}">＋ お祝いを送る</button></div>
+  // ---- タブ：カウンセリング（アンケートの回答・カウンセリングシート）----
+  const paneKarte = `${staff ? '' : surveyCard(mSurvey)}${karteForm(m.id, karte)}`;
+
+  // ---- タブ：担当者メモ ----
+  const paneMemo = `<div class="section-title" style="margin-top:0"><h2>担当者メモ</h2><span class="muted small">会員には見えません</span></div>
+    <div class="card">
+      <form class="form note-form" data-form="staff-note" data-member="${m.id}">
+        <textarea name="body" rows="2" maxlength="2000" placeholder="例：10/5 LINEで追加動画1本の申し込み。振込確認済み" aria-label="担当者メモ"></textarea>
+        <div class="between"><label class="switch small"><input type="checkbox" name="pinned"><span>上に固定する</span></label>
+          <button class="btn-sm" type="submit">メモを残す</button></div>
+      </form>
+      ${mNotes.map((n) => `<div class="note${n.pinned ? ' pinned' : ''}"><p class="pre">${esc(n.body)}</p>
+          <div class="note-foot"><span class="muted small">${n.pinned ? '📌 ' : ''}${fmtShort(n.created_at)}</span>
+            <button type="button" class="link" data-action="note-pin" data-id="${n.id}" data-pinned="${n.pinned}">${n.pinned ? '固定を外す' : '固定'}</button>
+            <button type="button" class="link" data-action="note-delete" data-id="${n.id}">削除</button></div></div>`).join('') || '<p class="muted small" style="margin:8px 0 0">まだメモはありません</p>'}
+    </div>`;
+
+  // ---- タブ：お祝い ----
+  const paneCele = `<div class="section-title cat-celebrate" style="margin-top:0"><h2>お祝い</h2><button type="button" class="btn btn-sm btn-cat cat-celebrate" data-action="cele-send" data-member="${m.id}" data-name="${esc(m.name || '')}">＋ お祝いを送る</button></div>
     <div class="card">${mCeles.length ? mCeles.map((c) => `<div class="list-item small"><span>${STAMP[c.stamp] || '🏆'} ${esc(c.title)}</span><span class="muted">${fmtDate(c.created_at)} ${c.seen_at ? '<span class="pill ok">見ました</span>' : '<span class="pill mute">未読</span>'}</span></div>`).join('')
-      : '<p class="muted small" style="margin:0">入会1か月・練習の継続・目標達成など、いつでもアプリにお祝いを送れます。</p>'}</div>
-  </div></div>
+      : '<p class="muted small" style="margin:0">入会1か月・練習の継続・目標達成など、いつでもアプリにお祝いを送れます。</p>'}</div>`;
+
+  // ---- タブ：サマリ（ひと目で分かる情報と、最近の動き）----
+  const feed = [
+    ...subs.filter((x) => daysAgo(x.created_at) <= 30).map((x) => ({ t: x.created_at, h: `▶ 動画を提出（${esc(x.club)} / ${esc(x.angle)}）${x.status === 'pending' ? ' <span class="pill warn">確認待ち</span>' : ''}` })),
+    ...lessons.filter((x) => daysAgo(x.lesson_date) <= 30).map((x) => ({ t: x.lesson_date, h: `✎ レッスン「${esc(x.title)}」を送付${x.read_at ? '' : ' <span class="pill mute">未読</span>'}` })),
+    ...mRounds.filter((x) => daysAgo(x.played_on) <= 30).map((x) => ({ t: x.played_on, h: `⛳ スコア <b>${x.score}</b>（${esc(x.course_name)}）` })),
+    ...rmRefs.filter((x) => daysAgo(x.updated_at) <= 30).map((x) => ({ t: x.updated_at, h: `💬 ふり返り：${esc(x.body.slice(0, 50))}` })),
+    ...mMeetings.filter((x) => x.status !== 'scheduled' && daysAgo(x.scheduled_at) <= 30).map((x) => ({ t: x.scheduled_at, h: `◷ 面談 ${meetingPill(x)}` })),
+  ].sort((a, b) => (a.t < b.t ? 1 : -1)).slice(0, 10);
+  const tile = (tab, label, value, sub = '', cls = '') => `<button type="button" class="md-tile ${cls}" data-action="md-tab" data-tab="${tab}"><span>${label}</span><b>${value}</b>${sub ? `<small>${sub}</small>` : ''}</button>`;
+  const theme = themeOfMonth(m, rmCur);
+  const paneSummary = `<div class="md-tiles">
+      ${tile('plan', 'プラン', esc(planLabel(m.plan) || '—'), m.current_period_end ? `次回更新 ${fmtMD(m.current_period_end.slice(0, 10))}` : m.access_until ? `期限 ${fmtMD(m.access_until)}` : '')}
+      ${!staff && cs ? tile('plan', '権利の残り', `動画${cs.video.length}・面談${cs.meeting.length}`, `今月の提出 ${counted}本`) : tile('plan', '今月の提出', `${counted}<small>本</small>`)}
+      ${tile('meeting', '次回の面談', nextMt ? fmtShort(nextMt.scheduled_at) : 'なし', nextMt ? `${nextMt.duration_min}分` : '')}
+      ${tile('drill', 'ロードマップ', rmMm ? `${rmMm.cur}<small>/${rmMm.total}か月目</small>` : '未作成', rmSt?.soon.length ? '来月までに設定もれ' : rmSt?.later.length ? '再来月に設定もれ' : '', rmSt?.soon.length ? 'bad' : rmSt?.later.length ? 'warn' : '')}
+      ${tile('video', '確認待ちの動画', `${pendingSubs}<small>本</small>`, '', pendingSubs ? 'bad' : '')}
+      ${tile('lesson', '未読のレッスン', `${unreadLessons}<small>本</small>`, '', unreadLessons ? 'warn' : '')}
+    </div>
+    <div class="card md-goal">
+      <div><span class="muted small">目標</span><p>${m.goal ? esc(m.goal) : '<span class="muted">—</span>'}</p></div>
+      <div><span class="muted small">今月のテーマ</span><p>${theme ? esc(theme) : '<span class="muted">—</span>'}</p></div>
+      <div><span class="muted small">スコア</span><p>ベスト ${esc(mst.best ?? '—')}・平均 ${esc(mst.avg ?? '—')}</p></div>
+    </div>
+    ${pinned.length ? `<div class="section-title"><h2>📌 固定メモ</h2><button type="button" class="btn btn-sm btn-sub" data-action="md-tab" data-tab="memo">メモを見る</button></div>
+    <div class="card">${pinned.map((n) => `<div class="note pinned"><p class="pre">${esc(n.body)}</p></div>`).join('')}</div>` : ''}
+    <div class="section-title"><h2>最近の動き（30日）</h2><span class="muted small">練習記録 ${new Set(mPractice.map((x) => x.practiced_on)).size}日</span></div>
+    <div class="card">${feed.length ? feed.map((f) => `<div class="list-item small feed"><div class="grow">${f.h}</div><span class="muted">${fmtDate(f.t)}</span></div>`).join('') : '<p class="muted small" style="margin:0">30日間、動きがありません</p>'}</div>`;
+
+  const tabs = [
+    ['summary', 'サマリ', paneSummary],
+    ['info', '基本情報', paneInfo],
+    ['plan', 'プラン・権利', panePlan],
+    ['meeting', '面談', paneMeeting],
+    ['lesson', 'レッスン', paneLesson, unreadLessons],
+    ['drill', 'ドリル', paneDrill, rmSt?.soon.length ? '!' : 0],
+    ['video', '提出動画', paneVideo, pendingSubs],
+    ['karte', 'カウンセリング', paneKarte],
+    ['memo', '担当者メモ', paneMemo, mNotes.length ? String(mNotes.length) : 0, 'mute'],
+    ['cele', 'お祝い', paneCele],
+  ];
+  const cur = tabs.some(([k]) => k === tab) ? tab : 'summary';
+  return header(m.name || '会員詳細', 'admin/members') + `<div class="content wide md-page">
+    ${m.deletion_requested_at ? `<div class="notice warn-box">この会員はアカウントの削除を申し込んでいます。<b>${fmtDate(deleteOn(m))}</b> にすべての記録が削除されます（それまでに会員がログインすると元に戻せます）。</div>`
+      : m.cancel_at ? `<div class="notice">Webで解約済みです。<b>${fmtDate(m.cancel_at)}</b> まで利用できます。</div>` : ''}
+    <div class="card md-head"><div class="between"><div><b>${esc(m.name || '（名前未設定）')}</b><div class="muted small">${esc(m.email)}・登録日 ${fmtDate(m.created_at)}</div></div>${memberPill(m)}</div></div>
+    <div class="md-tabs" role="tablist">${tabs.map(([k, label, , badge, bc]) => `<button type="button" role="tab" data-action="md-tab" data-tab="${k}" class="${k === cur ? 'on' : ''}" aria-selected="${k === cur}">${label}${badge ? `<em class="${bc || ''}">${badge}</em>` : ''}</button>`).join('')}</div>
+    ${tabs.map(([k, , html]) => `<section class="md-pane" data-pane="${k}"${k === cur ? '' : ' hidden'}>${html}</section>`).join('')}
   </div>` + adminNav('admin/members');
 }
 
@@ -3072,7 +3121,7 @@ async function viewMeetingPrep(id) {
       <div class="section-title" style="margin-top:0"><h2>前回の面談のまとめ</h2></div>
       <div class="card">${prev?.summary ? `<p class="pre" style="margin:0">${esc(prev.summary)}</p>` : '<p class="muted small" style="margin:0">記録がありません</p>'}</div>
 
-      <div class="section-title"><h2>カウンセリングシート</h2><a class="muted small" href="#/admin/member/${mid}">編集 ›</a></div>
+      <div class="section-title"><h2>カウンセリングシート</h2><a class="muted small" href="#/admin/member/${mid}/karte">編集 ›</a></div>
       <div class="card">${KARTE_FIELDS.filter(([n]) => karte?.[n]).map(([n, label]) => `<div class="karte-row"><span>${label}</span><p class="pre">${esc(karte[n])}</p></div>`).join('') || '<p class="muted small" style="margin:0">まだ記入されていません</p>'}</div>
 
       <div class="section-title"><h2>担当者メモ</h2><span class="muted small">固定＋この期間</span></div>
@@ -3829,7 +3878,7 @@ async function viewLessonForm(route) {
   ]);
   lessonTemplates = tpls;
   const pickedIds = new Set(picked.map((x) => x.drill_id));
-  const back = `admin/member/${memberId}`;
+  const back = `admin/member/${memberId}/lesson`;
   // 書きかけがあれば復元する
   const dKey = lessonDraftKey({ id: lesson.id, submission: submission?.id, member: memberId });
   const draft = readDraft(dKey);
@@ -3990,7 +4039,7 @@ async function render() {
       if (r[1] === 'drills') return paint(await viewDrills());
       if (r[1] === 'drill' && r[2]) return paint(await viewDrillDetail(r[2]));
       if (r[1] === 'roadmap' && r[2]) return paint(await viewRoadmapEdit(r[2]));
-      if (r[1] === 'member' && r[2]) return paint(await viewMemberDetail(r[2]));
+      if (r[1] === 'member' && r[2]) return paint(await viewMemberDetail(r[2], r[3]));
       if (r[1] === 'lesson' && r[2]) return paint(await viewLessonForm(r));
       if (r[1] === 'inbox') return paint(await viewInbox());
       return go('admin/dashboard');
@@ -4731,6 +4780,19 @@ const actions = {
     toast(back ? 'レッスンを取り消しました。提出動画は確認待ちに戻りました' : 'レッスンを取り消しました');
     if (el.dataset.stay) render(); else go(`admin/member/${el.dataset.member}`);
   },
+  // 会員詳細のタブ：画面を読み直さずに切り替える（アドレスにも残すので、保存して描き直しても同じタブのまま）
+  'md-tab': (el) => {
+    const t = el.dataset.tab;
+    document.querySelectorAll('.md-pane').forEach((p) => { p.hidden = p.dataset.pane !== t; });
+    document.querySelectorAll('.md-tabs [data-tab]').forEach((b) => { const on = b.dataset.tab === t; b.classList.toggle('on', on); b.setAttribute('aria-selected', on); });
+    const id = getRoute()[2];
+    const h = `#/admin/member/${id}${t === 'summary' ? '' : `/${t}`}`;
+    try { history.replaceState(history.state, '', h); } catch { /* 何もしない */ }
+    paintedRoute = h; state.curRoute = h;
+    const bar = document.querySelector('.md-tabs');
+    bar?.querySelector('.on')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    if (bar && bar.getBoundingClientRect().top < 0) window.scrollTo({ top: window.scrollY + bar.getBoundingClientRect().top - (parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--top-h')) || 0) });
+  },
   'quota-reset': async (el) => {
     const ok = await confirmDialog({
       title: '今月の提出回数を0に戻しますか？',
@@ -5087,7 +5149,7 @@ const forms = {
       }
     }
     toast(notice);
-    go(f.dataset.submission && !f.dataset.id ? 'admin/inbox' : `admin/member/${f.dataset.member}`);
+    go(f.dataset.submission && !f.dataset.id ? 'admin/inbox' : `admin/member/${f.dataset.member}/lesson`);
   },
 };
 
