@@ -154,6 +154,18 @@ input[type=range]::-moz-range-thumb{width:20px;height:20px;border:0;border-radiu
   -webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);color:#fff;
   box-shadow:0 10px 32px rgba(0,0,0,.6);max-width:86vw;text-align:center}
 #rHand.on{display:block}
+/* 保存の進み具合（保存中 → 保存しました）。保存先のメニューを閉じていても見える位置に出す */
+#rStatus{position:absolute;left:50%;top:calc(env(safe-area-inset-top) + 96px);transform:translate(-50%,-8px);z-index:9;opacity:0;pointer-events:none;
+  display:flex;align-items:center;gap:8px;padding:9px 16px;border-radius:999px;font-size:14px;font-weight:700;white-space:nowrap;
+  background:rgba(10,13,17,.9);color:#fff;box-shadow:0 6px 20px rgba(0,0,0,.45);transition:opacity .2s,transform .2s}
+#rStatus.on{opacity:1;transform:translate(-50%,0)}
+#rStatus.done{background:#1f8a4c}
+#rStatus.fail{background:#c0392b}
+#rStatus.info{background:#3a4350}
+#rStatus i{width:14px;height:14px;border-radius:50%;border:2px solid rgba(255,255,255,.35);border-top-color:#fff;animation:rspin .8s linear infinite}
+@keyframes rspin{to{transform:rotate(360deg)}}
+#rSave.busy,#rImg.busy{background:#c9a14a;color:#111}
+#rSave.done,#rImg.done{background:#1f8a4c;color:#fff}
 #rHand .t{font-size:14.4px;font-weight:600;margin-bottom:2px}
 #rHand .n{font-size:12.4px;color:#9fb0c0;margin-bottom:10px;word-break:break-all}
 #rHand .b{display:flex;gap:8px;justify-content:center}
@@ -376,7 +388,7 @@ a.hbtn{text-decoration:none;color:inherit;box-sizing:border-box}
       <h1>SwingFrame</h1>
       <p>スイング撮影・スイング分析</p>
       <!-- 表示用の版数。sw.js の CACHE と必ずそろえること（片方だけ上げると更新に気づけません） -->
-      <div id="hVer">v54</div>
+      <div id="hVer">v55</div>
     </div>
     <button class="hbtn pri" id="hShoot"><i>●</i><span>スイングを撮影<em>ガイドに合わせて撮影</em></span></button>
     <button class="hbtn" id="hLib"><i>▤</i><span>ライブラリ<em id="hLibSub">保存した動画と画像</em></span></button>
@@ -504,6 +516,7 @@ a.hbtn{text-decoration:none;color:inherit;box-sizing:border-box}
     <canvas id="rCanvas"></canvas>
     <div id="rEmpty">まだ録画がありません</div>
     <div id="rSkelMsg"></div>
+    <div id="rStatus" role="status" aria-live="polite"></div>
     <div id="rHand">
       <div class="t">書き出しました</div>
       <div class="n" id="rHandName"></div>
@@ -2395,10 +2408,11 @@ function handoffToCoach(blob,name,note,edited){
     };
     });
   }).then(function(){
-    toast('提出画面を開きます');
-    location.href='../#/submit/swingframe';
+    setTimeout(function(){location.href='../#/submit/swingframe'},500);
+    return 'coach';
   }).catch(function(){
     toast('動画を渡せませんでした。カメラロールに保存してから送ってください');
+    return 'fail';
   });
 }
 function setDest(d){
@@ -2408,9 +2422,41 @@ function setDest(d){
   });
   $('#destHint').textContent = destHintFor(dest);
 }
+/* how a save is going, on the button and as a pill over the video:
+   保存中… → ✓ 保存しました (or why not). The button returns to normal after */
+var saveT=0;
+function saveUI(st,msg,btn){
+  var b=btn||$('#rSave'),s=$('#rStatus');
+  clearTimeout(saveT);
+  ['#rSave','#rImg'].forEach(function(id){$(id).classList.remove('busy','done')});
+  $('#rSave').textContent='動画を保存';$('#rImg').textContent='画像で保存';
+  s.className='';
+  if(!st)return;
+  if(st==='busy'){
+    b.classList.add('busy');b.textContent=msg;
+    s.className='on';s.innerHTML='<i></i>'+msg;
+    return;
+  }
+  if(st==='done'){b.classList.add('done');b.textContent=msg}
+  s.className='on '+st;s.textContent=msg;
+  saveT=setTimeout(function(){saveUI(null)},st==='done'?2600:3600);
+}
+/* what saveTo reports back, in words for the person */
+function saveResult(r,kind,btn){
+  var img=kind==='image';
+  var M={
+    app:['done',img?'✓ 画像をライブラリに保存しました':'✓ ライブラリに保存しました'],
+    shared:['done',dest==='roll'?'✓ 保存しました':'✓ 渡しました'],
+    dl:['done','✓ 端末に保存しました'],
+    exists:['info','この動画はすでにライブラリに保存されています'],
+    coach:['done','✓ 提出画面を開きます'],
+    fail:['fail','保存できませんでした']
+  }[r]||[null,''];
+  saveUI(M[0],M[1],btn);
+}
 function saveTo(blob,name,kind,meta){
   if(dest==='coach'){
-    if(kind!=='video'){ toast('コーチに送れるのは動画だけです'); return Promise.resolve(); }
+    if(kind!=='video'){ toast('コーチに送れるのは動画だけです'); return Promise.resolve('cancel'); }
     return handoffToCoach(blob,name,meta&&meta.note,!(meta&&meta.original));
   }
   if(dest==='app'){
@@ -2419,21 +2465,15 @@ function saveTo(blob,name,kind,meta){
        the same swing. Saying so is more use than quietly duplicating it.
        Drawings and trims produce a genuinely different video, and still frames
        are not stored anywhere else, so those do belong here. */
-    if(kind==='video' && meta && meta.original){
-      toast('この動画はすでにライブラリにあります');
-      return Promise.resolve();
-    }
+    if(kind==='video' && meta && meta.original)return Promise.resolve('exists');
     var p = kind==='image'
       ? addShot({id:Date.now(),ts:new Date().toISOString(),blob:blob,
           note:(meta&&meta.note)||'',from:(meta&&meta.from)||null})
       : addClip({id:Date.now(),ts:new Date().toISOString(),blob:blob,
           guide:(meta&&meta.guide)||S.guide,fps:fps,slot:slot,type:blob.type,
           swing:null,note:(meta&&meta.note)||'',fav:false,cut:true});
-    return p.then(function(){
-        toast(kind==='image'?'画像をライブラリに保存しました':'線を入れた動画をライブラリに保存しました');
-        refreshHome();
-      })
-      .catch(function(){ toast('保存できませんでした'); });
+    return p.then(function(){ refreshHome(); return 'app'; })
+      .catch(function(){ return 'fail'; });
   }
   /* The camera roll is not writable from a web page on iPhone — the share menu
      is the only way in, and the person taps 「ビデオを保存」 there themselves.
@@ -2442,16 +2482,15 @@ function saveTo(blob,name,kind,meta){
   try{ f=new File([blob],name,{type:blob.type}); }catch(e){}
   if(f&&canShare(f)){
     return navigator.share({files:[f]})
-      .then(function(){ toast('完了しました'); })
+      .then(function(){ return 'shared'; })
       .catch(function(err){
-        if(err&&err.name==='AbortError')return;     /* just closed the sheet */
-        try{ dl(blob,name); toast('共有できなかったので端末に保存しました'); }
-        catch(e){ toast('保存できませんでした'); }
+        if(err&&err.name==='AbortError')return 'cancel';     /* just closed the sheet */
+        try{ dl(blob,name); return 'dl'; }
+        catch(e){ return 'fail'; }
       });
   }
-  try{ dl(blob,name); toast('端末にダウンロードしました'); }
-  catch(e){ toast('保存できませんでした'); }
-  return Promise.resolve();
+  try{ dl(blob,name); return Promise.resolve('dl'); }
+  catch(e){ return Promise.resolve('fail'); }
 }
 /* Handing a file to the camera roll goes through the share sheet, and iPhones
    only open that sheet while a tap is still "live". Burning the drawing into a
@@ -2464,25 +2503,25 @@ function offerSave(blob,name){
   $('#rHandName').textContent=name.replace(/^swing_/,'').replace(/\.(mp4|webm)$/,'')
     +'（'+(blob.size/1048576).toFixed(1)+'MB）';
   $('#rHand').classList.add('on');
+  saveUI('info','準備できました。下のボタンで保存します');
 }
 $('#rHandGo').onclick=function(){
   if(!pending)return;
   var f=null;
   try{ f=new File([pending.blob],pending.name,{type:pending.blob.type}); }catch(e){}
   if(f&&canShare(f)){
+    saveUI('busy','保存中…');
     navigator.share({files:[f]})
-      .then(function(){ $('#rHand').classList.remove('on'); pending=null; })
+      .then(function(){ $('#rHand').classList.remove('on'); pending=null; saveResult('shared','video'); })
       .catch(function(err){
-        if(err&&err.name==='AbortError')return;       /* just closed the sheet */
+        if(err&&err.name==='AbortError'){saveUI(null);return}       /* just closed the sheet */
         dl(pending.blob,pending.name);
-        toast('共有できなかったので端末に保存しました');
-        $('#rHand').classList.remove('on'); pending=null;
+        $('#rHand').classList.remove('on'); pending=null; saveResult('dl','video');
       });
     return;
   }
   dl(pending.blob,pending.name);
-  toast('端末にダウンロードしました');
-  $('#rHand').classList.remove('on'); pending=null;
+  $('#rHand').classList.remove('on'); pending=null; saveResult('dl','video');
 };
 $('#rHandNo').onclick=function(){ pending=null; $('#rHand').classList.remove('on'); };
 /* still frame with the drawings burned in */
@@ -2495,9 +2534,11 @@ $('#rImg').onclick=function(){
   x.drawImage(rv,0,0,W,H);
   var kk=W/(rc.width/(window.devicePixelRatio||1));
   paintSkeleton(x,W,H,kk); paintShapes(x,W,H,kk);
+  saveUI('busy','保存中…',$('#rImg'));
   c.toBlob(function(b){
-    if(!b){toast('画像を作成できませんでした');return}
-    saveTo(b,'swing_'+cur.id+'_'+Math.round(rv.currentTime*100)+'.png','image',{note:cur.note||'',from:cur.id});
+    if(!b){saveUI('fail','画像を作成できませんでした');return}
+    saveTo(b,'swing_'+cur.id+'_'+Math.round(rv.currentTime*100)+'.png','image',{note:cur.note||'',from:cur.id})
+      .then(function(r){saveResult(r,'image',$('#rImg'))});
   },'image/png');
 };
 /* clip export: re-encode with the overlay only when there is something to burn */
@@ -2537,9 +2578,13 @@ $('#rSave').onclick=function(){
      A video going to the coach is sent without it: the coach studies the swing
      itself and the overlay gets in the way. Lines and the trim still go. */
   var withSkel=skelOn&&dest!=='coach';
+  function saveOriginal(){
+    saveUI('busy',dest==='coach'?'送る準備中…':'保存中…');
+    saveTo(cur.blob,'swing_'+cur.id+'.'+ext,'video',{guide:cur.guide,note:cur.note,original:true}).then(function(r){saveResult(r,'video')});
+  }
   if(dest==='coach'&&skelOn)toast('骨格は外して、コーチに送ります');
   if(!lines.length&&!needTrim&&!withSkel){
-    saveTo(cur.blob,'swing_'+cur.id+'.'+ext,'video',{guide:cur.guide,note:cur.note,original:true});
+    saveOriginal();
     return;
   }
   if(!rv.videoWidth){toast('映像がありません');return}
@@ -2550,7 +2595,7 @@ $('#rSave').onclick=function(){
   var st=c.captureStream?c.captureStream(outFps):null;
   var m=mime();
   if(!st||m===null){
-    saveTo(cur.blob,'swing_'+cur.id+'.'+ext,'video',{guide:cur.guide,note:cur.note,original:true});
+    saveOriginal();
     return;
   }
   var ad=reviewAudio();
@@ -2559,12 +2604,12 @@ $('#rSave').onclick=function(){
   var outStream=new MediaStream(tracks);
   var rec;
   try{rec=new MediaRecorder(outStream,m?{mimeType:m,videoBitsPerSecond:vbps(outFps)}:{})}
-  catch(e){saveTo(cur.blob,'swing_'+cur.id+'.'+ext,'video',{guide:cur.guide,note:cur.note,original:true});return}
+  catch(e){saveOriginal();return}
   var parts=[],raf=0,k=W/(rc.width/(window.devicePixelRatio||1)),stopped=false;
   rec.ondataavailable=function(e){if(e.data&&e.data.size)parts.push(e.data)};
   rec.onstop=function(){
     burning=false;
-    $('#rSave').textContent='動画で保存';
+    saveUI('busy',dest==='coach'?'送る準備中…':'保存中…');
     cancelAnimationFrame(raf);
     rv.pause();
     var t=rec.mimeType||'video/webm';
@@ -2573,12 +2618,16 @@ $('#rSave').onclick=function(){
        share sheet has to wait for a fresh tap. Written as an ordinary MP4 so
        the phone reads its length correctly (see flatMp4) */
     flatMp4(new Blob(parts,{type:t})).then(function(b){
-      if(dest==='app'||dest==='coach') saveTo(b,nm,'video',{guide:cur.guide,note:cur.note});
+      if(dest==='app'||dest==='coach') saveTo(b,nm,'video',{guide:cur.guide,note:cur.note}).then(function(r){saveResult(r,'video')});
       else offerSave(b,nm);
     });
   };
   function frame(){
     try{x.drawImage(rv,0,0,W,H);if(withSkel)paintSkeleton(x,W,H,k);paintShapes(x,W,H,k)}catch(e){}
+    if(begun&&t1>t0){
+      var pc=Math.max(0,Math.min(99,Math.round((rv.currentTime-t0)/(t1-t0)*100)));
+      if(pc!==frame.pc){frame.pc=pc;saveUI('busy','書き出し中… '+pc+'%')}
+    }
     if(!stopped&&rv.currentTime>=t1-0.02)return finish();
     raf=requestAnimationFrame(frame);
   }
@@ -2602,13 +2651,13 @@ $('#rSave').onclick=function(){
       if(rec.state!=='inactive'){try{rec.stop()}catch(e){}return}
       /* nothing was ever written: put the screen back rather than leave the
          button saying 書出中 for ever */
-      burning=false;$('#rSave').textContent='動画で保存';
+      burning=false;
       cancelAnimationFrame(raf);rv.pause();
-      toast('書き出せませんでした。もう一度お試しください');
+      saveUI('fail','書き出せませんでした。もう一度お試しください');
     },250);
   }
   burning=true;
-  $('#rSave').textContent='書出中';
+  saveUI('busy','書き出し中…');
   rv.pause();rv.playbackRate=1;
   var went=false;
   var go=function(){
