@@ -1349,7 +1349,7 @@ function swingPair(s, lessons) {
   const unread = lessons.some((l) => !l.read_at);
   return `<article class="case${lessons.length ? '' : ' waiting'}${unread ? ' unread' : ''}">
     <div class="case-head">
-      <span class="case-title">${esc(s.club || 'スイング')}<small>・${esc(s.angle || '')}</small></span>
+      <span class="case-title"><span class="case-date">${mmdd(s.created_at)}</span>${esc(s.club || 'スイング')}<small>・${esc(s.angle || '')}</small></span>
       ${caseStatus(lessons)}
     </div>
     ${s.question ? `<p class="case-q"><b>相談</b>${esc(s.question)}</p>` : ''}
@@ -1370,7 +1370,7 @@ function swingPair(s, lessons) {
 // 動画なしでコーチから直接届いたレッスン
 function looseCase(l) {
   return `<article class="case${l.read_at ? '' : ' unread'}">
-    <div class="case-head"><span class="case-title">コーチからのレッスン</span>${caseStatus([l])}</div>
+    <div class="case-head"><span class="case-title"><span class="case-date">${mmdd(l.lesson_date)}</span>コーチからのレッスン</span>${caseStatus([l])}</div>
     <div class="case-coach">${lessonCard(l)}</div>
   </article>`;
 }
@@ -1404,7 +1404,7 @@ async function viewHistory() {
 
   return header('レッスン・送った動画') + `<div class="content wide">
     <p class="page-lead">1枚のカードが1回の相談です。<b>① あなたのスイング</b> と、それへの <b>② コーチの解説</b> がセットになっています。</p>
-    <p class="muted small" style="margin:0 0 8px">送った動画は送信から${RETENTION_LABEL}見られます。</p>
+    <p class="muted small" style="margin:0 0 8px">新しい順に並んでいます。送った動画は送信から${RETENTION_LABEL}見られます。</p>
     ${clubs.length > 1 ? `<div class="filter-chips" role="group" aria-label="クラブで絞り込む">
       ${[['', 'すべて'], ...clubs.map((c) => [c, c])].map(([v, label]) => `<button type="button" data-action="history-filter" data-club="${esc(v)}" class="${filter === v ? 'on' : ''}" aria-pressed="${filter === v}">${esc(label)}</button>`).join('')}
     </div>` : ''}
