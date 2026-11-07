@@ -1776,3 +1776,10 @@ body.rec-open{overflow:hidden}
 .beginner-card.survey-card .bc-ic{font-size:30px}
 /* アンケートの生年月日 */
 .survey input[type="date"]{max-width:240px}
+
+/* 会員詳細：かんたんアンケートの回答 */
+.survey-ans dl{margin:8px 0 0;display:grid;gap:0}
+.survey-ans dl div{display:flex;gap:12px;padding:6px 0;border-bottom:1px dashed var(--line);font-size:14px}
+.survey-ans dl div:last-child{border:0}
+.survey-ans dt{flex:none;width:7em;color:var(--muted);font-size:13px}
+.survey-ans dd{margin:0;font-weight:700}

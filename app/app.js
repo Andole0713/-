@@ -2786,12 +2786,13 @@ async function viewMemberDetail(id) {
     must(sb.from('roadmap_reflections').select('item_id, body, updated_at').eq('member_id', id)),
     must(sb.from('roadmap_goals').select('goal').eq('member_id', id)),
   ]) : [[], [], []];
-  const [mRounds, mMeetings, mNotes, mPractice, karte] = await Promise.all([
+  const [mRounds, mMeetings, mNotes, mPractice, karte, mSurvey] = await Promise.all([
     must(sb.from('rounds').select('played_on, course_name, score, holes, created_at').eq('member_id', id).order('played_on', { ascending: false })),
     must(sb.from('meetings').select('*').eq('member_id', id).order('scheduled_at', { ascending: false })),
     must(sb.from('staff_notes').select('id, body, pinned, created_at').eq('member_id', id).order('pinned', { ascending: false }).order('created_at', { ascending: false })),
     must(sb.from('roadmap_practice').select('practiced_on').eq('member_id', id).gte('practiced_on', isoDaysFrom(-30).slice(0, 10))),
     sb.from('member_karte').select('*').eq('member_id', id).maybeSingle().then((r) => r.data),
+    sb.from('member_survey').select('*').eq('member_id', id).maybeSingle().then((r) => (r.error ? undefined : r.data), () => undefined),
   ]);
   const mCredits = await loadCredits(id);
   const mExits = await sb.from('exit_reasons').select('*').eq('member_id', id).order('created_at', { ascending: false }).then((r) => (r.error ? null : r.data || []));
@@ -2846,6 +2847,7 @@ async function viewMemberDetail(id) {
 
     ${creditCard(m, mCredits)}
 
+    ${m.role === 'admin' ? '' : surveyCard(mSurvey)}
     ${karteForm(m.id, karte)}
 
     </div><div class="col-side">
@@ -2951,6 +2953,25 @@ const KARTE_FIELDS = [
   ['contact_pref', '連絡方法・連絡しやすい時間帯', '例：LINE。平日20時以降', 300],
   ['notes', 'その他', '例：3月は仕事の繁忙期で練習量が落ちる', 2000],
 ];
+// 会員詳細：かんたんアンケートの回答（スタッフだけが見る）
+function surveyCard(sv) {
+  if (sv === undefined) return '';
+  if (!sv) return '<div class="card survey-ans"><b>かんたんアンケート</b><p class="muted small" style="margin:4px 0 0">まだ回答していません。</p></div>';
+  let age = '';
+  if (sv.birth_date) { const t = today(); const b = sv.birth_date; age = `（${Number(t.slice(0, 4)) - Number(b.slice(0, 4)) - (t.slice(5) < b.slice(5) ? 1 : 0)}歳）`; }
+  const rows = [
+    ['何で知ったか', [optLabel('referral', sv.referral), sv.referral_note].filter(Boolean).join('・')],
+    ['生年月日', sv.birth_date ? `${fmtDate(sv.birth_date)}${age}` : optLabel('age_band', sv.age_band)],
+    ['ゴルフ歴', optLabel('golf_years', sv.golf_years)],
+    ['今のスコア', optLabel('score_band', sv.score_band)],
+    ['お住まい', sv.prefecture],
+    ['店舗', optLabel('store_use', sv.store_use)],
+  ];
+  return `<div class="card survey-ans">
+    <div class="between"><b>かんたんアンケート</b><span class="muted small">回答 ${fmtDate(sv.updated_at || sv.created_at)}</span></div>
+    <dl>${rows.map(([k, v]) => `<div><dt>${k}</dt><dd>${v ? esc(v) : '<span class="muted">—</span>'}</dd></div>`).join('')}</dl>
+  </div>`;
+}
 function karteForm(memberId, k) {
   k = k || {};
   const filled = KARTE_FIELDS.some(([n]) => k[n]);
