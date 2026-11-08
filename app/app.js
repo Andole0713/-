@@ -4282,8 +4282,8 @@ function toLogin() {
 const actions = {
   'continue-go': () => {
     // 「ログインする」で入るときも、オープニング動画を流す（押した操作の中で動画を用意しておく）
-    if (state.profile?.role !== 'admin') { state.introForce = true; primeIntro(); }
-    playCupIn();
+    // （動画があるので、会員はカップインの音は鳴らさない）
+    if (state.profile?.role !== 'admin') { state.introForce = true; primeIntro(); } else playCupIn();
     go(state.profile?.role === 'admin' ? 'admin/dashboard' : 'home');
   },
   'switch-account': async () => { await signOutHere(); toLogin(); },
@@ -5012,7 +5012,7 @@ const forms = {
     const { error } = await sb.auth.signInWithPassword({ email: f.email.value.trim(), password: f.password.value });
     if (error) { state.introForce = false; state.introEl = null; throw new Error('メールアドレスまたはパスワードが正しくありません'); }
     local.set(LAST_EMAIL_KEY, f.email.value.trim());
-    playCupIn();
+    // ログインのあとはオープニング動画が流れるので、カップインの音は鳴らさない
     // 撮影画面から来てログインした場合は、そのままマイページへ
     if (getRoute()[0] === 'continue') history.replaceState(null, '', `${location.pathname}#/home`);
   },
