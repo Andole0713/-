@@ -4280,7 +4280,12 @@ function toLogin() {
 }
 
 const actions = {
-  'continue-go': () => playCupIn() || go(state.profile?.role === 'admin' ? 'admin/dashboard' : 'home'),
+  'continue-go': () => {
+    // 「ログインする」で入るときも、オープニング動画を流す（押した操作の中で動画を用意しておく）
+    if (state.profile?.role !== 'admin') { state.introForce = true; primeIntro(); }
+    playCupIn();
+    go(state.profile?.role === 'admin' ? 'admin/dashboard' : 'home');
+  },
   'switch-account': async () => { await signOutHere(); toLogin(); },
   'auth-tab': (el) => { state.authTab = el.dataset.tab; state.authMessage = ''; render(); },
   'history-filter': (el) => { state.historyClub = el.dataset.club; render(); },
@@ -5541,7 +5546,7 @@ function showIntro() {
   // ふつうは音なしで流す（音なしなら、どの端末でも自動で再生できる）。
   // ログインボタンから来て音つきの再生が通っていれば、音つきで流す
   const start = (withSound) => { v.muted = !withSound; showSound(); return v.play(); };
-  (primed && primed.dataset.sound === '1' ? start(true) : Promise.reject())
+  (primed ? start(true) : Promise.reject())
     .catch(() => start(false))
     .then(showSound, close);
   soundBtn.addEventListener('click', (e) => {
