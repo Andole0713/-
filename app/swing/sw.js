@@ -2,7 +2,7 @@
    Navigations are always fetched fresh so a re-uploaded index.html shows up
    immediately; the cache only stands in when the network fails. */
 /* index.html の #hVer と必ずそろえること */
-var CACHE = 'swingframe-v43';
+var CACHE = 'swingframe-v44';
 // マニフェストは会員ページと共有（../manifest.webmanifest）なので、ここではキャッシュしない
 var CORE = ['./', './index.html'];
 
