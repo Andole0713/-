@@ -1562,7 +1562,8 @@ async function viewMemo() {
 const FB_KIND = { bug: '不具合', request: 'ご要望', other: 'その他' };
 async function viewFeedback() {
   const p = state.profile;
-  const mine = await sb.from('feedback').select('*').eq('member_id', p.id).order('created_at', { ascending: false }).limit(20).then((r) => r.data || [], () => null);
+  // 送った内容は、送ってから1か月（30日）たつと会員の画面には出さない（スタッフ側の記録は残る）
+  const mine = await sb.from('feedback').select('*').eq('member_id', p.id).gte('created_at', isoDaysFrom(-30)).order('created_at', { ascending: false }).limit(20).then((r) => r.data || [], () => null);
   return header('不具合・ご要望', 'menu') + `<div class="content">
     <p class="page-lead">アプリの不具合や「こうなったらいいな」を送ってください。いただいた内容はスタッフが確認し、改善に使わせていただきます。</p>
     ${mine === null ? '<div class="card muted">ただいま準備中です。お急ぎの場合は LINE でお問い合わせください。</div>' : `
@@ -1574,7 +1575,7 @@ async function viewFeedback() {
       <p class="muted small" style="margin:0">不具合を調べるため、お使いの端末の種類も一緒に送られます。</p>
       <button class="btn-block" type="submit">送る</button>
     </form>
-    ${mine.length ? `<div class="section-title"><h2>送った内容</h2></div>${mine.map((f) => `<div class="card fb-item">
+    ${mine.length ? `<div class="section-title"><h2>送った内容</h2><span class="muted small">送ってから1か月表示されます</span></div>${mine.map((f) => `<div class="card fb-item">
       <div class="between"><span><span class="pill">${FB_KIND[f.kind] || ''}</span> <span class="muted small">${fmtDate(f.created_at)}</span></span>${f.status === 'done' ? '<span class="pill ok">対応しました</span>' : '<span class="pill mute">確認中</span>'}</div>
       <p class="pre small">${esc(f.body)}</p>${f.reply ? `<div class="fb-reply"><b>スタッフより</b><p class="pre">${esc(f.reply)}</p></div>` : ''}</div>`).join('')}` : ''}`}
     <p class="muted small">すぐに相談したいことは、<a href="${CONTACT.lineUrl}" target="_blank" rel="noopener">LINE</a>からどうぞ。</p>
