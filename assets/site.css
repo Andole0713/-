@@ -492,7 +492,7 @@ main>section::before{content:"";position:absolute;top:22px;right:max(8px,calc((1
 .hv-card img{width:100%;height:100%;object-fit:cover}
 .hv-lines{position:absolute;inset:0;width:100%;height:100%}
 .hv-tag{position:absolute;left:8px;top:-10px;font-size:10.5px;font-weight:700;letter-spacing:.08em;color:var(--ink);background:var(--gold-2);border-radius:999px;padding:2px 9px}
-.hv-note{position:absolute;left:8px;right:8px;bottom:30px;margin:0;padding:15px 10px 8px;border-radius:8px;background:rgba(10,15,12,.84);border-left:3px solid var(--gold);color:var(--on-dark);font-size:11px;line-height:1.6;letter-spacing:.02em}
+.hv-note{position:absolute;left:0;top:50%;width:46%;z-index:3;margin:0;padding:15px 12px 10px;border-radius:10px;background:rgba(10,15,12,.92);border:1px solid var(--gold-line);box-shadow:0 14px 30px rgba(0,0,0,.45);border-left:3px solid var(--gold);color:var(--on-dark);font-size:11px;line-height:1.6;letter-spacing:.02em}
 .hv-note b{display:block;color:var(--gold-2);font-size:10.5px;letter-spacing:.1em}
 .hv-bar{position:absolute;left:10px;right:10px;bottom:9px;display:flex;align-items:center;gap:7px;font-size:9.5px;color:#fff;font-variant-numeric:tabular-nums}
 .hv-play{width:0;height:0;border-left:8px solid #fff;border-top:5px solid transparent;border-bottom:5px solid transparent}
@@ -509,5 +509,5 @@ main>section::before{content:"";position:absolute;top:22px;right:max(8px,calc((1
 @media (max-width:420px){
   .hv-note{font-size:10px;padding:13px 8px 6px}.hv-note b{font-size:9.5px}
   .hv-tag{font-size:9.5px}
-  .hv-bar{bottom:7px}.hv-note{bottom:24px}
+  .hv-bar{bottom:7px}
 }
