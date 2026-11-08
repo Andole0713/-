@@ -326,7 +326,7 @@ section{padding:96px 0}
 }
 @media (max-width:560px){
   .features.four{grid-template-columns:1fr}
-  .hero-points{gap:6px}.hero-points li{padding:6px 10px;font-size:12px}.hero-points b{font-size:14px}
+  .hero-points{display:grid;grid-template-columns:1fr 1fr;gap:6px}.hero-points li{flex-direction:column;align-items:center;justify-content:center;gap:0;text-align:center;padding:7px 6px;font-size:11.5px;line-height:1.5}.hero-points b{font-size:15px}
   .coach-badge{padding:12px 14px}.coach-badge b{font-size:14.5px}.coach-badge span{width:58px;height:58px;font-size:10px}
 }
 
