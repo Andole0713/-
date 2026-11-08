@@ -4160,9 +4160,9 @@ async function render() {
 
     const p = state.profile;
     const r = getRoute();
-    // ログインしてホームを開くとき（アプリを開いて最初の1回）は、オープニング動画を流す。
+    // アプリを開いてホームに入るとき（開くたびに1回）と、ログインボタンでログインしたときは、オープニング動画を流す。
     // その間にホームの読み込みを進めておき、お知らせがあれば動画のあとにその画面が出る
-    if (p.role !== 'admin' && (state.introForce || (!state.introDone && (!r[0] || r[0] === 'home')))) showIntro({ force: state.introForce });
+    if (p.role !== 'admin' && (state.introForce || (!state.introDone && (!r[0] || r[0] === 'home')))) showIntro();
     state.introDone = true; state.introForce = false;
     if (r[0] !== 'help') state.helpFrom = null;
     if (p.deletion_requested_at && p.role !== 'admin') return paint(viewDeletionPending());
@@ -4280,7 +4280,12 @@ function toLogin() {
 }
 
 const actions = {
-  'continue-go': () => playCupIn() || go(state.profile?.role === 'admin' ? 'admin/dashboard' : 'home'),
+  'continue-go': () => {
+    // 「ログインする」で入るときも、オープニング動画を流す（押した操作の中で動画を用意しておく）
+    if (state.profile?.role !== 'admin') { state.introForce = true; primeIntro(); }
+    playCupIn();
+    go(state.profile?.role === 'admin' ? 'admin/dashboard' : 'home');
+  },
   'switch-account': async () => { await signOutHere(); toLogin(); },
   'auth-tab': (el) => { state.authTab = el.dataset.tab; state.authMessage = ''; render(); },
   'history-filter': (el) => { state.historyClub = el.dataset.club; render(); },
@@ -5000,10 +5005,12 @@ const actions = {
 const forms = {
   login: async (f) => {
     unlockAudio();
-    // ログインしたら、そのあと必ずオープニング動画を流す（同じ画面で一度ログアウトしてから入り直した場合も）
+    // ログインしたら、そのあと必ずオープニング動画を流す（同じ画面で一度ログアウトしてから入り直した場合も）。
+    // 押した操作の中で動画を用意しておく（iPhone で確実に流すため）
     state.introForce = true;
+    primeIntro();
     const { error } = await sb.auth.signInWithPassword({ email: f.email.value.trim(), password: f.password.value });
-    if (error) { state.introForce = false; throw new Error('メールアドレスまたはパスワードが正しくありません'); }
+    if (error) { state.introForce = false; state.introEl = null; throw new Error('メールアドレスまたはパスワードが正しくありません'); }
     local.set(LAST_EMAIL_KEY, f.email.value.trim());
     playCupIn();
     // 撮影画面から来てログインした場合は、そのままマイページへ
@@ -5494,20 +5501,34 @@ async function waitForCheckout() {
 }
 
 // ---------- オープニング動画（ダブルタップでスキップ） ----------
-function showIntro({ force = false } = {}) {
-  // アプリを開くごとに1回（同じ画面のまま再読み込みしても繰り返さない）
-  let shown = false;
-  try { shown = sessionStorage.getItem('atg-intro') === '1'; sessionStorage.setItem('atg-intro', '1'); } catch { /* 何もしない */ }
-  if ((shown && !force) || document.getElementById('intro')) return;
-  if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+// ログインボタンを押した瞬間（＝タップの操作の中）に動画を用意して再生を一度始めておく。
+// iPhone は操作のきっかけがない動画の再生を止めることがあるため、これで確実に流せるようにする
+function primeIntro() {
+  if (state.introEl) return;
+  const v = document.createElement('video');
+  v.src = 'img/intro.mp4'; v.preload = 'auto'; v.playsInline = true; v.setAttribute('playsinline', ''); v.setAttribute('webkit-playsinline', '');
+  v.muted = false;
+  const p = v.play();
+  if (p) p.then(() => { v.dataset.sound = '1'; if (v.dataset.shown !== '1') { v.pause(); v.currentTime = 0; } }, () => {});
+  state.introEl = v;
+}
+function showIntro() {
+  if (document.getElementById('intro')) return;
   const wrap = document.createElement('div');
   wrap.id = 'intro';
   wrap.setAttribute('role', 'dialog'); wrap.setAttribute('aria-label', 'オープニング動画（ダブルタップでスキップ）');
-  wrap.innerHTML = `<video src="img/intro.mp4" playsinline webkit-playsinline preload="auto"></video>
-    <button type="button" class="intro-sound" aria-label="音を出す">🔇</button>
+  wrap.innerHTML = `<button type="button" class="intro-sound" aria-label="音を出す">🔇</button>
     <p class="intro-hint">ダブルタップでスキップ</p>`;
+  // ログインボタンから来たときは、その操作の中で用意しておいた動画を使う
+  const primed = state.introEl; state.introEl = null;
+  if (primed) primed.dataset.shown = '1';
+  const v = primed || document.createElement('video');
+  if (!primed) { v.src = 'img/intro.mp4'; v.preload = 'auto'; v.playsInline = true; v.setAttribute('playsinline', ''); v.setAttribute('webkit-playsinline', ''); }
+  v.setAttribute('aria-hidden', 'true');
+  wrap.prepend(v);
   document.body.appendChild(wrap);
-  const v = wrap.querySelector('video');
+  const soundBtn = wrap.querySelector('.intro-sound');
+  const showSound = () => { soundBtn.textContent = v.muted ? '🔇' : '🔊'; soundBtn.setAttribute('aria-label', v.muted ? '音を出す' : '音を消す'); };
   let done = false;
   const close = () => {
     if (done) return; done = true;
@@ -5517,16 +5538,19 @@ function showIntro({ force = false } = {}) {
     setTimeout(() => { v.pause(); v.removeAttribute('src'); v.load(); wrap.remove(); }, 450);
   };
   const onKey = (e) => { if (e.key === 'Escape' || e.key === 'Enter' || e.key === ' ') { e.preventDefault(); close(); } };
-  // 動画が始まらない（電波が弱い・形式に対応していない）ときは待たせない
-  const stall = setTimeout(() => { if (v.currentTime < 0.05) close(); }, 4500);
-  const cap = setTimeout(close, 12000);
+  // 動画が始まらない（電波が弱い・再生を止められた）ときは待たせない
+  const stall = setTimeout(() => { if (v.currentTime < 0.05) close(); }, 6000);
+  const cap = setTimeout(close, 13000);
   v.addEventListener('ended', close);
   v.addEventListener('error', close);
-  // 音つきで流せない端末（自動再生の制限）は、音なしで流す
-  v.muted = false;
-  v.play().then(() => { wrap.querySelector('.intro-sound').textContent = '🔊'; }, () => { v.muted = true; v.play().catch(close); });
-  wrap.querySelector('.intro-sound').addEventListener('click', (e) => {
-    e.stopPropagation(); v.muted = !v.muted; e.currentTarget.textContent = v.muted ? '🔇' : '🔊';
+  // ふつうは音なしで流す（音なしなら、どの端末でも自動で再生できる）。
+  // ログインボタンから来て音つきの再生が通っていれば、音つきで流す
+  const start = (withSound) => { v.muted = !withSound; showSound(); return v.play(); };
+  (primed ? start(true) : Promise.reject())
+    .catch(() => start(false))
+    .then(showSound, close);
+  soundBtn.addEventListener('click', (e) => {
+    e.stopPropagation(); v.muted = !v.muted; showSound();
     if (v.paused) v.play().catch(() => {});
   });
   // ダブルタップ（パソコンはダブルクリック）でスキップ
