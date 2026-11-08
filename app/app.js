@@ -980,6 +980,8 @@ async function viewMemberHome() {
   const rmDays = rmPractice.length;
   const practicedToday = rmPractice.some((x) => x.practiced_on === today());
   const latest = lessons[0];
+  // スタッフが入れた課題は、入れてから1か月（30日）だけホームに出す
+  tasks = tasks.filter((t) => !t.created_at || daysAgo(t.created_at) < TASK_DAYS);
   const done = tasks.filter((t) => t.done).length;
   const plan = planOf(p.plan);
   const cr = planCredits(p.plan) ? creditSummary(creditRows) : null;
@@ -1028,10 +1030,19 @@ async function viewMemberHome() {
     </section>`}
     </div>
     <div class="blk" style="--o:6">
-    <div class="section-title cat-drill"><div><div class="eyebrow">Practice</div><h2>${icon('pen')}今月の課題</h2></div><span class="muted">${done}/${tasks.length}</span></div>
-    ${tasks.length ? tasks.map((t) => `<button type="button" class="task${t.done ? ' done' : ''}" data-action="toggle-task" data-id="${t.id}" data-done="${t.done}" aria-pressed="${t.done}">
-        <span class="check">${t.done ? '✓' : ''}</span><span><b>${esc(t.title)}</b><div class="muted">${esc(t.detail)}</div></span></button>`).join('')
-      : emptyBox('📝', 'コーチから課題が届くと、ここに表示されます。<br>終わったらタップしてチェックできます。')}
+    ${(() => {
+      // 今月の練習：今月のドリル・最新のレッスンの「次回までの練習」・コーチが追加した課題を1か所に
+      const lp = latest ? practiceLines(latest.practice) : [];
+      const lpDone = latest ? (latest.practice_done || []).filter((i) => i < lp.length).length : 0;
+      const total = lp.length + tasks.length, fin = lpDone + done;
+      const any = rmNow || lp.length || tasks.length;
+      return `<div class="section-title cat-drill"><div><div class="eyebrow">Practice</div><h2>${icon('pen')}今月の練習</h2></div>${total ? `<span class="muted">${fin}/${total}</span>` : ''}</div>
+      ${rmNow ? `<a class="mp-drill" href="#/drills"><span class="mp-ic" aria-hidden="true">🎯</span><span><small>今月のドリル</small><b>${esc(rmNow.drills?.title || rmNow.theme || 'ドリル')}</b></span><em>${rmDays ? `今月 ${rmDays}日` : 'まだ0日'}</em><i aria-hidden="true">›</i></a>` : ''}
+      ${lp.length ? `<div class="mp-group"><p class="mp-h">レッスン「${esc(latest.title)}」の練習 <a href="#/lesson/${latest.id}">レッスンを見る ›</a></p>${drillList(latest.practice, latest.practice_done || [], latest.id)}</div>` : ''}
+      ${tasks.length ? `<div class="mp-group"><p class="mp-h">コーチからの課題</p>${tasks.map((t) => `<button type="button" class="task${t.done ? ' done' : ''}" data-action="toggle-task" data-id="${t.id}" data-done="${t.done}" aria-pressed="${t.done}">
+        <span class="check">${t.done ? '✓' : ''}</span><span><b>${esc(t.title)}</b><div class="muted">${esc(t.detail)}</div></span></button>`).join('')}</div>` : ''}
+      ${any ? '' : emptyBox('📝', 'ドリルやレッスンの練習が届くと、ここにまとめて表示されます。<br>終わったらタップしてチェックできます。')}`;
+    })()}
     </div>
     <div class="blk" style="--o:7">${wordCard()}</div>
   </div>
@@ -2359,6 +2370,8 @@ function viewInstall() {
 
 // 日付の計算（日本時間）
 const DAY = 86400000;
+// コーチが入れた課題を会員のホームに出す日数（入れた日から）
+const TASK_DAYS = 30;
 const daysAgo = (iso) => Math.floor((Date.now() - new Date(iso).getTime()) / DAY);
 const isoDaysFrom = (n) => new Date(Date.now() + n * DAY).toISOString();
 const monthStartIso = () => monthStart();
@@ -3039,10 +3052,12 @@ async function viewMemberDetail(id, tab) {
         <button class="btn-block" type="submit">ロードマップを作成する</button>
       </form>`}</div>
 
-    <div class="section-title"><h2>今月の課題</h2>${tasks.length ? '<button class="btn-sm btn-sub" data-action="reset-tasks" data-id="' + m.id + '">完了をリセット</button>' : ''}</div>
+    <div class="section-title"><h2>コーチからの課題</h2>${tasks.length ? '<button class="btn-sm btn-sub" data-action="reset-tasks" data-id="' + m.id + '">完了をリセット</button>' : ''}</div>
     <div class="card">
-      ${tasks.map((t) => `<div class="list-item"><div class="grow">${t.done ? '✅' : '⬜️'} <b>${esc(t.title)}</b> <span class="muted">${esc(t.detail)}</span></div>
-          <button class="btn-sm btn-danger" data-action="delete-task" data-id="${t.id}">削除</button></div>`).join('') || '<div class="muted">課題はまだありません</div>'}
+      <p class="muted small" style="margin:0 0 6px">レッスンの練習や毎月のドリルとは別に、追加で取り組んでほしいことがあるときに書きます。会員のホームの「今月の練習」に、入れた日から${TASK_DAYS}日間表示されます。</p>
+      ${tasks.map((t) => { const old = t.created_at && daysAgo(t.created_at) >= TASK_DAYS; return `<div class="list-item${old ? ' task-old' : ''}"><div class="grow">${t.done ? '✅' : '⬜️'} <b>${esc(t.title)}</b> <span class="muted">${esc(t.detail)}</span>
+          <div class="muted small">${t.created_at ? `${fmtDate(t.created_at)} 追加` : ''}${old ? '・<span class="pill mute">表示終了</span>' : ''}</div></div>
+          <button class="btn-sm btn-danger" data-action="delete-task" data-id="${t.id}">削除</button></div>`; }).join('') || '<div class="muted">課題はまだありません</div>'}
       <form class="form" data-form="add-task" data-id="${m.id}" data-count="${tasks.length}">
         <div class="row" style="align-items:flex-end">
           <div class="grow"><label for="task-title">練習内容</label><input id="task-title" name="title" maxlength="100" placeholder="例：ドライバー ハーフスイング" required></div>
