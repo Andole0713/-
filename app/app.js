@@ -944,7 +944,7 @@ async function viewMemberHome() {
   // 互いに関係のないデータは、まとめて同時に取りに行く（順番待ちを減らして表示を速くする）
   let [tasks, lessons, subs, monthSubs, monthLessons, roadmap,
     rounds, myMeetings, subCount, readCount, checkedLessons, myPractice,
-    celes, , creditRows, asks] = await Promise.all([
+    celes, , creditRows, asks, lastMemo] = await Promise.all([
     must(sb.from('tasks').select('*').eq('member_id', p.id).order('sort_order').order('created_at')),
     must(sb.from('lessons').select('id, lesson_date, title, point, practice, practice_done, read_at').eq('member_id', p.id).order('lesson_date', { ascending: false }).order('created_at', { ascending: false }).limit(1)),
     must(sb.from('submissions').select('id, created_at, club, status').eq('member_id', p.id).eq('status', 'pending').order('created_at', { ascending: false })),
@@ -963,6 +963,9 @@ async function viewMemberHome() {
     loadWordDays(),
     planCredits(p.plan) ? loadCredits(p.id, { self: true }) : Promise.resolve(null),
     loadAsks(p),
+    // 自分のメモのいちばん新しい1件（ホームのメモ欄。データベースの設定前は欄ごと出さない）
+    sb.from('member_memos').select('id, body, created_at').eq('member_id', p.id).order('created_at', { ascending: false }).limit(1)
+      .then((r) => (r.error ? null : r.data?.[0] || false), () => null),
   ]);
   const practiceLogs = myPractice.length;
   const lastMeeting = myMeetings[0];
@@ -1014,6 +1017,15 @@ async function viewMemberHome() {
         </div>
         <div class="rm-home-foot"><span class="rm-home-days">${rmDays ? `今月の練習 <b>${rmDays}</b>日` : 'まだ練習の記録がありません'}</span>
           <a class="rm-home-btn" href="#/drills">ドリルを見る <i aria-hidden="true">›</i></a></div></div>` : ''}
+    ${lastMemo === null ? '' : `<section class="card home-memo">
+      <div class="between"><b>📝 メモ</b><a class="small" href="#/memo">${lastMemo ? 'メモをすべて見る ›' : 'メモの画面へ ›'}</a></div>
+      ${lastMemo ? `<p class="hm-last">${esc(lastMemo.body)}</p><p class="muted small hm-date">${fmtShort(lastMemo.created_at)}</p>`
+        : '<p class="muted small" style="margin:4px 0 0">練習で気づいたことや、レッスンで覚えておきたいことを書いておけます。</p>'}
+      <form class="hm-form" data-form="memo-add">
+        <textarea name="body" rows="1" maxlength="2000" required placeholder="気づいたことを書く" aria-label="新しいメモ"></textarea>
+        <button class="btn-sm" type="submit">残す</button>
+      </form>
+    </section>`}
     </div>
     <div class="blk" style="--o:6">
     <div class="section-title cat-drill"><div><div class="eyebrow">Practice</div><h2>${icon('pen')}今月の課題</h2></div><span class="muted">${done}/${tasks.length}</span></div>
