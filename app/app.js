@@ -1577,7 +1577,7 @@ async function viewFeedback() {
     </form>
     ${mine.length ? `<div class="section-title"><h2>送った内容</h2><span class="muted small">送ってから1か月表示されます</span></div>${mine.map((f) => `<div class="card fb-item">
       <div class="between"><span><span class="pill">${FB_KIND[f.kind] || ''}</span> <span class="muted small">${fmtDate(f.created_at)}</span></span>${f.status === 'done' ? '<span class="pill ok">対応しました</span>' : '<span class="pill mute">確認中</span>'}</div>
-      <p class="pre small">${esc(f.body)}</p>${f.reply ? `<div class="fb-reply"><b>スタッフより</b><p class="pre">${esc(f.reply)}</p></div>` : ''}</div>`).join('')}` : ''}`}
+      <p class="pre small">${esc(f.body)}</p>${f.status === 'open' ? `<div class="fb-cancel"><button type="button" class="link" data-action="feedback-cancel" data-id="${f.id}">送った内容を取り消す</button></div>` : ''}${f.reply ? `<div class="fb-reply"><b>スタッフより</b><p class="pre">${esc(f.reply)}</p></div>` : ''}</div>`).join('')}` : ''}`}
     <p class="muted small">すぐに相談したいことは、<a href="${CONTACT.lineUrl}" target="_blank" rel="noopener">LINE</a>からどうぞ。</p>
   </div>` + memberNav('menu');
 }
@@ -1586,7 +1586,7 @@ async function viewFeedbackAdmin() {
   if (res.error) return header('不具合・要望', 'admin/dashboard') + '<div class="content"><div class="error">データベースの設定（20261102000000_announcements_feedback.sql）がまだのため使えません。</div></div>' + adminNav('admin/dashboard');
   const open = res.data.filter((f) => f.status === 'open'); const done = res.data.filter((f) => f.status !== 'open');
   const item = (f) => `<div class="card fb-item${f.status === 'open' ? ' open' : ''}">
-    <div class="between"><span><span class="pill">${FB_KIND[f.kind] || ''}</span> ${f.member_id ? memberLink(f.member_id, f.profiles?.name) : '（退会済み）'}</span><span class="muted small">${fmtShort(f.created_at)}</span></div>
+    <div class="between"><span>${f.status === 'open' ? '<span class="pill fb-new">未対応</span> ' : ''}<span class="pill fb-k-${esc(f.kind)}">${FB_KIND[f.kind] || ''}</span> ${f.member_id ? memberLink(f.member_id, f.profiles?.name) : '（退会済み）'}</span><span class="muted small">${fmtShort(f.created_at)}</span></div>
     <p class="pre">${esc(f.body)}</p>
     ${f.device ? `<details><summary class="small muted">端末の情報</summary><p class="small muted">${esc(f.device)}</p></details>` : ''}
     <form class="form" data-form="feedback-reply" data-id="${f.id}">
@@ -1596,7 +1596,7 @@ async function viewFeedbackAdmin() {
     </form></div>`;
   return header('不具合・要望', 'admin/dashboard') + `<div class="content">
     <p class="page-lead">会員がアプリから送った不具合・ご要望です。</p>
-    <div class="section-title"><h2>未対応（${open.length}件）</h2></div>
+    <div class="section-title${open.length ? ' fb-open-title' : ''}"><h2>未対応（${open.length}件）</h2></div>
     ${open.length ? open.map(item).join('') : '<div class="card muted">未対応のものはありません。</div>'}
     ${done.length ? `<div class="section-title"><h2>対応済み</h2></div>${done.map(item).join('')}` : ''}
   </div>` + adminNav('admin/dashboard');
@@ -2580,7 +2580,7 @@ async function viewDashboard() {
       <a class="kpi" href="#/admin/members"><span>契約中の会員</span><b>${active.length}</b><small>登録 ${people.length}名</small></a>
     </div>
     <div class="dash-top"><p class="dash-legend"><span class="lg todo">対応が必要</span><span class="lg watch">様子を見る</span><span class="lg info">お知らせ</span><span class="lg celebrate">お祝い</span></p>
-      <span class="dash-links"><a class="btn btn-sm btn-sub" href="#/admin/templates">✎ テンプレート</a><a class="btn btn-sm btn-sub" href="#/admin/announce">📣 お知らせを送る</a><a class="btn btn-sm ${fbOpen ? 'btn-gold' : 'btn-sub'}" href="#/admin/feedback">🛠 不具合・要望${fbOpen ? ` ${fbOpen}件` : ''}</a></span></div>
+      <span class="dash-links"><a class="btn btn-sm btn-sub" href="#/admin/templates">✎ テンプレート</a><a class="btn btn-sm btn-sub" href="#/admin/announce">📣 お知らせを送る</a><a class="btn btn-sm ${fbOpen ? 'btn-alert' : 'btn-sub'}" href="#/admin/feedback">🛠 不具合・要望${fbOpen ? ` <em>${fbOpen}件</em>` : ''}</a></span></div>
     <div class="cols">
       <div class="col-main">${left.map((h, i) => `<div class="blk" style="--o:${i}">${h}</div>`).join('')}</div>
       <div class="col-side">${right.map((h, i) => `<div class="blk" style="--o:${10 + i}">${h}</div>`).join('')}
@@ -4772,6 +4772,14 @@ const actions = {
   'note-pin': async (el) => {
     await must(sb.from('staff_notes').update({ pinned: el.dataset.pinned !== 'true' }).eq('id', el.dataset.id));
     render();
+  },
+  // 送った不具合・ご要望を取り消す（スタッフが対応する前のものだけ）
+  'feedback-cancel': async (el) => {
+    if (!(await confirmDialog({ title: '送った内容を取り消しますか？', body: '<p>取り消すと、スタッフにも届かなくなります。</p>', ok: '取り消す' }))) return;
+    const { data, error } = await sb.from('feedback').delete().eq('id', el.dataset.id).eq('member_id', state.profile.id).eq('status', 'open').select('id');
+    if (error) throw error;
+    if (!data?.length) { toast('取り消せませんでした（すでにスタッフが対応したか、準備中です）', true); render(); return; }
+    toast('送った内容を取り消しました'); render();
   },
   'memo-edit': (el) => {
     const card = el.closest('.memo-item'); const fm = card.querySelector('.memo-edit');
