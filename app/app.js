@@ -1805,7 +1805,7 @@ function viewAccount() {
         : isActive(p) ? `<p class="muted small" style="margin:10px 0 0">ご契約内容の変更は、LINE またはお電話（${esc(CONTACT.telDisplay)}）でお問い合わせください。</p>`
         : '<a class="btn btn-block" href="#/plans">プランを選ぶ</a>'}
     </div>`}
-    ${admin ? '' : '<a class="beginner-card survey-card" href="#/survey"><span class="bc-ic" aria-hidden="true">📝</span><span><b>かんたんアンケート</b><small>30秒ほどで終わります。答えるとバッジがもらえます（回答の確認・変更もこちら）</small></span><i aria-hidden="true">›</i></a>'}
+    ${admin ? '' : '<a class="beginner-card survey-card" href="#/survey"><span class="bc-ic" aria-hidden="true">📝</span><span><b>かんたんアンケート</b><small>30秒ほどで終わります。回答の確認・変更もこちらからできます</small></span><i aria-hidden="true">›</i></a>'}
     ${admin ? '' : (() => {
       const mine = p.clubs || [];
       const custom = mine.filter((c) => !CLUB_PRESETS.includes(c));
@@ -3398,7 +3398,7 @@ function askCards(a) {
         <button class="btn-block btn-sub" type="submit">答える</button>
       </form><p class="muted small" style="margin:6px 0 0">月に1回だけお聞きしています。</p></section>` : '',
     a.survey ? `<div class="card ask-card ask-link"><a href="#/survey"><span class="ask-ic" aria-hidden="true">📝</span>
-      <span><b>かんたんアンケートにご協力ください</b><small>30秒ほどで終わります。答えるとバッジがもらえます</small></span><i aria-hidden="true">›</i></a>
+      <span><b>かんたんアンケートにご協力ください</b><small>30秒ほどで終わります。レッスンをより良くするための参考にさせていただきます</small></span><i aria-hidden="true">›</i></a>
       <button type="button" class="fs-close" data-action="ask-hide" data-key="atg-survey-hide" aria-label="閉じる">×</button></div>` : '',
   ].find(Boolean) || '';
 }
