@@ -594,7 +594,12 @@ const planCredits = (planId) => planOf(planId)?.credits || null;
 const hasMeetingPlan = (planId) => (planCredits(planId)?.meeting || 0) > 0;
 // 権利の一覧を読み込む（自分の分は、今月の分をまだ受け取っていなければ先に受け取る）。設定前（表がない）なら null
 async function loadCredits(memberId, { self = false } = {}) {
-  if (self) await sb.rpc('ensure_my_credits').then(() => {}, () => {});
+  // 今月分の受け取りは月に1回確かめれば足りる（画面を開くたびに待たない）
+  //（プランや契約の状態が変わったときは、もう一度確かめる）
+  const ensureKey = [monthKey(), state.profile?.plan, state.profile?.subscription_status, state.profile?.access_until].join('|');
+  if (self && state.creditsEnsured !== ensureKey) {
+    await sb.rpc('ensure_my_credits').then(({ error }) => { if (!error) state.creditsEnsured = ensureKey; }, () => {});
+  }
   const { data, error } = await sb.from('credits').select('*').eq('member_id', memberId).order('expires_on').order('granted_on');
   return error ? null : data;
 }
@@ -935,26 +940,32 @@ function nextAction({ latest, rmNow, practicedToday, cr, pending, tasks, done })
 async function viewMemberHome() {
   const p = state.profile;
   const since = monthStart();
-  let [tasks, lessons, subs, monthSubs, monthLessons, roadmap] = await Promise.all([
+  const headCount = (q) => q.then((r) => r.count || 0, () => 0);
+  // 互いに関係のないデータは、まとめて同時に取りに行く（順番待ちを減らして表示を速くする）
+  let [tasks, lessons, subs, monthSubs, monthLessons, roadmap,
+    rounds, myMeetings, subCount, readCount, checkedLessons, myPractice,
+    celes, , creditRows, asks] = await Promise.all([
     must(sb.from('tasks').select('*').eq('member_id', p.id).order('sort_order').order('created_at')),
     must(sb.from('lessons').select('id, lesson_date, title, point, practice, practice_done, read_at').eq('member_id', p.id).order('lesson_date', { ascending: false }).order('created_at', { ascending: false }).limit(1)),
     must(sb.from('submissions').select('id, created_at, club, status').eq('member_id', p.id).eq('status', 'pending').order('created_at', { ascending: false })),
     must(sb.from('submissions').select('*').eq('member_id', p.id).gte('created_at', since)),
     must(sb.from('lessons').select('id').eq('member_id', p.id).gte('created_at', since)),
     must(sb.from('roadmap_items').select('id, publish_on, theme, published_at, hidden, seen_at, drills(title)').eq('member_id', p.id).order('publish_on')),
-  ]);
-  const headCount = (q) => q.then((r) => r.count || 0, () => 0);
-  const [rounds, myMeetings, subCount, readCount, checkedLessons, practiceLogs] = await Promise.all([
     must(sb.from('rounds').select('played_on, score, holes').eq('member_id', p.id)),
     sb.from('meetings').select('scheduled_at, summary').eq('member_id', p.id).eq('status', 'done').neq('summary', '').order('scheduled_at', { ascending: false }).limit(1)
-      .then((r) => r.data || []),
-    sb.from('submissions').select('id', { count: 'exact', head: true }).eq('member_id', p.id).then((r) => r.count || 0),
+      .then((r) => r.data || [], () => []),
+    sb.from('submissions').select('id', { count: 'exact', head: true }).eq('member_id', p.id).then((r) => r.count || 0, () => 0),
     headCount(sb.from('lessons').select('id', { count: 'exact', head: true }).eq('member_id', p.id).not('read_at', 'is', null)),
     headCount(sb.from('lessons').select('id', { count: 'exact', head: true }).eq('member_id', p.id).neq('practice_done', '{}')),
-    headCount(sb.from('roadmap_practice').select('item_id', { count: 'exact', head: true }).eq('member_id', p.id)),
+    // 練習した日（今月のドリルの日数と、はじめの一歩の判定の両方に使う）
+    sb.from('roadmap_practice').select('item_id, practiced_on').eq('member_id', p.id).then((r) => r.data || [], () => []),
+    sb.from('celebrations').select('*').eq('member_id', p.id).order('created_at', { ascending: false }).limit(20).then((r) => r.data || [], () => []),
+    loadWordDays(),
+    planCredits(p.plan) ? loadCredits(p.id, { self: true }) : Promise.resolve(null),
+    loadAsks(p),
   ]);
+  const practiceLogs = myPractice.length;
   const lastMeeting = myMeetings[0];
-  const celes = await sb.from('celebrations').select('*').eq('member_id', p.id).order('created_at', { ascending: false }).limit(20).then((r) => r.data || []);
   const newCeles = celes.filter((c) => !c.seen_at);
   // 「回数外」（コーチ側で戻した動画）は本数に数えない
   const exemptN = monthSubs.filter((x) => x.quota_exempt).length;
@@ -962,15 +973,13 @@ async function viewMemberHome() {
   const st = scoreStats(rounds, p);
   const rmOpened = roadmap.filter(rmOpen);
   const rmNow = rmOpened[rmOpened.length - 1];
-  const rmPractice = rmNow ? await must(sb.from('roadmap_practice').select('practiced_on').eq('item_id', rmNow.id)) : [];
+  const rmPractice = rmNow ? myPractice.filter((x) => x.item_id === rmNow.id) : [];
   const rmDays = rmPractice.length;
   const practicedToday = rmPractice.some((x) => x.practiced_on === today());
-  await loadWordDays();
   const latest = lessons[0];
   const done = tasks.filter((t) => t.done).length;
   const plan = planOf(p.plan);
-  const cr = planCredits(p.plan) ? creditSummary(await loadCredits(p.id, { self: true })) : null;
-  const asks = await loadAsks(p);
+  const cr = planCredits(p.plan) ? creditSummary(creditRows) : null;
   return header('マイページ') + `<div class="content wide"><div class="cols">
   <div class="col-main">
     <div class="blk" style="--o:1">
@@ -1652,23 +1661,23 @@ async function viewLesson(id, back = 'history') {
   const l = await must(sb.from('lessons').select('*, submissions(id, club, angle, created_at, video_path, video_deleted_at, question)').eq('id', id).maybeSingle());
   if (!l) return header('レッスン詳細', back) + '<div class="content"><div class="empty">レッスンが見つかりません</div></div>';
   const cur = l.submissions;
+  const mine = l.member_id === state.profile.id;
   // 同じクラブ・同じ撮影方向で、ひとつ前に送った動画（見比べ用）
-  const prev = cur?.club && cur.video_path && !cur.video_deleted_at ? (await sb.from('submissions').select('id, club, angle, created_at, video_path, video_deleted_at')
+  const prevP = cur?.club && cur.video_path && !cur.video_deleted_at ? sb.from('submissions').select('id, club, angle, created_at, video_path, video_deleted_at')
     .eq('member_id', l.member_id).eq('club', cur.club).eq('angle', cur.angle).lt('created_at', cur.created_at).is('video_deleted_at', null)
-    .order('created_at', { ascending: false }).limit(1)).data?.[0] : null;
-  const [urls, links] = await Promise.all([
-    signedVideoUrls([cur, prev]),
-    must(sb.from('lesson_drills').select('sort_order, drills(*)').eq('lesson_id', l.id).order('sort_order')),
+    .order('created_at', { ascending: false }).limit(1).then((r) => r.data?.[0] || null) : Promise.resolve(null);
+  const linksP = must(sb.from('lesson_drills').select('sort_order, drills(*)').eq('lesson_id', l.id).order('sort_order'));
+  // 残りはまとめて同時に取りに行く（動画とドリルの再生リンクは、それぞれ必要な情報が届きしだい続けて取る）
+  const [prev, urls, links, drillUrls, rated, cvUrl] = await Promise.all([
+    prevP,
+    prevP.then((pv) => signedVideoUrls([cur, pv])),
+    linksP,
+    linksP.then((lk) => signedDrillUrls(lk.map((x) => x.drills).filter(Boolean))),
+    sb.from('lesson_ratings').select('rating, comment').eq('lesson_id', l.id).maybeSingle(),
+    coachVideoUrl(l),
+    mine && !l.read_at ? sb.rpc('mark_lesson_read', { p_lesson: l.id }).then(({ error }) => { if (!error) state.unread = Math.max(0, state.unread - 1); }, () => {}) : null,
   ]);
   const drills = links.map((x) => x.drills).filter(Boolean);
-  const drillUrls = await signedDrillUrls(drills);
-  const mine = l.member_id === state.profile.id;
-  const rated = await sb.from('lesson_ratings').select('rating, comment').eq('lesson_id', l.id).maybeSingle();
-  if (mine && !l.read_at) {
-    const { error } = await sb.rpc('mark_lesson_read', { p_lesson: l.id });
-    if (!error) state.unread = Math.max(0, state.unread - 1);
-  }
-  const cvUrl = await coachVideoUrl(l);
   const hasCv = !!l.coach_video_path;
   const jumps = [(l.video_url || hasCv) && ['ls-video', '▶ 解説動画'], l.feedback && ['ls-fb', '✎ フィードバック'], l.practice && ['ls-practice', '✓ 練習'], cur && ['ls-mine', '◉ 送った動画']].filter(Boolean);
   return header('レッスン詳細', back) + `<div class="content wide lesson-page">
@@ -2115,28 +2124,28 @@ function roadmapView(items, urls, extra = {}) {
 
 async function viewMemberDrills() {
   const p = state.profile;
-  const [rows, roadmap] = await Promise.all([
+  // まとめて同時に取りに行く（練習した日・ふり返り・ゴールは、ロードマップがなければ空のまま）
+  const ok = (q) => q.then((r) => (r.error ? [] : r.data || []), () => []);
+  const [rows, roadmap, practice, reflections, goals] = await Promise.all([
     must(sb.from('lesson_drills')
       .select('sort_order, drills(*), lessons!inner(id, title, lesson_date, member_id)')
       .eq('lessons.member_id', p.id)),
     must(sb.from('roadmap_items').select('id, publish_on, theme, note, published_at, hidden, seen_at, drills(*)').eq('member_id', p.id).order('publish_on')),
+    ok(sb.from('roadmap_practice').select('item_id, practiced_on').eq('member_id', p.id)),
+    ok(sb.from('roadmap_reflections').select('item_id, body').eq('member_id', p.id)),
+    ok(sb.from('roadmap_goals').select('goal').eq('member_id', p.id)),
   ]);
-  const [practice, reflections, goals] = roadmap.length ? await Promise.all([
-    must(sb.from('roadmap_practice').select('item_id, practiced_on').eq('member_id', p.id)),
-    must(sb.from('roadmap_reflections').select('item_id, body').eq('member_id', p.id)),
-    must(sb.from('roadmap_goals').select('goal').eq('member_id', p.id)),
-  ]) : [[], [], []];
-  // 見たので既読にする（今回の表示では NEW を出したまま）
-  if (roadmap.some((r) => rmOpen(r) && !r.seen_at)) {
-    const { error } = await sb.rpc('mark_roadmap_seen');
-    if (!error) state.drillUnread = 0;
-  }
   // 同じドリルが何度か届いた場合は、いちばん新しいレッスンにまとめる
   const byDrill = new Map();
   rows.filter((r) => r.drills).sort((a, b) => (a.lessons.lesson_date < b.lessons.lesson_date ? 1 : -1))
     .forEach((r) => { if (!byDrill.has(r.drills.id)) byDrill.set(r.drills.id, r); });
   const list = [...byDrill.values()];
-  const urls = await signedDrillUrls([...list.map((r) => r.drills), ...roadmap.filter(rmOpen).map((r) => r.drills)]);
+  // 動画の再生リンクと、見たので既読にする処理（今回の表示では NEW を出したまま）を同時に
+  const [urls] = await Promise.all([
+    signedDrillUrls([...list.map((r) => r.drills), ...roadmap.filter(rmOpen).map((r) => r.drills)]),
+    roadmap.some((r) => rmOpen(r) && !r.seen_at)
+      ? sb.rpc('mark_roadmap_seen').then(({ error }) => { if (!error) state.drillUnread = 0; }, () => {}) : null,
+  ]);
   return header('ドリル') + `<div class="content wide">
     <p class="page-lead">毎月1つ届く練習メニュー（ドリル）と、1年間の練習計画（ロードマップ）です。練習したら記録しましょう。</p>
     ${glossaryLink()}
@@ -2896,33 +2905,33 @@ function creditCard(m, rows) {
 }
 
 async function viewMemberDetail(id, tab) {
-  const [m, tasks, lessons, subs, monthSubs, roadmap] = await Promise.all([
+  // すべて同時に取りに行く（提出動画の再生リンクだけは、提出の一覧が届きしだい続けて取る）
+  const ok = (q) => q.then((r) => (r.error ? [] : r.data || []), () => []);
+  const subsP = must(sb.from('submissions').select('*').eq('member_id', id).order('created_at', { ascending: false }).limit(20));
+  const [m, tasks, lessons, subs, monthSubs, roadmap, rmPractice, rmRefs, rmGoals,
+    mRounds, mMeetings, mNotes, mPractice, karte, mSurvey, mCredits, mExits, mMemos, mCeles, subUrls] = await Promise.all([
     must(sb.from('profiles').select('*').eq('id', id).maybeSingle()),
     must(sb.from('tasks').select('*').eq('member_id', id).order('sort_order').order('created_at')),
     must(sb.from('lessons').select('id, lesson_date, title, created_at, read_at, submission_id').eq('member_id', id).order('lesson_date', { ascending: false }).order('created_at', { ascending: false })),
-    must(sb.from('submissions').select('*').eq('member_id', id).order('created_at', { ascending: false }).limit(20)),
+    subsP,
     must(sb.from('submissions').select('*').eq('member_id', id).gte('created_at', monthStart())),
     must(sb.from('roadmap_items').select('id, publish_on, theme, published_at, hidden, seen_at, drills(title)').eq('member_id', id).order('publish_on')),
-  ]);
-  const [rmPractice, rmRefs, rmGoals] = roadmap.length ? await Promise.all([
-    must(sb.from('roadmap_practice').select('item_id').eq('member_id', id)),
-    must(sb.from('roadmap_reflections').select('item_id, body, updated_at').eq('member_id', id)),
-    must(sb.from('roadmap_goals').select('goal').eq('member_id', id)),
-  ]) : [[], [], []];
-  const [mRounds, mMeetings, mNotes, mPractice, karte, mSurvey] = await Promise.all([
+    ok(sb.from('roadmap_practice').select('item_id').eq('member_id', id)),
+    ok(sb.from('roadmap_reflections').select('item_id, body, updated_at').eq('member_id', id)),
+    ok(sb.from('roadmap_goals').select('goal').eq('member_id', id)),
     must(sb.from('rounds').select('played_on, course_name, score, holes, created_at').eq('member_id', id).order('played_on', { ascending: false })),
     must(sb.from('meetings').select('*').eq('member_id', id).order('scheduled_at', { ascending: false })),
     must(sb.from('staff_notes').select('id, body, pinned, created_at').eq('member_id', id).order('pinned', { ascending: false }).order('created_at', { ascending: false })),
     must(sb.from('roadmap_practice').select('practiced_on').eq('member_id', id).gte('practiced_on', isoDaysFrom(-30).slice(0, 10))),
-    sb.from('member_karte').select('*').eq('member_id', id).maybeSingle().then((r) => r.data),
+    sb.from('member_karte').select('*').eq('member_id', id).maybeSingle().then((r) => r.data, () => null),
     sb.from('member_survey').select('*').eq('member_id', id).maybeSingle().then((r) => (r.error ? undefined : r.data), () => undefined),
+    loadCredits(id).catch(() => null),
+    sb.from('exit_reasons').select('*').eq('member_id', id).order('created_at', { ascending: false }).then((r) => (r.error ? null : r.data || []), () => null),
+    sb.from('member_memos').select('id, body, created_at, updated_at').eq('member_id', id).order('created_at', { ascending: false }).limit(100).then((r) => (r.error ? null : r.data || []), () => null),
+    sb.from('celebrations').select('id, stamp, title, created_at, seen_at').eq('member_id', id).order('created_at', { ascending: false }).limit(5).then((r) => r.data || [], () => []),
+    subsP.then((list) => signedVideoUrls(list.filter((x) => !x.video_deleted_at))).catch(() => ({})),
   ]);
-  const mCredits = await loadCredits(id);
-  const mExits = await sb.from('exit_reasons').select('*').eq('member_id', id).order('created_at', { ascending: false }).then((r) => (r.error ? null : r.data || []));
-  const mMemos = await sb.from('member_memos').select('id, body, created_at, updated_at').eq('member_id', id).order('created_at', { ascending: false }).limit(100).then((r) => (r.error ? null : r.data || []), () => null);
-  const mCeles = await sb.from('celebrations').select('id, stamp, title, created_at, seen_at').eq('member_id', id).order('created_at', { ascending: false }).limit(5).then((r) => r.data || []);
   const mst = scoreStats(mRounds, m || {});
-  const subUrls = await signedVideoUrls(subs.filter((x) => !x.video_deleted_at)).catch(() => ({}));
   if (!m) return header('会員詳細', 'admin/members') + '<div class="content"><div class="empty">会員が見つかりません</div></div>';
   const self = m.id === state.profile.id;
   const staff = m.role === 'admin';
