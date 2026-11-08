@@ -1843,7 +1843,7 @@ function viewAccount() {
       <button class="btn-block btn-sub" type="submit">パスワードを変更</button>
     </form>
     </details>
-    <button class="btn-block btn-danger" data-action="logout">ログアウト</button>
+    <button class="btn-block btn-danger acc-logout" data-action="logout">ログアウト</button>
     ${admin ? '' : `<details class="acc-fold"><summary>その他<small>使い方ガイド・ホーム画面に追加・アカウントの削除</small></summary>
     <div class="card links">
       <a class="list-item" href="#/guide"><span>使い方ガイド（動画の撮り方・送り方）</span><span aria-hidden="true">›</span></a>

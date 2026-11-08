@@ -1875,3 +1875,7 @@ body.rec-open{overflow:hidden}
 .fb-open-title h2{color:#c0392b}
 .fb-cancel{text-align:right;margin-top:4px}
 .fb-cancel .link{color:#b8382a;font-size:13px}
+
+/* 隣り合うボタン・カードがくっつかないように */
+.acc-logout{margin:14px 0 22px}
+.score-add{margin-bottom:22px}
