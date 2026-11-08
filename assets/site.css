@@ -511,3 +511,6 @@ main>section::before{content:"";position:absolute;top:22px;right:max(8px,calc((1
   .hv-tag{font-size:9.5px}
   .hv-bar{bottom:7px}
 }
+.course-cards{margin-top:36px;text-align:left}
+.course-cards .card-i h3{font-size:19px}
+.cc-price{margin:14px 0 0!important;padding-top:12px;border-top:1px solid var(--paper-2);font-family:var(--serif);font-size:15px;color:var(--text)!important}
