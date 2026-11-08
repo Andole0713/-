@@ -4148,6 +4148,10 @@ async function render() {
 
     const p = state.profile;
     const r = getRoute();
+    // ログインしてホームを開くとき（アプリを開いて最初の1回）は、オープニング動画を流す。
+    // その間にホームの読み込みを進めておき、お知らせがあれば動画のあとにその画面が出る
+    if (p.role !== 'admin' && !state.introDone && (!r[0] || r[0] === 'home')) showIntro();
+    state.introDone = true;
     if (r[0] !== 'help') state.helpFrom = null;
     if (p.deletion_requested_at && p.role !== 'admin') return paint(viewDeletionPending());
     // スタッフからのお知らせ：まだ確認していないものがあれば、アプリを開いたときに必ずその画面を通る
@@ -5473,6 +5477,54 @@ async function waitForCheckout() {
     await new Promise((r) => setTimeout(r, 2000));
   }
   toast('決済の反映に時間がかかっています。しばらくしてから再読み込みしてください。', true);
+}
+
+// ---------- オープニング動画（ダブルタップでスキップ） ----------
+function showIntro() {
+  // アプリを開くごとに1回（同じ画面のまま再読み込みしても繰り返さない）
+  let shown = false;
+  try { shown = sessionStorage.getItem('atg-intro') === '1'; sessionStorage.setItem('atg-intro', '1'); } catch { /* 何もしない */ }
+  if (shown || document.getElementById('intro')) return;
+  if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+  const wrap = document.createElement('div');
+  wrap.id = 'intro';
+  wrap.setAttribute('role', 'dialog'); wrap.setAttribute('aria-label', 'オープニング動画（ダブルタップでスキップ）');
+  wrap.innerHTML = `<video src="img/intro.mp4" playsinline webkit-playsinline preload="auto"></video>
+    <button type="button" class="intro-sound" aria-label="音を出す">🔇</button>
+    <p class="intro-hint">ダブルタップでスキップ</p>`;
+  document.body.appendChild(wrap);
+  const v = wrap.querySelector('video');
+  let done = false;
+  const close = () => {
+    if (done) return; done = true;
+    clearTimeout(stall); clearTimeout(cap);
+    document.removeEventListener('keydown', onKey, true);
+    wrap.classList.add('out');
+    setTimeout(() => { v.pause(); v.removeAttribute('src'); v.load(); wrap.remove(); }, 450);
+  };
+  const onKey = (e) => { if (e.key === 'Escape' || e.key === 'Enter' || e.key === ' ') { e.preventDefault(); close(); } };
+  // 動画が始まらない（電波が弱い・形式に対応していない）ときは待たせない
+  const stall = setTimeout(() => { if (v.currentTime < 0.05) close(); }, 4500);
+  const cap = setTimeout(close, 12000);
+  v.addEventListener('ended', close);
+  v.addEventListener('error', close);
+  // 音つきで流せない端末（自動再生の制限）は、音なしで流す
+  v.muted = false;
+  v.play().then(() => { wrap.querySelector('.intro-sound').textContent = '🔊'; }, () => { v.muted = true; v.play().catch(close); });
+  wrap.querySelector('.intro-sound').addEventListener('click', (e) => {
+    e.stopPropagation(); v.muted = !v.muted; e.currentTarget.textContent = v.muted ? '🔇' : '🔊';
+    if (v.paused) v.play().catch(() => {});
+  });
+  // ダブルタップ（パソコンはダブルクリック）でスキップ
+  let lastTap = 0;
+  wrap.addEventListener('touchend', (e) => {
+    if (e.target.closest('.intro-sound')) return;
+    const now = Date.now();
+    if (now - lastTap < 350) { e.preventDefault(); close(); }
+    lastTap = now;
+  }, { passive: false });
+  wrap.addEventListener('dblclick', (e) => { if (!e.target.closest('.intro-sound')) close(); });
+  document.addEventListener('keydown', onKey, true);
 }
 
 async function init() {
