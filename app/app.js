@@ -4162,8 +4162,8 @@ async function render() {
     const r = getRoute();
     // ログインしてホームを開くとき（アプリを開いて最初の1回）は、オープニング動画を流す。
     // その間にホームの読み込みを進めておき、お知らせがあれば動画のあとにその画面が出る
-    if (p.role !== 'admin' && !state.introDone && (!r[0] || r[0] === 'home')) showIntro();
-    state.introDone = true;
+    if (p.role !== 'admin' && (state.introForce || (!state.introDone && (!r[0] || r[0] === 'home')))) showIntro({ force: state.introForce });
+    state.introDone = true; state.introForce = false;
     if (r[0] !== 'help') state.helpFrom = null;
     if (p.deletion_requested_at && p.role !== 'admin') return paint(viewDeletionPending());
     // スタッフからのお知らせ：まだ確認していないものがあれば、アプリを開いたときに必ずその画面を通る
@@ -5000,8 +5000,10 @@ const actions = {
 const forms = {
   login: async (f) => {
     unlockAudio();
+    // ログインしたら、そのあと必ずオープニング動画を流す（同じ画面で一度ログアウトしてから入り直した場合も）
+    state.introForce = true;
     const { error } = await sb.auth.signInWithPassword({ email: f.email.value.trim(), password: f.password.value });
-    if (error) throw new Error('メールアドレスまたはパスワードが正しくありません');
+    if (error) { state.introForce = false; throw new Error('メールアドレスまたはパスワードが正しくありません'); }
     local.set(LAST_EMAIL_KEY, f.email.value.trim());
     playCupIn();
     // 撮影画面から来てログインした場合は、そのままマイページへ
@@ -5492,11 +5494,11 @@ async function waitForCheckout() {
 }
 
 // ---------- オープニング動画（ダブルタップでスキップ） ----------
-function showIntro() {
+function showIntro({ force = false } = {}) {
   // アプリを開くごとに1回（同じ画面のまま再読み込みしても繰り返さない）
   let shown = false;
   try { shown = sessionStorage.getItem('atg-intro') === '1'; sessionStorage.setItem('atg-intro', '1'); } catch { /* 何もしない */ }
-  if (shown || document.getElementById('intro')) return;
+  if ((shown && !force) || document.getElementById('intro')) return;
   if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
   const wrap = document.createElement('div');
   wrap.id = 'intro';
