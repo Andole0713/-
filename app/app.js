@@ -931,9 +931,9 @@ function nextAction({ latest, rmNow, practicedToday, cr, pending, tasks, done })
   if (rmNow && !rmNow.seen_at) return card('🎯', '今月のドリルが公開されました', esc(rmNow.theme || rmNow.drills?.title || ''), '#/drills', '見る', 'drill');
   if (meetSoon) return card('◷', `面談は ${esc(fmtShort(p.next_meeting_at))} からです`, '聞きたいことをメモしておくとスムーズです', '', '', 'meeting');
   if (soon.length) return card('⏳', `期限が近い権利が ${soon.length} 回あります`, `${expiryText(soon)}。期限を過ぎると使えなくなります`, soon.some((c) => c.kind === 'video') ? SWINGFRAME_URL : '#/home', soon.some((c) => c.kind === 'video') ? '撮影する' : '確認', 'video');
-  if (cr && left > 0 && !pending.length) return card('●', `動画をあと ${left} 回 送れます`, '撮影して、そのままコーチに送れます', SWINGFRAME_URL, '撮影する', 'video');
+  if (cr && left > 0 && !pending.length) return card('●', `動画をあと ${left} 回 送れます`, rmNow ? 'ドリルに取り組んだスイングを撮って、コーチに見てもらいましょう' : '撮影して、そのままコーチに送れます', SWINGFRAME_URL, '撮影する', 'video');
   if (rmNow && !practicedToday) return card('✓', '今日の練習を記録しましょう', `今月のドリル：${esc(rmNow.drills?.title || rmNow.theme || '')}`, '#/drills', '記録する', 'drill');
-  if (tasks.length && done < tasks.length) return card('☐', `今月の課題があと ${tasks.length - done} 件あります`, '下の「今月の課題」で、終わったらタップしてチェック', '', '', 'lesson');
+  if (tasks.length && done < tasks.length) return card('☐', `コーチからの課題があと ${tasks.length - done} 件あります`, '下の「今月の練習」で、終わったらタップしてチェック', '', '', 'lesson');
   return card('⛳', 'ラウンドしたらスコアを記録しましょう', 'ベスト・平均が自動で計算されます', '#/scores', '記録する', 'score');
 }
 
@@ -2171,7 +2171,7 @@ async function viewMemberDrills() {
       ? sb.rpc('mark_roadmap_seen').then(({ error }) => { if (!error) state.drillUnread = 0; }, () => {}) : null,
   ]);
   return header('ドリル') + `<div class="content wide">
-    <p class="page-lead">毎月1つ届く練習メニュー（ドリル）と、1年間の練習計画（ロードマップ）です。練習したら記録しましょう。</p>
+    <p class="page-lead">担当のコーチがあなたに合わせて選ぶ、毎月の練習メニュー（ドリル）と、1年間の練習計画（ロードマップ）です。ドリルがスイング作りの中心です。練習したら記録しましょう。</p>
     ${glossaryLink()}
     ${roadmapView(roadmap, urls, { practice, reflections, goal: goals[0]?.goal || p.goal })}
     <div class="section-title"><div><div class="eyebrow">From Lessons</div><h2>レッスンで届いたドリル</h2></div></div>
@@ -2186,10 +2186,19 @@ function viewGuide() {
   const first = !state.profile.onboarded_at;
   return header('使い方ガイド', first ? '' : 'menu') + `<div class="content guide">
     ${first ? `<div class="hero"><div class="eyebrow">Welcome</div><h1>${esc(state.profile.name || '')}さん、ようこそ。</h1>
-      <p style="margin:0">レッスンの受け方を3つのステップでご紹介します。</p></div>` : ''}
+      <p style="margin:0">レッスンの受け方を4つのステップでご紹介します。</p></div>` : ''}
     <section class="card guide-step">
       <div class="step-no"><span>STEP</span>1</div>
-      <h2>動画を撮る <small>このアプリの撮影機能「SwingFrame」を使います</small></h2>
+      <h2>今月のドリルで練習する <small>レッスンの中心は、担当のコーチが選ぶ「毎月のドリル」です</small></h2>
+      <ol>
+        <li>コーチがあなたに合わせて選んだドリルが公開されると、ホームに「<b>今月のドリル</b>」が表示されます</li>
+        <li>ドリルの動画を見ながら練習します（下のメニューの「<b>ドリル</b>」からも見られます）</li>
+        <li>練習した日は、ホームの「<b>✓ 今日練習した</b>」を押して記録します。記録はコーチにも届きます</li>
+      </ol>
+    </section>
+    <section class="card guide-step">
+      <div class="step-no"><span>STEP</span>2</div>
+      <h2>動画を撮る <small>ドリルに取り組んだスイングを、撮影機能「SwingFrame」で撮ります</small></h2>
       <ol>
         <li>下のメニューの「<b>撮影・提出</b>」→「<b>SwingFrame で撮影する</b>」を押します</li>
         <li>ガイドの枠に体が入るようにスマホを置き、録画ボタンで録画を始めて止めます（設定で「自動録画」にすると、構えたら始まり、打球音のあとに自動で止まります。オフにするまで続けて撮れます）</li>
@@ -2204,24 +2213,24 @@ function viewGuide() {
         </ul></div>
     </section>
     <section class="card guide-step">
-      <div class="step-no"><span>STEP</span>2</div>
+      <div class="step-no"><span>STEP</span>3</div>
       <h2>動画を送る</h2>
       <ol>
         <li>下のメニューの「<b>撮影・提出</b>」を開く</li>
         <li>SwingFrame から届いた動画を確認する（カメラロールの動画を送るときは「<b>動画を選ぶ</b>」から選ぶ）</li>
-        <li>クラブ・撮影方向・お悩みを入力して「<b>動画を送信する</b>」</li>
+        <li>クラブ・撮影方向・お悩み（ドリルで気になったことなど）を入力して「<b>動画を送信する</b>」</li>
       </ol>
       <p class="muted small" style="margin:0">サブスクリプション制は毎月2本まで送れます。送った動画は3か月間、履歴から見返せます。</p>
     </section>
     <section class="card guide-step">
-      <div class="step-no"><span>STEP</span>3</div>
-      <h2>レッスンを見て練習する</h2>
+      <div class="step-no"><span>STEP</span>4</div>
+      <h2>レッスンを見て、面談でふり返る</h2>
       <ol>
         <li>コーチからレッスンが届くと、<b>メールでお知らせ</b>が届き、「履歴」に <span class="new-badge">NEW</span> が付きます</li>
         <li>解説動画とフィードバックを確認します</li>
         <li>「次回までの練習」は、練習したらタップして<b>チェック</b>しましょう</li>
       </ol>
-      <p class="muted small" style="margin:0">月1回のオンライン面談は、マイページの「LINEで面談を予約する」から予約できます。</p>
+      <p class="muted small" style="margin:0">オンライン面談は、マイページの「LINEで面談を予約する」から予約できます。ドリルの成果をふり返り、次のドリルを確認します。</p>
     </section>
     <button class="btn-block btn-gold" data-action="finish-guide">${first ? 'はじめる' : 'マイページへ'}</button>
   </div>` + (first ? '' : memberNav('menu'));
