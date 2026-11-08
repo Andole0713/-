@@ -1758,7 +1758,7 @@ body.rec-open{overflow:hidden}
 .fb-kind{display:flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:999px;padding:8px 14px;background:#fff;cursor:pointer;font-weight:700;font-size:14px}
 .fb-kind:has(input:checked){border-color:var(--ink);background:var(--ink);color:#fff}
 .fb-kind input{display:none}
-.fb-item.open{border-left:4px solid var(--gold)}
+.fb-item.open{border-left:4px solid #d64b3c;background:#fff8f7}
 .fb-reply{background:var(--paper);border-radius:10px;padding:8px 12px;margin-top:6px}
 .fb-reply b{font-size:12.5px;color:var(--gold-deep,#8a6a2c)}
 .fb-reply p{margin:2px 0 0;font-size:14px}
@@ -1864,3 +1864,14 @@ body.rec-open{overflow:hidden}
 .hm-form{display:flex;gap:8px;align-items:flex-end;margin-top:10px}
 .hm-form textarea{flex:1;min-height:44px;resize:vertical;margin:0}
 .hm-form button{flex:none;min-height:44px}
+
+/* 不具合・要望：未対応があるときは赤で目立たせる（スタッフ） */
+.btn.btn-alert{background:#d64b3c;color:#fff;box-shadow:0 0 0 3px rgba(214,75,60,.18) !important}
+.btn.btn-alert em{font-style:normal;background:#fff;color:#c0392b;border-radius:999px;padding:0 7px;margin-left:2px;font-weight:800}
+.pill.fb-new{background:#d64b3c;color:#fff}
+.pill.fb-k-bug{background:#fde3e0;color:#b8382a}
+.pill.fb-k-request{background:#e3edfb;color:#2e5f9e}
+.pill.fb-k-other{background:var(--paper-2);color:var(--muted)}
+.fb-open-title h2{color:#c0392b}
+.fb-cancel{text-align:right;margin-top:4px}
+.fb-cancel .link{color:#b8382a;font-size:13px}
