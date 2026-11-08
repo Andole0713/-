@@ -55,6 +55,7 @@ section{padding:96px 0}
 .nav{display:flex;gap:22px;align-items:center}
 .nav a{color:var(--on-dark);text-decoration:none;font-size:13px;letter-spacing:.1em;white-space:nowrap}
 .nav a:hover{color:var(--gold-2)}
+.nav{gap:18px}.nav a[href="#strength"],.nav a[href="#faq"]{display:none}
 .nav .login{border:1px solid var(--gold-line);border-radius:999px;padding:8px 18px;white-space:nowrap}
 
 /* 目次メニュー（3本バー） */
@@ -178,6 +179,22 @@ section{padding:96px 0}
 .screen b{display:block;font-family:var(--serif);font-size:18px;letter-spacing:.05em}
 .screen figcaption span{display:block;color:var(--muted);font-size:14px;margin-top:4px}
 .screens-note{font-size:12px;color:var(--muted);text-align:center;margin:28px 0 0}
+.screens.four{grid-template-columns:repeat(4,1fr);gap:22px}
+.screens.four .phone{width:min(100%,220px)}
+/* アプリの機能 */
+.app-features{padding:110px 0;background:var(--paper)}
+.af-row{display:grid;grid-template-columns:1fr 1fr;gap:56px;align-items:center;margin-top:80px}
+.af-row.rev .af-shots{order:2}
+.af-shots{display:flex;justify-content:center;gap:18px}
+.af-shots .phone{width:min(46%,230px);margin:0}
+.af-shots .phone:only-child{width:min(70%,250px)}
+.af-tag{display:inline-block;margin:0 0 14px;padding:5px 14px;border-radius:999px;background:var(--ink);color:var(--gold-2);font-size:13px;font-weight:700;letter-spacing:.08em}
+.af-text h3{font-family:var(--serif);font-size:26px;line-height:1.5;letter-spacing:.05em;margin:0 0 18px}
+.af-list{list-style:none;margin:0;padding:0}
+.af-list li{position:relative;padding:0 0 0 26px;margin:0 0 12px;color:var(--muted);font-size:15px;line-height:1.75}
+.af-list li::before{content:"";position:absolute;left:4px;top:.6em;width:10px;height:10px;border-radius:50%;border:2px solid var(--gold)}
+.af-more{margin-top:90px}
+.sp{display:none}
 
 /* コーチ */
 .coach-lead{max-width:760px;margin:20px auto 0;text-align:center}
@@ -294,6 +311,12 @@ section{padding:96px 0}
   .strengths{grid-template-columns:1fr;gap:12px}
   .operator-grid{grid-template-columns:1fr;gap:30px}
   .screens{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;gap:18px;margin:40px -20px 0;padding:0 20px 16px;scrollbar-width:none}
+  .app-features{padding:80px 0}
+  .af-row{grid-template-columns:1fr;gap:28px;margin-top:60px}
+  .af-row.rev .af-shots{order:0}
+  .af-text h3{font-size:22px}
+  .af-more{margin-top:60px}
+  .sp{display:inline}
   .screens::-webkit-scrollbar{display:none}
   .screen{flex:0 0 72%;scroll-snap-align:center}
   .steps,.steps.steps-6{grid-template-columns:1fr 1fr}
@@ -331,6 +354,7 @@ section{padding:96px 0}
       <a href="#strength">特徴</a>
       <a href="#flow">レッスンの進め方</a>
       <a href="#members">会員ページ</a>
+      <a href="#features">アプリの機能</a>
       <a href="#plan">料金プラン</a>
       <a href="#coach">コーチ紹介</a>
       <a href="#faq">よくある質問</a>
@@ -350,11 +374,12 @@ section{padding:96px 0}
       <li><a href="#concept"><small>02</small>オンラインの特徴</a></li>
       <li><a href="#flow"><small>03</small>レッスンの進め方</a></li>
       <li><a href="#members"><small>04</small>会員ページ</a></li>
-      <li><a href="#school"><small>05</small>運営スクール</a></li>
-      <li><a href="#plan"><small>06</small>料金プラン</a></li>
-      <li><a href="#coach"><small>07</small>コーチ紹介</a></li>
-      <li><a href="#faq"><small>08</small>よくある質問</a></li>
-      <li><a href="#contact"><small>09</small>お申し込み・ご相談</a></li>
+      <li><a href="#features"><small>05</small>アプリの機能</a></li>
+      <li><a href="#school"><small>06</small>運営スクール</a></li>
+      <li><a href="#plan"><small>07</small>料金プラン</a></li>
+      <li><a href="#coach"><small>08</small>コーチ紹介</a></li>
+      <li><a href="#faq"><small>09</small>よくある質問</a></li>
+      <li><a href="#contact"><small>10</small>お申し込み・ご相談</a></li>
     </ul>
     <div class="drawer-actions">
       <a class="btn btn-line" data-line href="https://lin.ee/ssvLEAZ" target="_blank" rel="noopener">LINEで相談する</a>
@@ -367,7 +392,7 @@ section{padding:96px 0}
 <main id="top">
   <!-- ヒーロー -->
   <section class="hero">
-    <img class="hero-logo" src="assets/logo.png" width="880" height="626" alt="オルタイムゴルフ IN DOOR GOLF">
+    <img class="hero-logo" src="assets/logo.png" width="880" height="626" alt="オルタイムゴルフ Online Golf Lesson">
     <div class="wrap">
       <div class="brand-line">ONLINE GOLF LESSON</div>
       <p class="operated"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="9" r="6"/><path d="M8.5 13.8 7 22l5-3 5 3-1.5-8.2"/></svg><span><b>愛知県初</b>　PGA基準のレッスンをオンラインで</span></p>
@@ -444,14 +469,18 @@ section{padding:96px 0}
       <h2 class="h2 reveal">レッスンは、専用の会員ページに届きます。</h2>
       <p class="lead reveal">スマートフォンでいつでも確認。送った動画、コーチの解説、練習メニューまで、すべてここにまとまります。</p>
       <details class="fold reveal"><summary class="fold-btn"><span class="fo">会員ページの画面を見る</span><span class="fc">閉じる</span></summary>
-      <div class="screens">
+      <div class="screens four">
         <figure class="screen">
-          <div class="phone"><img src="assets/screens/home.webp" width="540" height="1080" loading="lazy" alt="マイページの画面。次にやること、目標、今月のドリルが表示されている"></div>
-          <figcaption><b>マイページ</b><span>次にやることや今月のドリルが、ひと目で分かります。</span></figcaption>
+          <div class="phone"><img src="assets/screens/home.webp" width="540" height="1080" loading="lazy" alt="マイページの画面。次にやること、目標、今月のドリルと練習の記録ボタンが表示されている"></div>
+          <figcaption><b>マイページ</b><span>次にやること・今月のドリル・残りの回数が、ひと目で分かります。</span></figcaption>
         </figure>
         <figure class="screen">
-          <div class="phone"><img src="assets/screens/lesson.webp" width="540" height="1080" loading="lazy" alt="レッスン詳細の画面。今回の診断と、解説動画・フィードバック・練習へのボタンが表示されている"></div>
-          <figcaption><b>レッスン</b><span>診断・解説動画・練習メニューがまとめて届きます。</span></figcaption>
+          <div class="phone"><img src="assets/screens/practice.webp" width="540" height="1080" loading="lazy" alt="今月の練習の画面。今月のドリルとレッスンの練習メニューがチェックリストで並んでいる"></div>
+          <figcaption><b>今月の練習</b><span>ドリルとレッスンの練習メニューがまとまり、終わったらチェック。</span></figcaption>
+        </figure>
+        <figure class="screen">
+          <div class="phone"><img src="assets/screens/lesson.webp" width="540" height="1080" loading="lazy" alt="レッスン詳細の画面。今回の診断と、フィードバック・練習・送った動画へのボタンが表示されている"></div>
+          <figcaption><b>レッスン</b><span>診断・解説・練習メニューがまとめて届きます。</span></figcaption>
         </figure>
         <figure class="screen">
           <div class="phone"><img src="assets/screens/history.webp" width="540" height="1080" loading="lazy" alt="レッスンと送った動画の画面。送った動画とその解説が月ごとに並んでいる"></div>
@@ -462,11 +491,93 @@ section{padding:96px 0}
     </div>
   </section>
 
+  <!-- アプリの機能 -->
+  <section class="app-features" id="features">
+    <div class="wrap">
+      <div class="center">
+        <p class="eyebrow reveal">App Features</p>
+        <h2 class="h2 reveal">撮影から練習の記録まで、<br class="sp">アプリひとつで。</h2>
+        <p class="lead reveal">レッスンを受けるだけでなく、毎日の練習が続くしくみをアプリにそろえました。</p>
+      </div>
+
+      <div class="af-row reveal">
+        <div class="af-shots">
+          <div class="phone"><img src="assets/screens/swingframe.webp" width="540" height="1080" loading="lazy" alt="撮影機能 SwingFrame の撮影画面。人型のガイドに体を合わせて撮影できる"></div>
+          <div class="phone"><img src="assets/screens/swingframe-review.webp" width="540" height="1080" loading="lazy" alt="SwingFrame の再生画面。線を引く・速度・比較・コーチへ送るボタンが並んでいる"></div>
+        </div>
+        <div class="af-text">
+          <p class="af-tag">撮影機能 SwingFrame</p>
+          <h3>ガイドに合わせて撮るだけ。<br>そのままコーチへ。</h3>
+          <ul class="af-list">
+            <li>画面の人型のガイドに体を合わせるだけで、見やすい角度で撮影できます</li>
+            <li>打球音を聞きとって、自動で録画を止める「自動録画」も使えます</li>
+            <li>スロー・コマ送り・線を引く・前の動画と並べて比べる、まで手元でできます</li>
+            <li>撮った動画は「コーチへ」を押すだけで、そのままレッスンに送れます</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="af-row rev reveal">
+        <div class="af-shots">
+          <div class="phone"><img src="assets/screens/drills.webp" width="540" height="1080" loading="lazy" alt="ドリルの画面。1年間のロードマップと、今月のドリルが表示されている"></div>
+        </div>
+        <div class="af-text">
+          <p class="af-tag">毎月のドリル・1年間の練習計画</p>
+          <h3>今月やることが、<br>毎月届きます。</h3>
+          <ul class="af-list">
+            <li>初回のカウンセリングをもとに、あなた専用の1年間の練習計画（ロードマップ）をつくります</li>
+            <li>毎月1つ、テーマと練習ドリルが公開されます</li>
+            <li>レッスンで届いたドリルも、ここにたまっていつでも見返せます</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="af-row reveal">
+        <div class="af-shots">
+          <div class="phone"><img src="assets/screens/calendar.webp" width="540" height="1080" loading="lazy" alt="練習した日のカレンダー。練習した日に印がつき、1か月の練習日数が表示されている"></div>
+        </div>
+        <div class="af-text">
+          <p class="af-tag">練習の記録</p>
+          <h3>練習した日が、<br>ひと目で分かる。</h3>
+          <ul class="af-list">
+            <li>練習したらボタンを押すだけ。カレンダーで1か月分の練習日を確かめられます</li>
+            <li>付け忘れた日も、あとから記録できます</li>
+            <li>練習の記録はコーチにも届くので、面談やレッスンで活かされます</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="features four af-more">
+        <div class="feature reveal">
+          <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/></svg></div>
+          <h3>オンライン面談</h3>
+          <p>プロとビデオ通話で直接相談。日程はLINEで予約できます（プランにより回数が異なります）。</p>
+        </div>
+        <div class="feature reveal">
+          <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg></div>
+          <h3>用語集</h3>
+          <p>レッスンに出てくるゴルフの言葉を、やさしく解説。ルールやマナー、安全のことも調べられます。</p>
+        </div>
+        <div class="feature reveal">
+          <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg></div>
+          <h3>メモ</h3>
+          <p>練習で気づいたことを書いておけます。ホームにいちばん新しいメモが表示されます。</p>
+        </div>
+        <div class="feature reveal">
+          <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 22V4"/><path d="M4 4h12l-2 4 2 4H4"/></svg></div>
+          <h3>スコア記録</h3>
+          <p>ラウンドのスコアを記録すると、ベストスコアと平均スコアを自動で計算します。</p>
+        </div>
+      </div>
+      <p class="screens-note">※ 画面はイメージです。内容はプランによって異なる場合があります。</p>
+    </div>
+  </section>
+
   <!-- 運営スクール -->
   <section class="operator" id="school">
     <div class="wrap operator-grid">
       <div>
-        <img class="op-logo reveal" src="assets/logo.png" alt="オルタイムゴルフ INDOOR GOLF" width="880" height="626" loading="lazy">
+        <img class="op-logo reveal" src="assets/logo.png" alt="オルタイムゴルフ Online Golf Lesson" width="880" height="626" loading="lazy">
         <p class="eyebrow reveal">Our School</p>
         <h2 class="h2 reveal">名古屋のインドアゴルフスクールが運営しています。</h2>
         <p class="lead reveal">All Time Golf は、名古屋市港区のインドアゴルフスクール「オルタイムゴルフ」のオンラインレッスンです。店舗で指導しているプロが、オンラインでもあなたのスイングを見ます。</p>
@@ -651,7 +762,7 @@ section{padding:96px 0}
 <footer class="footer">
   <div class="wrap">
     <div>
-      <img src="assets/logo.png" width="180" height="128" alt="オルタイムゴルフ IN DOOR GOLF" style="height:auto">
+      <img src="assets/logo.png" width="180" height="128" alt="オルタイムゴルフ Online Golf Lesson" style="height:auto">
       <p style="margin:14px 0 0">運営：オルタイムゴルフ（名古屋市港区）　<a href="https://alltime-golf.com/" target="_blank" rel="noopener">店舗サイト ↗</a></p>
       <p style="margin:4px 0 0">&copy; <span id="year"></span> All Time Golf</p>
     </div>
