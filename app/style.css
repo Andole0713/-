@@ -1879,3 +1879,18 @@ body.rec-open{overflow:hidden}
 /* 隣り合うボタン・カードがくっつかないように */
 .acc-logout{margin:14px 0 22px}
 .score-add{margin-bottom:22px}
+
+/* ホームの「今月の練習」：ドリル・レッスンの練習・コーチからの課題をまとめる */
+.mp-drill{display:flex;align-items:center;gap:10px;padding:12px 14px;margin:0 0 10px;border-radius:14px;background:#fff;border:1px solid var(--line);color:var(--ink);text-decoration:none}
+.mp-drill .mp-ic{font-size:20px}
+.mp-drill span:not(.mp-ic){flex:1;min-width:0}
+.mp-drill small{display:block;font-size:12px;color:var(--muted);font-weight:700}
+.mp-drill b{display:block;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mp-drill em{font-style:normal;font-size:13px;font-weight:800;color:var(--c-drill,#6b4fb0);white-space:nowrap}
+.mp-drill i{font-style:normal;color:var(--muted)}
+.mp-group{margin:0 0 12px;background:#fff;border:1px solid var(--line);border-radius:14px;padding:10px 12px}
+.mp-group .task:last-child{margin-bottom:0}
+.mp-group ol.drill{margin:0}
+.mp-h{display:flex;justify-content:space-between;gap:8px;margin:0 0 8px;font-size:13px;font-weight:800;color:var(--ink)}
+.mp-h a{font-weight:700;white-space:nowrap;text-decoration:none}
+.task-old{opacity:.6}
