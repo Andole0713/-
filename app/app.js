@@ -580,6 +580,17 @@ function rmMonths(items) {
   };
   return { cur, total, label };
 }
+// ロードマップの節目：各年の3・6か月目は「中間目標」、12か月目は「目標」。13か月目からは2年目として同じ形をくり返す
+// （何か月目かは、ロードマップの並び順＝編集画面の「◯か月目」で数える）
+const RM_MS = { 3: '中間目標', 6: '中間目標', 12: '目標' };
+const rmCycleOf = (i) => ({ year: Math.floor(i / 12) + 1, month: (i % 12) + 1 });
+const rmMsLabel = (i) => { const { year, month } = rmCycleOf(i); return RM_MS[month] ? `${year > 1 ? `${year}年目・` : ''}${month}か月目の${RM_MS[month]}` : ''; };
+const rmNoLabel = (i) => (i < 12 ? `${i + 1}か月目` : `${Math.floor(i / 12) + 1}年目・${(i % 12) + 1}か月目`);
+// 次の節目（今の月から先で、目標が書かれている最初の節目）
+function rmNextMs(items, fromIndex) {
+  for (let i = Math.max(0, fromIndex); i < items.length; i++) if (rmMsLabel(i) && items[i].milestone && !items[i].hidden) return { i, r: items[i] };
+  return null;
+}
 const rmMissing = (r) => [!r.theme && 'テーマ', !r.drill_id && 'ドリル'].filter(Boolean).join('・') + '未定';
 // ホームに出す「今月のテーマ」：スタッフがその月に書いたテーマがあればそれ、なければロードマップのその月のテーマ。
 // 書いたテーマは書いた月だけ出す（月が変わると自動でロードマップのテーマに戻る）
@@ -2106,14 +2117,18 @@ function roadmapView(items, urls, extra = {}) {
   const mm = rmMonths(items);
   const step = mm?.cur || 0;
   const last = items[items.length - 1];
+  const ci = Math.max(0, items.indexOf(current));
+  const nextMs = rmNextMs(items, ci);
+  const multi = items.length > 12;
   return `<section class="roadmap" data-current="${items.indexOf(current)}">
     <div class="rm-head">
       <div><div class="eyebrow">Roadmap</div><h2>あなたのロードマップ</h2></div>
-      <div class="rm-step"><b>${step}</b><small>/${mm?.total || items.length}か月</small></div>
+      <div class="rm-step">${multi && current ? `<small class="rm-year">${rmCycleOf(ci).year}年目</small>` : ''}<b>${step}</b><small>/${mm?.total || items.length}か月</small></div>
     </div>
     <div class="meter"><i style="width:${Math.round((step / (mm?.total || items.length)) * 100)}%"></i></div>
     ${goal ? `<p class="rm-goal-top">🏁 ゴール：<b>${esc(goal)}</b></p>` : ''}
-    <p class="muted small" style="margin:8px 0 0">毎月1本、あなた専用のドリルが公開されます。ご契約中はいつでも見返せます。</p>
+    ${nextMs ? `<p class="rm-ms-next">🚩 次の節目：${rmMsLabel(nextMs.i)}「<b>${esc(nextMs.r.milestone)}</b>」${nextMs.i > ci ? `<small>（${fmtMonth(nextMs.r.publish_on)}）</small>` : '<small>（今月）</small>'}</p>` : ''}
+    <p class="muted small" style="margin:8px 0 0">毎月1本、あなた専用のドリルが公開されます。3か月目・6か月目に中間目標、12か月目に目標があります。ご契約中はいつでも見返せます。</p>
     <div class="rm-grid" id="rm-grid">${items.map((r, i) => {
       const isOpen = rmOpen(r);
       const isCurrent = r === current;
@@ -2123,7 +2138,7 @@ function roadmapView(items, urls, extra = {}) {
       return `<button type="button" class="rm-tile ${cls}" data-action="rm-open" data-i="${i}" aria-expanded="false" aria-controls="rm-panel-${i}">
           ${isCurrent ? '<span class="now">今月</span>' : ''}<span class="no">${mm?.label(r) || `${i + 1}か月目`}</span><span class="st" aria-hidden="true">${icon}</span>
           ${isNew ? '<span class="dot" aria-label="NEW"></span>' : ''}
-          <b>${esc(r.theme || (r.drills?.title ?? 'テーマ準備中'))}</b></button>`;
+          <b>${esc(r.theme || (r.drills?.title ?? 'テーマ準備中'))}</b>${rmMsLabel(i) && r.milestone ? `<span class="rm-ms-tag">🚩 ${RM_MS[rmCycleOf(i).month]}</span>` : ''}</button>`;
     }).join('')}
       <div class="rm-goal-tile">🏁 ゴール：${esc(goal || '目標達成')}</div>
     </div>
@@ -2134,7 +2149,8 @@ function roadmapView(items, urls, extra = {}) {
       const days = logOf(r.id).length;
       const head = `${isCurrent ? '<span class="rm-badge">今月のドリル</span>' : ''}
         <div class="rm-month">${mm?.label(r) || `${i + 1}か月目`}・${fmtMonth(r.publish_on)}${isNew ? '<span class="new-badge">NEW</span>' : ''}${!isCurrent && isOpen && days ? `<span class="rm-days">練習 ${days}日</span>` : ''}</div>
-        <h3>${esc(r.theme || (r.drills?.title ?? 'テーマ準備中'))}</h3>`;
+        <h3>${esc(r.theme || (r.drills?.title ?? 'テーマ準備中'))}</h3>
+        ${rmMsLabel(i) && r.milestone ? `<p class="rm-ms-box">🚩 ${rmMsLabel(i)}<b>${esc(r.milestone)}</b></p>` : ''}`;
       const body = isOpen
         ? `${r.note ? `<p class="rm-note pre">${esc(r.note)}</p>` : ''}${r.drills ? drillCard(r.drills, urls) : '<p class="muted small">ドリルは準備中です。もうしばらくお待ちください。</p>'}
            ${isCurrent ? practiceBlock(r, rmPeriod(items, i), logOf(r.id)) : ''}${reflectionForm(r, refOf(r.id))}`
@@ -2154,7 +2170,7 @@ async function viewMemberDrills() {
     must(sb.from('lesson_drills')
       .select('sort_order, drills(*), lessons!inner(id, title, lesson_date, member_id)')
       .eq('lessons.member_id', p.id)),
-    must(sb.from('roadmap_items').select('id, publish_on, theme, note, published_at, hidden, seen_at, drills(*)').eq('member_id', p.id).order('publish_on')),
+    must(sb.from('roadmap_items').select('*, drills(*)').eq('member_id', p.id).order('publish_on')),
     ok(sb.from('roadmap_practice').select('item_id, practiced_on').eq('member_id', p.id)),
     ok(sb.from('roadmap_reflections').select('item_id, body').eq('member_id', p.id)),
     ok(sb.from('roadmap_goals').select('goal').eq('member_id', p.id)),
@@ -2703,8 +2719,9 @@ function adminRoadmapSummary(items, extra = {}) {
     <div class="between small"><span>${done}/${items.length}か月 公開済み</span><span class="muted">次回：${(() => { const n = items.find((r) => !rmOpen(r) && !r.hidden); return n ? fmtDate(n.publish_on) : '—'; })()}</span></div>
     <div class="meter"><i style="width:${Math.round((done / items.length) * 100)}%"></i></div>
     <ol class="rm-mini">${items.map((r, i) => `<li class="${rmOpen(r) ? 'open' : ''}">
-      <span class="n">${i + 1}</span>
+      <span class="n">${i < 12 ? i + 1 : `${rmCycleOf(i).year}-${rmCycleOf(i).month}`}</span>
       <span class="grow"><b>${esc(r.theme || '（テーマ未定）')}</b><small>${fmtDate(r.publish_on)}・${r.drills ? esc(r.drills.title) : '<em>ドリル未定</em>'}${rmOpen(r) ? `・練習 ${days(r.id)}日${r.seen_at ? '' : '・<em>未読</em>'}` : ''}</small>
+        ${rmMsLabel(i) ? `<span class="rm-ms-mini">🚩 ${rmMsLabel(i)}：${r.milestone ? esc(r.milestone) : '<em>未設定</em>'}</span>` : ''}
         ${ref(r.id) ? `<span class="rm-ref">💬 ${esc(ref(r.id))}</span>` : ''}</span>
       <span class="rm-act"><span class="pill ${rmOpen(r) ? 'ok' : r.hidden ? 'warn' : ''}">${rmOpen(r) ? '公開済み' : r.hidden ? '取り消し中' : '予定'}</span>
         ${rmOpen(r) ? `<button type="button" class="btn-sm btn-danger" data-action="rm-unpublish" data-id="${r.id}" data-title="${esc(r.theme || `${i + 1}か月目`)}">取り消す</button>`
@@ -2719,20 +2736,22 @@ function rmPreview(date, theme, drill) {
 function rmRow(r, i, expand = false) {
   const open = r.id && rmOpen(r);
   return `<details class="rm-edit" data-row data-id="${esc(r.id || '')}"${expand ? ' open' : ''}>
-    <summary class="rm-edit-head"><b class="rm-no">${i + 1}か月目</b>
+    <summary class="rm-edit-head"><b class="rm-no">${rmNoLabel(i)}</b>
       <span class="pill ${open ? 'ok' : r.hidden ? 'warn' : ''}">${open ? '公開済み' : r.hidden ? '取り消し中' : r.id ? '予定' : '新規'}</span>
       <span class="rm-tools">
         <button type="button" class="btn-sm btn-sub" data-action="rm-move" data-dir="-1" aria-label="上の月と入れ替える">↑</button>
         <button type="button" class="btn-sm btn-sub" data-action="rm-move" data-dir="1" aria-label="下の月と入れ替える">↓</button>
         <button type="button" class="btn-sm btn-danger" data-action="rm-remove">削除</button>
       </span>
-      <span class="rm-prev">${rmPreview(r.publish_on, r.theme, r.drill_id)}</span></summary>
+      <span class="rm-prev">${rmPreview(r.publish_on, r.theme, r.drill_id)}</span><span class="rm-ms-flag"${rmMsLabel(i) ? '' : ' hidden'}>🚩</span></summary>
     <div class="grid">
       <div><label>公開日</label><input type="date" name="publish_on" value="${esc(r.publish_on)}" required></div>
       <div><label>ドリル</label><select name="drill_id"><option value="">（未定）</option>${rmLibrary.map((d) => `<option value="${d.id}"${d.id === r.drill_id ? ' selected' : ''}>${esc(d.title)}</option>`).join('')}</select></div>
     </div>
     <label>テーマ・目標</label><input name="theme" maxlength="100" value="${esc(r.theme || '')}" placeholder="例：アドレスと前傾角度を安定させる">
     <label>会員へのひとこと（任意）</label><textarea name="note" rows="2" maxlength="1000" placeholder="例：今月は毎日5分、鏡の前で確認しましょう">${esc(r.note || '')}</textarea>
+    <div class="rm-ms"${rmMsLabel(i) ? '' : ' hidden'}><label class="rm-ms-label">🚩 ${rmMsLabel(i)}</label>
+      <input name="milestone" maxlength="200" value="${esc(r.milestone || '')}" placeholder="例：アドレスが毎回同じ形でできる／100切り"></div>
     <div class="rm-edit-foot">
       <button type="button" class="link" data-action="rm-shift">この月から後ろを1か月ずらす</button>
       ${open ? '<label class="switch small"><input type="checkbox" name="unpublish"><span>公開を取り消す（会員に見えなくする）</span></label>'
@@ -2747,11 +2766,13 @@ function rmRefresh(row) {
   row.querySelector('.rm-prev').innerHTML = rmPreview(v('publish_on'), v('theme').trim(), v('drill_id'));
 }
 async function viewRoadmapEdit(memberId) {
-  const [m, items, library, goals] = await Promise.all([
+  const [m, items, library, goals, msOk] = await Promise.all([
     must(sb.from('profiles').select('id, name, goal').eq('id', memberId).maybeSingle()),
     must(sb.from('roadmap_items').select('*').eq('member_id', memberId).order('publish_on')),
     must(sb.from('drills').select('id, title').order('title')),
     must(sb.from('roadmap_goals').select('goal').eq('member_id', memberId)),
+    // 節目の目標の列（20261110000000_chart_and_milestones.sql）があるか
+    sb.from('roadmap_items').select('milestone').limit(1).then((r) => !r.error, () => false),
   ]);
   rmLibrary = library;
   const back = `admin/member/${memberId}/drill`;
@@ -2759,20 +2780,28 @@ async function viewRoadmapEdit(memberId) {
   return header(`ロードマップ：${m.name || ''}`, back) + `<div class="content">
     <p class="muted small" style="margin:0 0 8px">公開日になると、その月のドリルが会員ページに自動で公開されます。変更は「保存する」を押すまで反映されません。</p>
     ${library.length ? '' : '<div class="notice">ドリル集にドリルがありません。先に<a href="#/admin/drills">ドリル集</a>で登録すると、ここで選べます。</div>'}
-    <form class="form" data-form="roadmap" data-member="${esc(memberId)}" data-deleted="">
+    ${msOk ? '' : '<div class="notice">節目の目標（3・6・12か月目）を使うには、データベースの設定（20261110000000_chart_and_milestones.sql）を実行してください。</div>'}
+    <form class="form${msOk ? '' : ' no-ms'}" data-form="roadmap" data-member="${esc(memberId)}" data-deleted="" data-ms="${msOk ? '1' : ''}">
       <div class="card" style="margin-top:0"><label for="rm-goal" style="margin-top:0">ロードマップのゴール</label>
         <input id="rm-goal" name="goal" maxlength="100" value="${esc(goals[0]?.goal ?? '')}" placeholder="${esc(m.goal ? `例：${m.goal}` : '例：12か月後に90切り')}">
-        <p class="muted small" style="margin:4px 0 0">会員のロードマップの一番上と最後に表示されます。空欄のときは会員情報の「目標」を表示します。</p></div>
+        <p class="muted small" style="margin:4px 0 0">何年かかけて目指す、いちばん大きな目標です。会員のロードマップの一番上と最後に表示されます。空欄のときは会員情報の「目標」を表示します。</p>
+        <p class="muted small" style="margin:6px 0 0">🚩 各年の<b>3か月目・6か月目に中間目標</b>、<b>12か月目に目標</b>を、その月の欄で設定できます。13か月目からは2年目として同じ形をくり返します。</p></div>
       <p class="muted small" style="margin:0 0 8px">各月を押すと開いて編集できます。</p>
       <div id="rm-rows">${(() => { const next = items.findIndex((r) => !rmOpen(r)); return items.map((r, i) => rmRow(r, i, i === next)).join(''); })()}</div>
-      <button type="button" class="btn-block btn-sub" data-action="rm-add">＋ 1か月追加</button>
+      <div class="rm-add-btns"><button type="button" class="btn-block btn-sub" data-action="rm-add">＋ 1か月追加</button>
+        <button type="button" class="btn-block btn-sub" data-action="rm-add-year">＋ 次の1年（12か月）を追加</button></div>
       <div class="rm-save"><span id="rm-dirty" class="small hidden">未保存の変更があります</span>
         <button class="btn-block btn-gold" type="submit">保存する</button></div>
     </form>
   </div>` + adminNav('admin/members');
 }
 function rmRenumber() {
-  document.querySelectorAll('#rm-rows [data-row]').forEach((row, i) => { row.querySelector('.rm-no').textContent = `${i + 1}か月目`; });
+  document.querySelectorAll('#rm-rows [data-row]').forEach((row, i) => {
+    row.querySelector('.rm-no').textContent = rmNoLabel(i);
+    const ms = row.querySelector('.rm-ms'); const lb = rmMsLabel(i);
+    ms.hidden = !lb; ms.querySelector('.rm-ms-label').textContent = `🚩 ${lb}`;
+    row.querySelector('.rm-ms-flag').hidden = !lb;
+  });
 }
 function rmDirty() { document.getElementById('rm-dirty')?.classList.remove('hidden'); }
 
@@ -2943,13 +2972,13 @@ async function viewMemberDetail(id, tab) {
   const ok = (q) => q.then((r) => (r.error ? [] : r.data || []), () => []);
   const subsP = must(sb.from('submissions').select('*').eq('member_id', id).order('created_at', { ascending: false }).limit(20));
   const [m, tasks, lessons, subs, monthSubs, roadmap, rmPractice, rmRefs, rmGoals,
-    mRounds, mMeetings, mNotes, mPractice, karte, mSurvey, mCredits, mExits, mMemos, mCeles, subUrls] = await Promise.all([
+    mRounds, mMeetings, mNotes, mPractice, karte, mSurvey, mCredits, mExits, mMemos, mCeles, subUrls, chartEntries, admins] = await Promise.all([
     must(sb.from('profiles').select('*').eq('id', id).maybeSingle()),
     must(sb.from('tasks').select('*').eq('member_id', id).order('sort_order').order('created_at')),
     must(sb.from('lessons').select('id, lesson_date, title, created_at, read_at, submission_id').eq('member_id', id).order('lesson_date', { ascending: false }).order('created_at', { ascending: false })),
     subsP,
     must(sb.from('submissions').select('*').eq('member_id', id).gte('created_at', monthStart())),
-    must(sb.from('roadmap_items').select('id, publish_on, theme, published_at, hidden, seen_at, drills(title)').eq('member_id', id).order('publish_on')),
+    must(sb.from('roadmap_items').select('*, drills(title)').eq('member_id', id).order('publish_on')),
     ok(sb.from('roadmap_practice').select('item_id').eq('member_id', id)),
     ok(sb.from('roadmap_reflections').select('item_id, body, updated_at').eq('member_id', id)),
     ok(sb.from('roadmap_goals').select('goal').eq('member_id', id)),
@@ -2964,6 +2993,10 @@ async function viewMemberDetail(id, tab) {
     sb.from('member_memos').select('id, body, created_at, updated_at').eq('member_id', id).order('created_at', { ascending: false }).limit(100).then((r) => (r.error ? null : r.data || []), () => null),
     sb.from('celebrations').select('id, stamp, title, created_at, seen_at').eq('member_id', id).order('created_at', { ascending: false }).limit(5).then((r) => r.data || [], () => []),
     subsP.then((list) => signedVideoUrls(list.filter((x) => !x.video_deleted_at))).catch(() => ({})),
+    // 電子カルテの指導記録（設定前＝表がないときは null）と、記入したスタッフの名前
+    sb.from('chart_entries').select('*').eq('member_id', id).order('entry_date', { ascending: false }).order('created_at', { ascending: false }).limit(300)
+      .then((r) => (r.error ? null : r.data || []), () => null),
+    sb.from('profiles').select('id, name').eq('role', 'admin').then((r) => r.data || [], () => []),
   ]);
   const mst = scoreStats(mRounds, m || {});
   if (!m) return header('会員詳細', 'admin/members') + '<div class="content"><div class="empty">会員が見つかりません</div></div>';
@@ -3090,7 +3123,8 @@ async function viewMemberDetail(id, tab) {
     }).join('') || '<div class="muted">提出はまだありません</div>'}</div>`;
 
   // ---- タブ：カウンセリング（アンケートの回答・カウンセリングシート）----
-  const paneKarte = `${staff ? '' : surveyCard(mSurvey)}${karteForm(m.id, karte)}`;
+  const chartOpens = chartOpenNext(chartEntries);
+  const paneKarte = chartPane({ m, karte, entries: chartEntries, admins, lessons, meetings: mMeetings, roadmap, goal: rmGoals[0]?.goal || m.goal, survey: mSurvey, staff });
 
   // ---- タブ：担当者メモ ----
   const paneMemo = `<div class="section-title" style="margin-top:0"><h2>担当者メモ</h2><span class="muted small">会員には見えません</span></div>
@@ -3141,6 +3175,9 @@ async function viewMemberDetail(id, tab) {
       <div><span class="muted small">今月のテーマ</span><p>${theme ? esc(theme) : '<span class="muted">—</span>'}</p></div>
       <div><span class="muted small">スコア</span><p>ベスト ${esc(mst.best ?? '—')}・平均 ${esc(mst.avg ?? '—')}</p></div>
     </div>
+    ${chartOpens.length || karte?.focus ? `<div class="section-title"><h2>📋 カルテ</h2><button type="button" class="btn btn-sm btn-sub" data-action="md-tab" data-tab="karte">カルテを開く</button></div>
+    <div class="card ch-sum">${karte?.focus ? `<div><span class="muted small">いま取り組んでいる課題${karte.coach_name ? `（担当：${esc(karte.coach_name)}）` : ''}</span><p class="pre">${esc(karte.focus)}</p></div>` : ''}
+      ${chartOpens.slice(0, 3).map((e) => `<div class="ch-next open"><span class="muted small">次回対応・${fmtDate(e.entry_date)}</span><p class="pre">${esc(e.next_action)}</p></div>`).join('')}</div>` : ''}
     ${pinned.length ? `<div class="section-title"><h2>📌 固定メモ</h2><button type="button" class="btn btn-sm btn-sub" data-action="md-tab" data-tab="memo">メモを見る</button></div>
     <div class="card">${pinned.map((n) => `<div class="note pinned"><p class="pre">${esc(n.body)}</p></div>`).join('')}</div>` : ''}
     <div class="section-title"><h2>最近の動き（30日）</h2><span class="muted small">練習記録 ${new Set(mPractice.map((x) => x.practiced_on)).size}日</span></div>
@@ -3154,7 +3191,7 @@ async function viewMemberDetail(id, tab) {
     ['lesson', 'レッスン', paneLesson, unreadLessons],
     ['drill', 'ドリル', paneDrill, rmSt?.soon.length ? '!' : 0],
     ['video', '提出動画', paneVideo, pendingSubs],
-    ['karte', 'カウンセリング', paneKarte],
+    ['karte', 'カルテ', paneKarte, chartOpens.length ? String(chartOpens.length) : 0],
     ['memo', '担当者メモ', paneMemo, mNotes.length ? String(mNotes.length) : 0, 'mute'],
     ...(staff ? [] : [['umemo', '会員のメモ', paneUmemo, mMemos?.length ? String(mMemos.length) : 0, 'mute']]),
     ['cele', 'お祝い', paneCele],
@@ -3167,6 +3204,109 @@ async function viewMemberDetail(id, tab) {
     <div class="md-tabs" role="tablist">${tabs.map(([k, label, , badge, bc]) => `<button type="button" role="tab" data-action="md-tab" data-tab="${k}" class="${k === cur ? 'on' : ''}" aria-selected="${k === cur}">${label}${badge ? `<em class="${bc || ''}">${badge}</em>` : ''}</button>`).join('')}</div>
     ${tabs.map(([k, , html]) => `<section class="md-pane" data-pane="${k}"${k === cur ? '' : ' hidden'}>${html}</section>`).join('')}
   </div>` + adminNav('admin/members');
+}
+
+// ---------- 電子カルテ（スタッフ・コーチだけが見る。会員には見えない）----------
+// コーチが変わっても、目標・指導の流れ・ドリル・次回対応がひと目で引き継げるように、決まった項目で残す
+const CHART_KINDS = [['meeting', '面談'], ['review', '動画添削'], ['drill', 'ドリル設定'], ['handover', '引き継ぎ'], ['other', 'その他']];
+const chartKind = (k) => CHART_KINDS.find(([v]) => v === k)?.[1] || 'その他';
+// 記録のルール（カルテの一番上に表示する）
+const CHART_RULES = [
+  '面談・動画添削・ドリル設定をしたら、<b>その日のうちに</b>記録する',
+  '<b>「次回対応」は必ず書く</b>（何もなければ「なし」）。次に対応する人が、これだけ読めば動けるように',
+  '「やったこと・見たこと（事実）」と「課題・気づき（判断）」を分けて書く',
+  '略語・自分だけの言い方は使わない。<b>別のコーチが読んで分かる言葉</b>で',
+  '指導の方針を変えたら、上の「指導方針・申し送り」も書き直す',
+  '担当コーチが変わるときは、種類「引き継ぎ」で、ここまでの流れと注意点をまとめて残す',
+  '体の状態・家庭や仕事の事情などは、指導に必要な範囲だけ書く',
+];
+const chartOpenNext = (entries) => (entries || []).filter((e) => !e.next_done && e.next_action && e.next_action.trim() !== 'なし');
+function chartEntryFields(e = {}, pre = 'ce') {
+  const id = (n) => `${pre}-${n}`;
+  return `<div class="grid">
+      <div><label for="${id('date')}">日付</label><input id="${id('date')}" type="date" name="entry_date" value="${esc(e.entry_date || today())}" required></div>
+      <div><label for="${id('kind')}">種類</label><select id="${id('kind')}" name="kind">${CHART_KINDS.map(([v, l]) => `<option value="${v}"${(e.kind || 'meeting') === v ? ' selected' : ''}>${l}</option>`).join('')}</select></div>
+    </div>
+    <label for="${id('content')}">やったこと・見たこと <span class="muted">（事実）</span></label>
+    <textarea id="${id('content')}" name="content" rows="3" maxlength="2000" placeholder="例：後方からの動画。アドレスで前傾が浅く、トップで右ひじが浮く。ドライバーは右に出る球が多いと本人">${esc(e.content || '')}</textarea>
+    <label for="${id('issues')}">課題・気づき <span class="muted">（判断）</span></label>
+    <textarea id="${id('issues')}" name="issues" rows="2" maxlength="1000" placeholder="例：切り返しで上体が先に回るのが根本。まずはアドレスの前傾を安定させる">${esc(e.issues || '')}</textarea>
+    <label for="${id('drills')}">出したドリル・練習</label>
+    <textarea id="${id('drills')}" name="drills" rows="2" maxlength="1000" placeholder="例：トップで止める素振り 10回×毎日。壁を使った前傾キープ">${esc(e.drills || '')}</textarea>
+    <label for="${id('next')}">次回対応 <span class="req">必須</span></label>
+    <textarea id="${id('next')}" name="next_action" rows="2" maxlength="1000" required placeholder="例：次の動画で前傾が保てているか確認。できていれば切り返しのドリルへ（何もなければ「なし」）">${esc(e.next_action || '')}</textarea>`;
+}
+function chartEntryCard(e, author) {
+  const open = !e.next_done && e.next_action && e.next_action.trim() !== 'なし';
+  const row = (label, v) => (v ? `<div><dt>${label}</dt><dd class="pre">${esc(v)}</dd></div>` : '');
+  return `<article class="ch-entry k-${e.kind}">
+    <div class="ch-head"><span class="pill">${chartKind(e.kind)}</span><b>${fmtDate(e.entry_date)}</b><span class="muted small">記入：${esc(author || '—')}${e.updated_at && e.updated_at.slice(0, 16) !== e.created_at.slice(0, 16) ? '（編集済み）' : ''}</span></div>
+    <dl class="ch-dl">${row('やったこと・見たこと', e.content)}${row('課題・気づき', e.issues)}${row('ドリル・練習', e.drills)}
+      ${e.next_action ? `<div class="ch-next${open ? ' open' : ' done'}"><dt>次回対応${e.next_done ? '（対応済み）' : ''}</dt><dd class="pre">${esc(e.next_action)}</dd></div>` : ''}</dl>
+    <div class="ch-foot">
+      ${open ? `<button type="button" class="btn-sm btn-gold" data-action="chart-done" data-id="${e.id}" data-done="1">✓ 次回対応を済みにする</button>`
+        : e.next_done ? `<button type="button" class="link" data-action="chart-done" data-id="${e.id}" data-done="0">未対応に戻す</button>` : ''}
+      <button type="button" class="link" data-action="chart-delete" data-id="${e.id}">削除</button>
+    </div>
+    <details class="ch-edit"><summary>編集する</summary>
+      <form class="form" data-form="chart-entry" data-id="${e.id}" data-member="${e.member_id}">${chartEntryFields(e, `ce-${String(e.id).slice(0, 8)}`)}
+        <button class="btn-block" type="submit">記録を保存する</button></form>
+    </details>
+  </article>`;
+}
+// カルテのタブ全体
+function chartPane({ m, karte, entries, admins, lessons, meetings, roadmap, goal, survey, staff }) {
+  const k = karte || {};
+  const nameOf = (id) => admins.find((a) => a.id === id)?.name || '';
+  const ready = entries !== null;
+  const opens = chartOpenNext(entries);
+  // 今の年の節目（3・6・12か月目）
+  const cur = roadmap.filter(rmOpen).at(-1);
+  const ci = Math.max(0, roadmap.indexOf(cur));
+  const y0 = Math.floor(ci / 12) * 12;
+  const ms = roadmap.slice(y0, y0 + 12).map((r, j) => ({ r, i: y0 + j })).filter(({ i }) => rmMsLabel(i));
+  // 指導の流れ（記録＋レッスン送付・面談のまとめ・ドリル公開を、日付順に1本にまとめる）
+  const feed = [
+    ...(entries || []).map((e) => ({ t: e.entry_date, s: e.created_at, html: chartEntryCard(e, nameOf(e.created_by)) })),
+    ...lessons.map((l) => ({ t: l.lesson_date, s: l.created_at, html: `<div class="ch-auto"><span class="pill mute">レッスン送付</span><b>${fmtDate(l.lesson_date)}</b><span>「${esc(l.title)}」</span><a class="small" href="#/lesson/${l.id}">開く ›</a></div>` })),
+    ...meetings.filter((x) => x.status === 'done' && x.summary).map((x) => ({ t: x.scheduled_at.slice(0, 10), s: x.scheduled_at, html: `<div class="ch-auto"><span class="pill mute">面談のまとめ</span><b>${fmtDate(x.scheduled_at)}</b><span class="pre">${esc(x.summary)}</span></div>` })),
+    ...roadmap.filter(rmOpen).map((r) => ({ t: r.publish_on, s: r.publish_on, html: `<div class="ch-auto"><span class="pill mute">ドリル公開</span><b>${fmtDate(r.publish_on)}</b><span>${esc(r.theme || '')}${r.drills ? `（${esc(r.drills.title)}）` : ''}</span></div>` })),
+  ].sort((a, b) => (a.t === b.t ? (a.s < b.s ? 1 : -1) : a.t < b.t ? 1 : -1));
+  return `${ready ? '' : '<div class="notice">電子カルテを使うには、データベースの設定（20261110000000_chart_and_milestones.sql）を実行してください。</div>'}
+    <details class="card ch-rules"><summary><b>📋 記録のルール</b><span class="muted small">コーチが変わっても引き継げるように</span></summary>
+      <ol>${CHART_RULES.map((r) => `<li>${r}</li>`).join('')}</ol></details>
+
+    <div class="section-title" style="margin-top:0"><h2>次回対応</h2><span class="muted small">${opens.length ? `未対応 ${opens.length}件` : ''}</span></div>
+    <div class="card ch-open">${opens.length ? opens.map((e) => `<div class="ch-open-row"><div class="grow"><p class="pre">${esc(e.next_action)}</p>
+        <span class="muted small">${fmtDate(e.entry_date)}・${chartKind(e.kind)}・${esc(nameOf(e.created_by) || '—')}</span></div>
+        <button type="button" class="btn-sm btn-gold" data-action="chart-done" data-id="${e.id}" data-done="1">済み</button></div>`).join('')
+      : '<p class="muted small" style="margin:0">未対応の「次回対応」はありません。</p>'}</div>
+
+    <div class="section-title"><h2>目標</h2>${roadmap.length ? `<a class="btn btn-sm btn-sub" href="#/admin/roadmap/${m.id}">ロードマップで編集</a>` : ''}</div>
+    <div class="card ch-goals">
+      <div><span class="muted small">ゴール（長期）</span><p>${goal ? esc(goal) : '<span class="muted">—</span>'}</p></div>
+      ${ms.length ? ms.map(({ r, i }) => `<div><span class="muted small">🚩 ${rmMsLabel(i)}（${fmtMonth(r.publish_on)}）</span><p>${r.milestone ? esc(r.milestone) : '<span class="muted">未設定</span>'}</p></div>`).join('')
+        : `<p class="muted small" style="margin:0">${roadmap.length ? '節目の目標（3・6・12か月目）は、ロードマップの編集画面で設定できます。' : 'ロードマップを作ると、3・6・12か月目の節目の目標をここで確認できます（「ドリル」タブから作成）。'}</p>`}
+    </div>
+
+    <form class="card form ch-base" data-form="chart-base" data-member="${m.id}" data-prev-coach="${esc(k.coach_name || '')}">
+      <div class="between"><b>指導の基本情報</b><span class="muted small">${k.updated_at ? `${fmtShort(k.updated_at)} 更新` : ''}</span></div>
+      <label for="ch-coach">担当コーチ</label><input id="ch-coach" name="coach_name" maxlength="50" value="${esc(k.coach_name || '')}" placeholder="例：林">
+      <label for="ch-focus">いま取り組んでいる課題</label><textarea id="ch-focus" name="focus" rows="2" maxlength="500" placeholder="例：アドレスの前傾を安定させる（10月〜）">${esc(k.focus || '')}</textarea>
+      <label for="ch-policy">指導方針・申し送り</label><textarea id="ch-policy" name="policy" rows="3" maxlength="1000" placeholder="例：理屈より体で覚えるタイプ。一度に伝えることは1つに絞る。腰痛があるので回数の多い素振りは避ける">${esc(k.policy || '')}</textarea>
+      <button class="btn-block btn-sub" type="submit"${ready ? '' : ' disabled'}>基本情報を保存する</button>
+      <p class="muted small" style="margin:4px 0 0">担当コーチを変えると、「引き継ぎ」の記録が自動で残ります。</p>
+    </form>
+
+    <div class="section-title"><h2>指導記録を書く</h2></div>
+    <form class="card form ch-new" data-form="chart-entry" data-member="${m.id}">${chartEntryFields({}, 'ce-new')}
+      <button class="btn-block btn-gold" type="submit"${ready ? '' : ' disabled'}>記録を残す</button></form>
+
+    <div class="section-title"><h2>指導の流れ</h2><span class="muted small">記録・レッスン送付・面談のまとめ・ドリル公開を日付順に</span></div>
+    <div class="ch-feed">${feed.length ? feed.map((f) => f.html).join('') : '<div class="card"><p class="muted small" style="margin:0">まだ記録はありません。</p></div>'}</div>
+
+    <details class="card ch-karte"><summary><b>カウンセリングシート</b><span class="muted small">初回カウンセリングで聞いた内容</span></summary>
+      ${staff ? '' : surveyCard(survey)}${karteForm(m.id, karte)}</details>`;
 }
 
 // カウンセリングシート（会員には見えない）
@@ -3243,8 +3383,15 @@ async function viewMeetingPrep(id) {
   const tDone = tasks.filter((t) => t.done).length;
   const periodNotes = notes.filter((n) => n.pinned || n.created_at >= since);
 
+  // 電子カルテの未対応の「次回対応」（設定前は空）
+  const chOpen = chartOpenNext(await sb.from('chart_entries').select('entry_date, kind, next_action, next_done').eq('member_id', mid)
+    .order('entry_date', { ascending: false }).limit(50).then((r) => (r.error ? [] : r.data || []), () => []));
+
   // 話すことのヒント（データから自動で作る）
   const hints = [];
+  chOpen.forEach((e) => hints.push(['warn', `カルテの次回対応（${fmtMD(e.entry_date)}・${chartKind(e.kind)}）：${e.next_action}`]));
+  if (karte?.focus) hints.push(['', `いま取り組んでいる課題：${karte.focus}`]);
+  if (karte?.policy) hints.push(['', `指導方針・申し送り：${karte.policy}`]);
   if (cele.length) hints.push(['good', `お祝い：${cele.map((c) => `${fmtMD(c.r.played_on)} ${c.r.score}（${c.tags.map((t) => t[1]).join('・')}）`).join('、')}`]);
   if (karte?.body_notes) hints.push(['warn', `体の状態を確認：${karte.body_notes}`]);
   if (unread.length) hints.push(['warn', `まだ見ていないレッスンが${unread.length}件：${unread.map((l) => `「${l.title}」`).join('')}`]);
@@ -4003,15 +4150,18 @@ function saveLessonDraft(f) {
 
 // レッスン作成画面の横に出す、その会員の情報（前回までのレッスン・ドリル・カルテ・メモ・スコア・課題）
 async function memberBrief(memberId, name, exceptLesson) {
-  const [past, karte, roadmap, notes, rounds, tasks] = await Promise.all([
+  const [past, karte, roadmap, notes, rounds, tasks, chart] = await Promise.all([
     must(sb.from('lessons').select('id, lesson_date, title, point, practice, read_at').eq('member_id', memberId).order('lesson_date', { ascending: false }).order('created_at', { ascending: false }).limit(4)),
     sb.from('member_karte').select('*').eq('member_id', memberId).maybeSingle().then((r) => r.data),
     must(sb.from('roadmap_items').select('publish_on, theme, hidden, drills(title)').eq('member_id', memberId).order('publish_on')),
     sb.from('staff_notes').select('body, created_at').eq('member_id', memberId).eq('pinned', true).order('created_at', { ascending: false }).then((r) => r.data || []),
     must(sb.from('rounds').select('played_on, score, holes, course_name').eq('member_id', memberId).order('played_on', { ascending: false })),
     must(sb.from('tasks').select('title, detail, done').eq('member_id', memberId).order('sort_order')),
+    sb.from('chart_entries').select('entry_date, kind, next_action, next_done').eq('member_id', memberId).order('entry_date', { ascending: false }).limit(50)
+      .then((r) => (r.error ? [] : r.data || []), () => []),
   ]);
   const lessons = past.filter((l) => l.id !== exceptLesson).slice(0, 3);
+  const chOpen = chartOpenNext(chart);
   const nowItem = roadmap.filter((r) => !r.hidden && r.publish_on <= today()).at(-1);
   const nextItem = roadmap.find((r) => r.publish_on > today());
   const st = scoreStats(rounds, {});
@@ -4023,6 +4173,7 @@ async function memberBrief(memberId, name, exceptLesson) {
     ${sec('前回までのレッスン', lessons.map((l) => `<div class="mb-lesson"><div class="between"><b>${fmtDate(l.lesson_date)}　${esc(l.title)}</b><a class="muted small" href="#/admin/lesson/${l.id}">開く</a></div>
       ${l.point ? `<p>ポイント：${esc(l.point)}</p>` : ''}${l.practice ? `<p class="pre muted">${esc(l.practice.split('\n').slice(0, 3).join('\n'))}</p>` : ''}</div>`).join('') || '<p class="muted">まだありません</p>')}
     ${sec('ドリル', nowItem || nextItem ? `${nowItem ? `<p><span>今月</span>${esc(nowItem.drills?.title || nowItem.theme || '未定')}</p>` : ''}${nextItem ? `<p><span>次（${fmtMD(nextItem.publish_on)}）</span>${esc(nextItem.drills?.title || nextItem.theme || '未定')}</p>` : ''}` : '')}
+    ${sec('カルテ', `${karte?.focus ? `<p><span>いま取り組んでいる課題</span>${esc(karte.focus)}</p>` : ''}${karte?.policy ? `<p><span>指導方針・申し送り</span>${esc(karte.policy)}</p>` : ''}${chOpen.map((e) => `<p><span>次回対応（${fmtMD(e.entry_date)}）</span>${esc(e.next_action)}</p>`).join('')}`)}
     ${sec('カウンセリングシート', karteRows)}
     ${sec('担当者メモ（固定）', notes.map((n) => `<p class="pre">📌 ${esc(n.body)}</p>`).join(''))}
     ${sec('スコア', st.count ? `<p>ベスト <b>${st.best}</b>・平均 <b>${st.avg}</b>（${st.count}R）</p>${rounds.slice(0, 3).map((r) => `<p class="muted">${fmtDate(r.played_on)} ${esc(r.course_name)} ${r.score}${r.holes === 9 ? '（9H）' : ''}</p>`).join('')}` : '')}
@@ -4906,12 +5057,32 @@ const actions = {
     if (row.dataset.id) f.dataset.deleted = [f.dataset.deleted, row.dataset.id].filter(Boolean).join(',');
     row.remove(); rmRenumber(); rmDirty();
   },
+  'chart-done': async (el) => {
+    await must(sb.from('chart_entries').update({ next_done: el.dataset.done === '1', updated_at: new Date().toISOString() }).eq('id', el.dataset.id));
+    toast(el.dataset.done === '1' ? '次回対応を済みにしました' : '未対応に戻しました'); render();
+  },
+  'chart-delete': async (el) => {
+    if (!await confirmDialog({ title: 'この指導記録を削除しますか？', body: '削除すると元に戻せません。', ok: '削除する' })) return;
+    await must(sb.from('chart_entries').delete().eq('id', el.dataset.id));
+    toast('指導記録を削除しました'); render();
+  },
   'rm-add': () => {
     const rows = document.querySelectorAll('#rm-rows [data-row]');
     const last = rows[rows.length - 1]?.querySelector('[name="publish_on"]').value;
     const html = rmRow({ publish_on: last ? addMonths(last, 1) : nextFirst(), theme: '', drill_id: null, note: '' }, rows.length, true);
     document.getElementById('rm-rows').insertAdjacentHTML('beforeend', html);
     rmDirty();
+  },
+  // 次の1年分（12か月）をまとめて足す。公開日は最後の月の翌月から毎月
+  'rm-add-year': () => {
+    const rows = document.querySelectorAll('#rm-rows [data-row]');
+    let d = rows[rows.length - 1]?.querySelector('[name="publish_on"]').value;
+    const html = Array.from({ length: 12 }, (_, k) => {
+      d = d ? addMonths(d, 1) : nextFirst();
+      return rmRow({ publish_on: d, theme: '', drill_id: null, note: '' }, rows.length + k, k === 0);
+    }).join('');
+    document.getElementById('rm-rows').insertAdjacentHTML('beforeend', html);
+    rmDirty(); toast('12か月分を追加しました（保存すると反映されます）');
   },
   'drill-tag': (el) => {
     el.setAttribute('aria-pressed', String(el.getAttribute('aria-pressed') !== 'true'));
@@ -5251,6 +5422,28 @@ const forms = {
     }));
     render();
   },
+  'chart-base': async (f) => {
+    const member_id = f.dataset.member;
+    const coach = f.coach_name.value.trim();
+    const prev = f.dataset.prevCoach || '';
+    await must(sb.from('member_karte').upsert({ member_id, coach_name: coach, focus: f.focus.value.trim(), policy: f.policy.value.trim(), updated_at: new Date().toISOString(), updated_by: state.profile.id }));
+    // 担当コーチが変わったら、引き継ぎの記録を自動で残す
+    if (coach !== prev) {
+      await must(sb.from('chart_entries').insert({ member_id, kind: 'handover', content: prev ? `担当コーチを「${prev}」から「${coach || '未定'}」に変更` : `担当コーチを「${coach}」に設定`, next_action: prev ? '新しい担当コーチは、指導方針・申し送りとここまでの記録を確認する' : 'なし' }));
+    }
+    toast('カルテの基本情報を保存しました'); render();
+  },
+  'chart-entry': async (f) => {
+    const row = {
+      entry_date: f.entry_date.value, kind: f.kind.value,
+      content: f.content.value.trim(), issues: f.issues.value.trim(), drills: f.drills.value.trim(), next_action: f.next_action.value.trim(),
+    };
+    if (!row.content && !row.issues && !row.drills) throw new Error('「やったこと・見たこと」「課題・気づき」「ドリル・練習」のどれかを書いてください');
+    if (!row.next_action) throw new Error('「次回対応」を書いてください（何もなければ「なし」）');
+    if (f.dataset.id) await must(sb.from('chart_entries').update({ ...row, updated_at: new Date().toISOString() }).eq('id', f.dataset.id));
+    else await must(sb.from('chart_entries').insert({ ...row, member_id: f.dataset.member }));
+    toast('指導記録を保存しました'); render();
+  },
   karte: async (f) => {
     const row = { member_id: f.dataset.member, updated_at: new Date().toISOString(), updated_by: state.profile.id };
     KARTE_FIELDS.forEach(([n]) => { row[n] = f.elements[n].value.trim(); });
@@ -5298,8 +5491,11 @@ const forms = {
   },
   roadmap: async (f) => {
     const member_id = f.dataset.member;
-    const rows = [...f.querySelectorAll('[data-row]')].map((row) => ({
+    const msOk = f.dataset.ms === '1';
+    const rows = [...f.querySelectorAll('[data-row]')].map((row, i) => ({
       id: row.dataset.id,
+      // 節目（3・6・12か月目）でない月は空にする（月を消して並びが変わったときに、古い目標が残らないように）
+      ...(msOk ? { milestone: rmMsLabel(i) ? row.querySelector('[name="milestone"]').value.trim() : '' } : {}),
       publish_on: row.querySelector('[name="publish_on"]').value,
       theme: row.querySelector('[name="theme"]').value.trim(),
       drill_id: row.querySelector('[name="drill_id"]').value || null,
@@ -5314,11 +5510,12 @@ const forms = {
     if (deleted.length) await must(sb.from('roadmap_items').delete().in('id', deleted));
     await Promise.all(rows.filter((r) => r.id).map((r) => must(sb.from('roadmap_items').update({
       publish_on: r.publish_on, theme: r.theme, drill_id: r.drill_id, note: r.note,
+      ...(msOk ? { milestone: r.milestone } : {}),
       ...(r.now ? { published_at: new Date().toISOString() } : {}),
       ...(r.unpublish ? { hidden: true, published_at: null, seen_at: null } : {}),
       ...(r.republish ? { hidden: false, published_at: r.publish_on > today() ? null : new Date().toISOString() } : {}),
     }).eq('id', r.id))));
-    const added = rows.filter((r) => !r.id).map((r) => ({ member_id, publish_on: r.publish_on, theme: r.theme, drill_id: r.drill_id, note: r.note }));
+    const added = rows.filter((r) => !r.id).map((r) => ({ member_id, publish_on: r.publish_on, theme: r.theme, drill_id: r.drill_id, note: r.note, ...(msOk ? { milestone: r.milestone } : {}) }));
     if (added.length) await must(sb.from('roadmap_items').insert(added));
     toast('ロードマップを保存しました'); render();
   },

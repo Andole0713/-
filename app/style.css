@@ -1894,3 +1894,59 @@ body.rec-open{overflow:hidden}
 .mp-h{display:flex;justify-content:space-between;gap:8px;margin:0 0 8px;font-size:13px;font-weight:800;color:var(--ink)}
 .mp-h a{font-weight:700;white-space:nowrap;text-decoration:none}
 .task-old{opacity:.6}
+
+/* ロードマップの節目（3・6か月目＝中間目標、12か月目＝目標） */
+.rm-ms{margin-top:6px;padding:10px 12px;border-radius:10px;background:#fff6e0;border:1px solid #ecd9a6}
+.rm-ms[hidden]{display:none}
+.rm-ms-label{margin-top:0!important;font-weight:700;color:#8a6a2c}
+.no-ms .rm-ms,.no-ms .rm-ms-flag{display:none!important}
+.rm-ms-flag{margin-left:4px}
+.rm-add-btns{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.rm-step .rm-year{display:block;font-size:11px;color:var(--gold);font-weight:700;letter-spacing:.06em;text-align:right}
+.rm-ms-next{margin:8px 0 0;font-size:14px;background:#fff6e0;border:1px solid #ecd9a6;border-radius:10px;padding:8px 12px}
+.rm-ms-next b{color:var(--ink)}
+.rm-ms-next small{color:var(--muted);margin-left:4px}
+.rm-tile .rm-ms-tag{display:inline-block;margin-top:4px;font-size:10.5px;font-weight:700;color:#8a6a2c;background:#fff6e0;border-radius:999px;padding:0 7px}
+.rm-tile.current .rm-ms-tag{background:var(--gold);color:var(--ink)}
+.rm-ms-box{margin:6px 0 10px;font-size:13px;background:#fff6e0;border:1px solid #ecd9a6;border-radius:10px;padding:8px 12px}
+.rm-ms-box b{display:block;font-size:15px;color:var(--ink);margin-top:2px}
+.rm-ms-mini{display:block;font-size:12px;color:#8a6a2c;margin-top:2px}
+.rm-ms-mini em{color:#c0392b;font-style:normal}
+
+/* ===== 電子カルテ ===== */
+.ch-rules summary{display:flex;align-items:center;justify-content:space-between;gap:8px;cursor:pointer;list-style:none}
+.ch-rules summary::-webkit-details-marker{display:none}
+.ch-rules summary::after{content:"＋";color:var(--muted)}
+.ch-rules[open] summary::after{content:"−"}
+.ch-rules ol{margin:10px 0 0;padding-left:1.4em;font-size:13.5px;line-height:1.7}
+.ch-rules li{margin:4px 0}
+.ch-open-row{display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-top:1px solid var(--line)}
+.ch-open-row:first-child{border-top:0;padding-top:0}
+.ch-open-row p{margin:0 0 2px;font-weight:700}
+.ch-goals{display:grid;gap:10px}
+.ch-goals p{margin:2px 0 0;font-weight:700}
+.ch-base .muted{font-weight:400}
+.req{display:inline-block;font-size:10.5px;font-weight:700;color:#fff;background:#c0392b;border-radius:4px;padding:0 5px;margin-left:4px;vertical-align:1px}
+.ch-feed{display:grid;gap:10px}
+.ch-entry{background:#fff;border:1px solid var(--line);border-left:4px solid var(--gold);border-radius:12px;padding:12px 14px}
+.ch-entry.k-handover{border-left-color:#5b7fd6}
+.ch-entry.k-review{border-left-color:#3f9a6b}
+.ch-entry.k-drill{border-left-color:#8a6a2c}
+.ch-head{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.ch-dl{margin:8px 0 0;display:grid;gap:6px}
+.ch-dl dt{font-size:11.5px;font-weight:700;color:var(--muted)}
+.ch-dl dd{margin:0;font-size:14px;line-height:1.65}
+.ch-next{border-radius:8px;padding:6px 10px;background:#f6f3ec}
+.ch-next.open{background:#fff3e6;border:1px solid #f0c48f}
+.ch-next.open dt{color:#b05a00}
+.ch-next.done dd{color:var(--muted)}
+.ch-foot{display:flex;flex-wrap:wrap;align-items:center;gap:12px;margin-top:8px}
+.ch-edit{margin-top:6px}
+.ch-edit summary{cursor:pointer;font-size:13px;color:var(--muted)}
+.ch-auto{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px;padding:8px 12px;border-radius:10px;background:#f6f3ec;font-size:13px}
+.ch-auto .pre{flex-basis:100%;color:var(--muted)}
+.ch-karte summary{display:flex;align-items:center;justify-content:space-between;gap:8px;cursor:pointer;list-style:none}
+.ch-karte summary::-webkit-details-marker{display:none}
+.ch-karte .karte{box-shadow:none;border:0;padding:0;margin:10px 0 0}
+.ch-sum{display:grid;gap:8px}
+.ch-sum p{margin:2px 0 0}
