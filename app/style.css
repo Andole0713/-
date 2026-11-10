@@ -1964,3 +1964,19 @@ body.rec-open{overflow:hidden}
 .drill-rev{border-top:1px solid var(--line);padding:8px 0}
 .drill-rev:first-child{border-top:0;padding-top:0}
 .drill-rev summary{cursor:pointer;font-size:13px}
+
+/* ===== 対応者の共有 ===== */
+.claim{display:inline-block;font-size:12px;font-weight:700;border-radius:999px;padding:2px 10px;margin:2px 0;line-height:1.6}
+.claim.none{background:#f1efe9;color:var(--muted)}
+.claim.mine{background:#e6f0e3;color:#2f5d2a}
+.claim.other{background:#e8eefb;color:#2c4a8a}
+.claim.stale{background:#fbf0d3;color:#7a5a00}
+.claim-line{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:8px 0}
+.claimed-other{opacity:.8}
+.mine-bar{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin:0 0 12px}
+.dash-btns{display:flex;flex-wrap:wrap;gap:6px;justify-content:flex-end}
+@media (max-width:600px){
+  .dash-row:has(.dash-btns){flex-wrap:wrap}
+  .dash-row:has(.dash-btns) .grow{flex-basis:100%}
+  .dash-row .dash-btns{width:100%;justify-content:flex-start}
+}
