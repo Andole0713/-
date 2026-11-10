@@ -3389,12 +3389,18 @@ function chartPane({ m, karte, entries, admins, lessons, meetings, roadmap, goal
         <button type="button" class="btn-sm btn-gold" data-action="chart-done" data-id="${e.id}" data-done="1">済み</button></div>`).join('')
       : '<p class="muted small" style="margin:0">未対応の「次回対応」はありません。</p>'}</div>
 
-    <div class="section-title"><h2>目標</h2>${roadmap.length ? `<a class="btn btn-sm btn-sub" href="#/admin/roadmap/${m.id}">ロードマップで編集</a>` : ''}</div>
-    <div class="card ch-goals">
-      <div><span class="muted small">ゴール（長期）</span><p>${goal ? esc(goal) : '<span class="muted">—</span>'}</p></div>
-      ${ms.length ? ms.map(({ r, i }) => `<div><span class="muted small">🚩 ${rmMsLabel(i)}（期限：${fmtMonth(r.publish_on)}）</span><p>${r.milestone ? esc(r.milestone) : '<span class="muted">未設定</span>'}</p>${r.milestone_check ? `<small class="ch-check">達成の目安：${esc(r.milestone_check)}</small>` : ''}</div>`).join('')
-        : `<p class="muted small" style="margin:0">${roadmap.length ? '節目の目標（3・6・12か月目）は、ロードマップの編集画面で設定できます。' : 'ロードマップを作ると、3・6・12か月目の節目の目標をここで確認できます（「ドリル」タブから作成）。'}</p>`}
-    </div>
+    <div class="section-title"><h2>目標</h2>${roadmap.length ? `<a class="btn btn-sm btn-sub" href="#/admin/roadmap/${m.id}">ロードマップを開く</a>` : ''}</div>
+    <form class="card form ch-goals" data-form="chart-goals" data-member="${m.id}">
+      <label for="chg-goal" style="margin-top:0">ゴール（長期）</label>
+      <input id="chg-goal" name="goal" maxlength="100" value="${esc(goal || '')}" placeholder="例：2年で90切り">
+      ${ms.length ? ms.map(({ r, i }) => `<fieldset class="ch-ms" data-id="${r.id}"><legend>🚩 ${rmMsLabel(i)}<span class="muted">（期限：${fmtMonth(r.publish_on)}）</span></legend>
+          ${'milestone' in r ? `<input name="ms" maxlength="200" value="${esc(r.milestone || '')}" placeholder="例：アドレスが毎回同じ形でできる" aria-label="${rmMsLabel(i)}">` : '<p class="muted small" style="margin:0">データベースの設定（20261110000000_chart_and_milestones.sql）がまだのため編集できません。</p>'}
+          ${'milestone_check' in r ? `<label class="ch-ms-sub">何ができれば達成？</label><input name="msc" maxlength="200" value="${esc(r.milestone_check || '')}" placeholder="例：後方の動画で、10球中8球アドレスの前傾が同じ">` : ''}
+        </fieldset>`).join('')
+        : `<p class="muted small" style="margin:8px 0 0">${roadmap.length ? 'この年のロードマップに、3・6・12か月目の月がありません。' : 'ロードマップを作ると、3・6・12か月目の節目の目標もここで書けます（「ドリル」タブから作成）。'}</p>`}
+      <button class="btn-block btn-sub" type="submit">目標を保存する</button>
+      <p class="muted small" style="margin:4px 0 0">ここで変えると、会員のロードマップの表示もすぐ変わります。</p>
+    </form>
 
     <form class="card form ch-base" data-form="chart-base" data-member="${m.id}" data-prev-coach="${esc(k.coach_name || '')}">
       <div class="between"><b>指導の基本情報</b><span class="muted small">${k.updated_at ? `${fmtShort(k.updated_at)} 更新` : ''}</span></div>
@@ -5571,6 +5577,20 @@ const forms = {
       await must(sb.from('chart_entries').insert({ member_id, kind: 'handover', content: prev ? `担当プロを「${prev}」から「${coach || '未定'}」に変更` : `担当プロを「${coach}」に設定`, next_action: prev ? '新しい担当プロは、指導方針・申し送りとここまでの記録を確認する' : 'なし' }));
     }
     toast('カルテの基本情報を保存しました'); render();
+  },
+  // カルテの目標（ゴールと、今の年の節目の目標）をその場で保存する
+  'chart-goals': async (f) => {
+    const member_id = f.dataset.member;
+    const jobs = [must(sb.from('roadmap_goals').upsert({ member_id, goal: f.goal.value.trim(), updated_at: new Date().toISOString() }))];
+    f.querySelectorAll('.ch-ms[data-id]').forEach((box) => {
+      const row = {};
+      const ms = box.querySelector('[name="ms"]'); const msc = box.querySelector('[name="msc"]');
+      if (ms) row.milestone = ms.value.trim();
+      if (msc) row.milestone_check = msc.value.trim();
+      if (Object.keys(row).length) jobs.push(must(sb.from('roadmap_items').update(row).eq('id', box.dataset.id)));
+    });
+    await Promise.all(jobs);
+    toast('目標を保存しました'); render();
   },
   'chart-entry': async (f) => {
     const row = {
