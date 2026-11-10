@@ -2553,8 +2553,8 @@ async function viewDashboard() {
   const today0 = new Date(); today0.setHours(0, 0, 0, 0);
   let [members, pending, meetings, rmSoon, rmAll, subs30, practice30, rounds30, refs7, rounds18, acks, notices, unread] = await Promise.all([
     must(sb.from('profiles').select('id, name, email, role, plan, subscription_status, access_until, current_period_end, created_at, best_score, avg_score').order('created_at', { ascending: false })),
-    must(sb.from('submissions').select('*, profiles(name)').eq('status', 'pending').order('created_at')),
-    must(sb.from('meetings').select('*, profiles(name)').gte('scheduled_at', isoDaysFrom(-45)).order('scheduled_at')),
+    must(sb.from('submissions').select('*, profiles!member_id(name)').eq('status', 'pending').order('created_at')),
+    must(sb.from('meetings').select('*, profiles!member_id(name)').gte('scheduled_at', isoDaysFrom(-45)).order('scheduled_at')),
     must(sb.from('roadmap_items').select('id, member_id, publish_on, theme, profiles(name)').is('drill_id', null).eq('hidden', false).gte('publish_on', today()).lte('publish_on', isoDaysFrom(14).slice(0, 10)).order('publish_on')),
     must(sb.from('roadmap_items').select('member_id, publish_on, theme, drill_id, hidden, published_at')),
     must(sb.from('submissions').select('member_id, created_at').gte('created_at', isoDaysFrom(-30))),
@@ -2564,7 +2564,7 @@ async function viewDashboard() {
     must(sb.from('rounds').select('id, member_id, played_on, created_at, score, holes, course_name').eq('holes', 18)),
     sb.from('admin_acks').select('ref_id').eq('kind', 'celebration').then((r) => r.data || []), // 設定前でも動くように
     sb.from('member_notices').select('*').is('acked_at', null).order('created_at', { ascending: false }).limit(50).then((r) => r.data || []),
-    must(sb.from('lessons').select('id, member_id, title, created_at, profiles(name)').is('read_at', null).lte('created_at', isoDaysFrom(-UNREAD_DAYS)).gte('created_at', isoDaysFrom(-60)).order('created_at')),
+    must(sb.from('lessons').select('id, member_id, title, created_at, profiles!member_id(name)').is('read_at', null).lte('created_at', isoDaysFrom(-UNREAD_DAYS)).gte('created_at', isoDaysFrom(-60)).order('created_at')),
   ]);
   const people = members.filter((m) => m.role !== 'admin');
   const staff = members.filter((m) => m.role === 'admin');
@@ -2702,7 +2702,7 @@ async function viewDashboard() {
 async function viewMeetings() {
   const tab = state.meetingTab;
   let [list, members, staff] = await Promise.all([
-    must(sb.from('meetings').select('*, profiles(name)').gte('scheduled_at', isoDaysFrom(-120)).order('scheduled_at')),
+    must(sb.from('meetings').select('*, profiles!member_id(name)').gte('scheduled_at', isoDaysFrom(-120)).order('scheduled_at')),
     must(sb.from('profiles').select('id, name, role, plan, subscription_status, access_until').neq('role', 'admin').order('name')),
     staffList(),
   ]);
@@ -2912,7 +2912,7 @@ async function viewDrillDetail(id) {
   const infoOk = 'use_for' in d;
   const [urls, links, rms, revs] = await Promise.all([
     signedDrillUrls([d]),
-    must(sb.from('lesson_drills').select('lesson_id, lessons(id, title, lesson_date, member_id, profiles(name))').eq('drill_id', id)),
+    must(sb.from('lesson_drills').select('lesson_id, lessons(id, title, lesson_date, member_id, profiles!member_id(name))').eq('drill_id', id)),
     must(sb.from('roadmap_items').select('id, publish_on, member_id, profiles(name)').eq('drill_id', id).order('publish_on')),
     sb.from('drill_revisions').select('*').eq('drill_id', id).order('created_at', { ascending: false }).then((r) => (r.error ? null : r.data || []), () => null),
   ]);
@@ -2953,7 +2953,7 @@ async function viewDrillDetail(id) {
 }
 
 async function viewInbox() {
-  let subs = await must(sb.from('submissions').select('*, profiles(name, plan)').eq('status', 'pending').order('created_at'));
+  let subs = await must(sb.from('submissions').select('*, profiles!member_id(name, plan)').eq('status', 'pending').order('created_at'));
   const staff = await staffList();
   const on = subs.some(claimOn);
   if (mineOnly()) subs = subs.filter((s) => s.claimed_by === state.profile.id);
@@ -4297,14 +4297,14 @@ async function viewLessonForm(route) {
   let lesson = { lesson_date: today(), title: '', point: '', feedback: '', practice: '', video_url: '' };
   let memberId; let submission = null;
   if (route[2] === 'new' && route[3] === 's') {
-    submission = await must(sb.from('submissions').select('*, profiles(name)').eq('id', route[4]).maybeSingle());
+    submission = await must(sb.from('submissions').select('*, profiles!member_id(name)').eq('id', route[4]).maybeSingle());
     if (!submission) return header('レッスン作成', 'admin/inbox') + '<div class="content"><div class="empty">提出が見つかりません</div></div>';
     memberId = submission.member_id;
     if (claimOn(submission) && !submission.claimed_by && submission.status === 'pending') {
       const now = new Date().toISOString();
       const got = await sb.from('submissions').update({ claimed_by: state.profile.id, claimed_at: now }).eq('id', submission.id).is('claimed_by', null).select('claimed_by, claimed_at').then((r) => r.data || [], () => []);
       if (got.length) Object.assign(submission, got[0], { justClaimed: true });
-      else submission = await must(sb.from('submissions').select('*, profiles(name)').eq('id', route[4]).maybeSingle());
+      else submission = await must(sb.from('submissions').select('*, profiles!member_id(name)').eq('id', route[4]).maybeSingle());
     }
   } else if (route[2] === 'new' && route[3] === 'm') {
     memberId = route[4];
@@ -4943,7 +4943,7 @@ const actions = {
     toast(`${label}にしました`); render();
   },
   'meeting-done': async (el) => {
-    const m = await must(sb.from('meetings').select('id, member_id, scheduled_at, status, summary, profiles(name)').eq('id', el.dataset.id).single());
+    const m = await must(sb.from('meetings').select('id, member_id, scheduled_at, status, summary, profiles!member_id(name)').eq('id', el.dataset.id).single());
     const v = await confirmDialog({
       title: '面談の結果',
       body: `<p class="muted small" style="margin:0 0 6px">${esc(m.profiles?.name || '')}さん・${fmtShort(m.scheduled_at)}</p>

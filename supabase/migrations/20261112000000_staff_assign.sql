@@ -2,12 +2,13 @@
 --   ・提出動画：だれが対応中か（claimed_by・claimed_at）
 --   ・レッスン：だれが書いたか（created_by。新しく作るレッスンから自動で記録）
 --   ・面談：だれが対応するか（staff_id）
+-- ※ profiles への外部キーは付けない（付けると、会員名をまとめて読み込む処理が「どちらの会員か分からない」となり失敗するため）
 -- 何度実行しても問題ありません。
 
-alter table public.submissions add column if not exists claimed_by uuid references public.profiles (id) on delete set null;
+alter table public.submissions add column if not exists claimed_by uuid;
 alter table public.submissions add column if not exists claimed_at timestamptz;
-alter table public.lessons     add column if not exists created_by uuid references public.profiles (id) on delete set null default auth.uid();
-alter table public.meetings    add column if not exists staff_id   uuid references public.profiles (id) on delete set null;
+alter table public.lessons     add column if not exists created_by uuid default auth.uid();
+alter table public.meetings    add column if not exists staff_id   uuid;
 
 -- 会員が動画を送るときに、対応者の欄を勝手に入れられないようにする
 create or replace function public.submissions_clear_claim()
