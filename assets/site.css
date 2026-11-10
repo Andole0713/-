@@ -514,3 +514,5 @@ main>section::before{content:"";position:absolute;top:22px;right:max(8px,calc((1
 .course-cards{margin-top:36px;text-align:left}
 .course-cards .card-i h3{font-size:19px}
 .cc-price{margin:14px 0 0!important;padding-top:12px;border-top:1px solid var(--paper-2);font-family:var(--serif);font-size:15px;color:var(--text)!important}
+.course-cards .cc-rec{border:1px solid var(--gold);box-shadow:0 14px 34px rgba(15,23,18,.08);position:relative}
+.cc-tag{position:absolute;top:-11px;left:18px;background:var(--ink);color:var(--gold-2);font-size:11px;letter-spacing:.15em;padding:3px 12px;border-radius:999px}

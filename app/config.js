@@ -25,6 +25,7 @@ export const PLANS = [
     features: ["オンライン面談 毎月1回", "スイング動画の添削 毎月1回", "初回無料オンライン面談"],
     credits: { video: 1, meeting: 1 },
     checkout: false,
+    recommended: true,
     detail: {
       forWho: ["まずは月1回、プロと直接話してみたい方", "自分のペースで、月1回のチェックを続けたい方", "悩みをプロに相談しながら上達したい方"],
       contents: [
@@ -48,7 +49,6 @@ export const PLANS = [
     features: ["オンライン面談 毎月1回", "スイング動画の添削 毎月2回", "初回無料オンライン面談"],
     credits: { video: 2, meeting: 1 },
     checkout: false,
-    recommended: true,
     detail: {
       forWho: ["面談に加えて、動画の添削をこまめに受けたい方", "練習量が多く、月2回チェックを受けたい方", "課題を確実に直していきたい方"],
       contents: [
