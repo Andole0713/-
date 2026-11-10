@@ -1980,3 +1980,8 @@ body.rec-open{overflow:hidden}
   .dash-row:has(.dash-btns) .grow{flex-basis:100%}
   .dash-row .dash-btns{width:100%;justify-content:flex-start}
 }
+.ch-ms{border:1px solid #ecd9a6;background:#fffaf0;border-radius:10px;padding:8px 12px 12px;margin:12px 0 0}
+.ch-ms legend{font-size:13px;font-weight:700;color:#8a6a2c;padding:0 4px}
+.ch-ms legend .muted{font-weight:400;margin-left:4px}
+.ch-ms-sub{font-size:12px!important;color:var(--muted);margin-top:6px!important}
+.ch-goals.form{display:block}.ch-goals.form p{font-weight:400}
