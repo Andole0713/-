@@ -5901,7 +5901,7 @@ async function waitForCheckout() {
 function primeIntro() {
   if (state.introEl) return;
   const v = document.createElement('video');
-  v.src = 'img/intro.mp4'; v.preload = 'auto'; v.playsInline = true; v.setAttribute('playsinline', ''); v.setAttribute('webkit-playsinline', '');
+  v.src = 'img/intro.mp4?v=20261110'; v.preload = 'auto'; v.playsInline = true; v.setAttribute('playsinline', ''); v.setAttribute('webkit-playsinline', '');
   v.muted = false;
   const p = v.play();
   if (p) p.then(() => { v.dataset.sound = '1'; if (v.dataset.shown !== '1') { v.pause(); v.currentTime = 0; } }, () => {});
@@ -5918,7 +5918,7 @@ function showIntro() {
   const primed = state.introEl; state.introEl = null;
   if (primed) primed.dataset.shown = '1';
   const v = primed || document.createElement('video');
-  if (!primed) { v.src = 'img/intro.mp4'; v.preload = 'auto'; v.playsInline = true; v.setAttribute('playsinline', ''); v.setAttribute('webkit-playsinline', ''); }
+  if (!primed) { v.src = 'img/intro.mp4?v=20261110'; v.preload = 'auto'; v.playsInline = true; v.setAttribute('playsinline', ''); v.setAttribute('webkit-playsinline', ''); }
   v.setAttribute('aria-hidden', 'true');
   wrap.prepend(v);
   document.body.appendChild(wrap);
