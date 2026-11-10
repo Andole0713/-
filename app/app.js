@@ -2447,6 +2447,38 @@ const replyDue = (iso) => {
   if (left <= 0) return { over: true, cls: 'late', text: `返信目標を${hoursText(Math.max(1, -left))}超過` };
   return { over: false, cls: left <= 12 ? 'soon' : '', text: `返信目標まであと${hoursText(left)}` };
 };
+// ---------- 対応者の共有（担当を固定しない運用で、二重対応・対応漏れを防ぐ）----------
+// 20261112000000_staff_assign.sql を実行すると使える（実行前は表示しない）
+const CLAIM_STALE_H = 6;  // 「対応中」のまま、これ以上たったら知らせる
+const UNCLAIMED_H = 24;   // だれも手を付けないまま、これ以上たったら知らせる
+let staffCache = null;
+async function staffList() {
+  if (!staffCache) staffCache = await sb.from('profiles').select('id, name').eq('role', 'admin').order('name').then((r) => r.data || [], () => []);
+  return staffCache;
+}
+const staffName = (list, id) => list.find((x) => x.id === id)?.name || 'スタッフ';
+const hoursSince = (iso) => Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 3600000));
+const claimOn = (s) => s && 'claimed_by' in s;
+const claimStale = (s) => claimOn(s) && s.claimed_by && hoursSince(s.claimed_at) >= CLAIM_STALE_H;
+const claimIdle = (s) => claimOn(s) && !s.claimed_by && hoursSince(s.created_at) >= UNCLAIMED_H;
+function claimBadge(s, staff) {
+  if (!claimOn(s)) return '';
+  if (!s.claimed_by) return `<span class="claim none">未着手${claimIdle(s) ? `（提出から${hoursText(hoursSince(s.created_at))}）` : ''}</span>`;
+  const mine = s.claimed_by === state.profile.id;
+  return `<span class="claim ${mine ? 'mine' : 'other'}${claimStale(s) ? ' stale' : ''}">🙋 ${mine ? 'あなた' : esc(staffName(staff, s.claimed_by))}が対応中（${fmtShort(s.claimed_at)}〜${claimStale(s) ? `・${hoursText(hoursSince(s.claimed_at))}` : ''}）</span>`;
+}
+function claimButton(s) {
+  if (!claimOn(s)) return '';
+  if (!s.claimed_by) return `<button type="button" class="btn btn-sm btn-gold" data-action="sub-claim" data-id="${s.id}">🙋 私が対応する</button>`;
+  if (s.claimed_by === state.profile.id) return `<button type="button" class="btn btn-sm btn-sub" data-action="sub-release" data-id="${s.id}">対応をやめる</button>`;
+  return `<button type="button" class="btn btn-sm btn-sub" data-action="sub-claim" data-id="${s.id}" data-other="1">代わりに対応する</button>`;
+}
+// 「自分の担当だけ」の切り替え（やること・提出動画・面談の画面で共通）
+const mineOnly = () => local.get('atg-mine') === '1';
+const mineToggle = () => `<button type="button" class="btn btn-sm ${mineOnly() ? 'btn-gold' : 'btn-sub'}" data-action="mine-toggle" aria-pressed="${mineOnly()}">${mineOnly() ? '✓ ' : ''}自分の担当だけ表示</button>`;
+const staffOptions = (list, sel) => `<option value="">（未定）</option>${list.map((x) => `<option value="${x.id}"${x.id === sel ? ' selected' : ''}>${esc(x.name || 'スタッフ')}</option>`).join('')}`;
+const meetingStaffOn = () => sb.from('meetings').select('staff_id').limit(1).then((r) => !r.error, () => false);
+
 // ベスト更新・ベストタイ・平均より大きく良いスコアを探す（18ホールのみ）
 // お祝いを送る（ダッシュボードのベスト更新・会員詳細から）。会員のアプリのホームに届く
 const CELE_TEMPLATES = {
@@ -2519,7 +2551,7 @@ async function viewDashboard() {
   // 今月の権利をまだ受け取っていない会員に付与する（自動付与の予備。1回のログインにつき1回だけ）
   if (!state.creditsGranted) { state.creditsGranted = true; await sb.rpc('grant_monthly_credits').then(() => {}, () => {}); }
   const today0 = new Date(); today0.setHours(0, 0, 0, 0);
-  const [members, pending, meetings, rmSoon, rmAll, subs30, practice30, rounds30, refs7, rounds18, acks, notices, unread] = await Promise.all([
+  let [members, pending, meetings, rmSoon, rmAll, subs30, practice30, rounds30, refs7, rounds18, acks, notices, unread] = await Promise.all([
     must(sb.from('profiles').select('id, name, email, role, plan, subscription_status, access_until, current_period_end, created_at, best_score, avg_score').order('created_at', { ascending: false })),
     must(sb.from('submissions').select('*, profiles(name)').eq('status', 'pending').order('created_at')),
     must(sb.from('meetings').select('*, profiles(name)').gte('scheduled_at', isoDaysFrom(-45)).order('scheduled_at')),
@@ -2535,16 +2567,28 @@ async function viewDashboard() {
     must(sb.from('lessons').select('id, member_id, title, created_at, profiles(name)').is('read_at', null).lte('created_at', isoDaysFrom(-UNREAD_DAYS)).gte('created_at', isoDaysFrom(-60)).order('created_at')),
   ]);
   const people = members.filter((m) => m.role !== 'admin');
+  const staff = members.filter((m) => m.role === 'admin');
   const active = people.filter(isActive);
   const nameOf = (id) => people.find((m) => m.id === id)?.name || '（名前未設定）';
   const now = Date.now();
+  // 自分の担当だけ：自分が対応中の動画・自分が対応する面談に絞る
+  const me = state.profile.id;
+  const mine = mineOnly();
+  const allPending = pending;
+  const allMeetings = meetings;
+  if (mine) {
+    pending = pending.filter((x) => x.claimed_by === me);
+    meetings = meetings.filter((m) => m.staff_id === me);
+  }
+  const idleSubs = allPending.filter(claimIdle);
+  const staleSubs = allPending.filter(claimStale);
   const lateMeetings = meetings.filter((m) => m.status === 'scheduled' && new Date(m.scheduled_at).getTime() + (m.duration_min || 25) * 60000 < now);
   const upcoming = meetings.filter((m) => m.status === 'scheduled' && new Date(m.scheduled_at).getTime() >= now - 30 * 60000 && new Date(m.scheduled_at).getTime() < now + 7 * DAY);
   const todayMeetings = upcoming.filter((m) => new Date(m.scheduled_at).toDateString() === new Date().toDateString());
   const monthFrom = new Date(monthStartIso()).getTime();
-  const metThisMonth = new Set(meetings.filter((m) => ['scheduled', 'done'].includes(m.status) && new Date(m.scheduled_at).getTime() >= monthFrom).map((m) => m.member_id));
+  const metThisMonth = new Set(allMeetings.filter((m) => ['scheduled', 'done'].includes(m.status) && new Date(m.scheduled_at).getTime() >= monthFrom).map((m) => m.member_id));
   const needMeeting = active.filter((m) => hasMeetingPlan(m.plan) && !metThisMonth.has(m.id));
-  const unpaid = meetings.filter((m) => m.pay_type === 'unpaid' && m.status !== 'canceled');
+  const unpaid = allMeetings.filter((m) => m.pay_type === 'unpaid' && m.status !== 'canceled');
   const withRoadmap = new Set(rmAll.map((r) => r.member_id));
   const noRoadmap = active.filter((m) => !withRoadmap.has(m.id));
   const soonExpire = people.filter((m) => m.access_until && m.access_until >= today() && m.access_until <= isoDaysFrom(14).slice(0, 10));
@@ -2572,12 +2616,16 @@ async function viewDashboard() {
     ...(cancelReq.length ? [section('動画の取り消し依頼', '×', cancelReq.map((x) => row(`${memberLink(x.member_id, x.profiles?.name)}　${esc(x.club)} / ${esc(x.angle)}`,
       `${fmtDate(x.created_at)} 提出・${fmtShort(x.cancel_requested_at)} 依頼${x.cancel_reason ? `<br>理由：${esc(x.cancel_reason)}` : ''}`,
       subCancelButtons(x))), '')] : []),
-    section('確認待ちの提出動画', '▶', pending.map((x) => row(`${memberLink(x.member_id, x.profiles?.name)}　${esc(x.club)} / ${esc(x.angle)}`,
-      `${fmtDate(x.created_at)} 提出・<b class="${replyDue(x.created_at).cls}">${replyDue(x.created_at).text}</b>`,
-      `<a class="btn btn-sm" href="#/admin/lesson/new/s/${x.id}">レッスンを書く</a>`)), '確認待ちの動画はありません', '<a class="dash-more" href="#/admin/inbox">一覧 ›</a>'),
+    section(mine ? '自分が対応中の提出動画' : '確認待ちの提出動画', '▶', pending.map((x) => row(`${memberLink(x.member_id, x.profiles?.name)}　${esc(x.club)} / ${esc(x.angle)}`,
+      `${fmtDate(x.created_at)} 提出・<b class="${replyDue(x.created_at).cls}">${replyDue(x.created_at).text}</b>${claimOn(x) ? `<br>${claimBadge(x, staff)}` : ''}`,
+      `<span class="dash-btns">${claimButton(x)}<a class="btn btn-sm" href="#/admin/lesson/new/s/${x.id}">レッスンを書く</a></span>`)), mine ? '自分が対応中の動画はありません' : '確認待ちの動画はありません', '<a class="dash-more" href="#/admin/inbox">一覧 ›</a>'),
+    ...(idleSubs.length ? [section(`だれも手を付けていない動画（${UNCLAIMED_H}時間以上）`, '?', idleSubs.map((x) => row(`${memberLink(x.member_id, x.profiles?.name)}　${esc(x.club)} / ${esc(x.angle)}`,
+      `${fmtDate(x.created_at)} 提出・${hoursText(hoursSince(x.created_at))}たっています`, claimButton(x))), '', '', 'watch')] : []),
+    ...(staleSubs.length ? [section(`「対応中」のまま止まっている動画（${CLAIM_STALE_H}時間以上）`, '…', staleSubs.map((x) => row(`${memberLink(x.member_id, x.profiles?.name)}　${esc(x.club)} / ${esc(x.angle)}`,
+      claimBadge(x, staff), claimButton(x))), '', '', 'watch')] : []),
     section('面談：結果の入力待ち', '!', lateMeetings.map((m) => row(`${memberLink(m.member_id, m.profiles?.name)}`, `${fmtShort(m.scheduled_at)} の面談`,
       `<button type="button" class="btn btn-sm" data-action="meeting-done" data-id="${m.id}">結果を入力</button>`)), '入力待ちの面談はありません'),
-    section('今後7日の面談', '◷', upcoming.map((m) => row(`<b>${fmtShort(m.scheduled_at)}</b>　${memberLink(m.member_id, m.profiles?.name)}`, `${m.duration_min}分${todayMeetings.includes(m) ? '・<b class="today">今日</b>' : ''}`,
+    section(mine ? '自分が対応する面談（7日）' : '今後7日の面談', '◷', upcoming.map((m) => row(`<b>${fmtShort(m.scheduled_at)}</b>　${memberLink(m.member_id, m.profiles?.name)}`, `${m.duration_min}分${todayMeetings.includes(m) ? '・<b class="today">今日</b>' : ''}${'staff_id' in m ? `・${m.staff_id ? `対応：${esc(staffName(staff, m.staff_id))}` : '<b class="late">対応者未定</b>'}` : ''}`,
       `<a class="btn btn-sm btn-sub" href="#/admin/prep/${m.id}">準備メモ</a>`)), '予定はありません', '<a class="dash-more" href="#/admin/meetings">面談管理 ›</a>', 'info'),
     ...(unpaid.length ? [section('面談：都度払いの未払い', '¥', unpaid.map((m) => row(memberLink(m.member_id, m.profiles?.name), `${fmtShort(m.scheduled_at)} の面談`,
       `<button type="button" class="btn btn-sm" data-action="meeting-paid" data-id="${m.id}">支払い済みにする</button>`)), '')] : []),
@@ -2636,6 +2684,7 @@ async function viewDashboard() {
       <div class="kpi${todo ? ' alert' : ''}"><span>対応が必要</span><b>${todo}</b><small>下の一覧で確認</small></div>
       <a class="kpi" href="#/admin/members"><span>契約中の会員</span><b>${active.length}</b><small>登録 ${people.length}名</small></a>
     </div>
+    ${allPending.some(claimOn) || meetings.some((m) => 'staff_id' in m) || mine ? `<div class="mine-bar">${mineToggle()}${mine ? '<span class="muted small">自分が対応中の動画・自分が対応する面談だけを表示しています</span>' : ''}</div>` : ''}
     <div class="dash-top"><p class="dash-legend"><span class="lg todo">対応が必要</span><span class="lg watch">様子を見る</span><span class="lg info">お知らせ</span><span class="lg celebrate">お祝い</span></p>
       <span class="dash-links"><a class="btn btn-sm btn-sub" href="#/admin/templates">✎ テンプレート</a><a class="btn btn-sm btn-sub" href="#/admin/announce">📣 お知らせを送る</a><a class="btn btn-sm ${fbOpen ? 'btn-alert' : 'btn-sub'}" href="#/admin/feedback">🛠 不具合・要望${fbOpen ? ` <em>${fbOpen}件</em>` : ''}</a></span></div>
     <div class="cols">
@@ -2652,11 +2701,14 @@ async function viewDashboard() {
 // 面談の管理
 async function viewMeetings() {
   const tab = state.meetingTab;
-  const [list, members] = await Promise.all([
+  let [list, members, staff] = await Promise.all([
     must(sb.from('meetings').select('*, profiles(name)').gte('scheduled_at', isoDaysFrom(-120)).order('scheduled_at')),
     must(sb.from('profiles').select('id, name, role, plan, subscription_status, access_until').neq('role', 'admin').order('name')),
+    staffList(),
   ]);
   meetingMembers = members;
+  const staffOn = list.some((m) => 'staff_id' in m);
+  if (mineOnly()) list = list.filter((m) => m.staff_id === state.profile.id);
   const now = Date.now();
   const late = list.filter((m) => m.status === 'scheduled' && new Date(m.scheduled_at).getTime() + (m.duration_min || 25) * 60000 < now);
   const upcoming = list.filter((m) => m.status === 'scheduled' && !late.includes(m));
@@ -2672,12 +2724,12 @@ async function viewMeetings() {
     const actions = m.status === 'scheduled'
       ? `<a class="btn btn-sm btn-gold" href="#/admin/prep/${m.id}">準備メモ</a>
          <button type="button" class="btn btn-sm" data-action="meeting-done" data-id="${m.id}">結果を入力</button>
-         <button type="button" class="btn btn-sm btn-sub" data-action="meeting-move" data-id="${m.id}" data-at="${m.scheduled_at}" data-min="${m.duration_min}">日時変更</button>
+         <button type="button" class="btn btn-sm btn-sub" data-action="meeting-move" data-id="${m.id}" data-at="${m.scheduled_at}" data-min="${m.duration_min}" data-staff="${esc(m.staff_id || '')}">日時・対応者</button>
          <button type="button" class="btn btn-sm btn-sub" data-action="meeting-status" data-id="${m.id}" data-status="canceled">キャンセル</button>`
       : `<button type="button" class="btn btn-sm btn-sub" data-action="meeting-done" data-id="${m.id}">まとめを編集</button>`;
     return `${head}<div class="card meeting-row">
       <div class="mt-time"><b>${t}</b><small>${m.duration_min}分</small></div>
-      <div class="grow"><div>${memberLink(m.member_id, m.profiles?.name)} ${meetingPill(m)}</div>
+      <div class="grow"><div>${memberLink(m.member_id, m.profiles?.name)} ${meetingPill(m)}${staffOn ? ` <span class="claim ${m.staff_id ? (m.staff_id === state.profile.id ? 'mine' : 'other') : 'none'}">${m.staff_id ? `対応：${m.staff_id === state.profile.id ? 'あなた' : esc(staffName(staff, m.staff_id))}` : '対応者未定'}</span>` : ''}</div>
         ${m.summary ? `<p class="mt-sum">${esc(m.summary)}</p>` : ''}
         <div class="mt-actions">${actions}</div></div>
     </div>`;
@@ -2686,7 +2738,7 @@ async function viewMeetings() {
   return header('面談') + `<div class="content wide">
     <div class="between" style="flex-wrap:wrap;gap:10px">
       <div class="filter-chips" role="group" aria-label="表示する面談">${tabBtn('upcoming', 'これから', upcoming.length)}${tabBtn('late', '結果入力待ち', late.length)}${tabBtn('past', '過去', 0)}</div>
-      <button type="button" class="btn btn-gold btn-sm" data-action="meeting-add">＋ 面談を予約</button>
+      <span class="row" style="gap:8px">${staffOn || mineOnly() ? mineToggle() : ''}<button type="button" class="btn btn-gold btn-sm" data-action="meeting-add">＋ 面談を予約</button></span>
     </div>
     <p class="muted small">面談の予約はLINEで日程を決めてから、ここに登録します。登録すると会員の「次回の面談」に表示され、前日にお知らせメールが届きます（メール設定後）。</p>
     ${rows ? `<div class="meeting-list">${rows}</div>` : `<div class="empty">${tab === 'late' ? '結果の入力待ちはありません 🎉' : tab === 'past' ? '過去の面談はまだありません' : 'これからの面談はありません'}</div>`}
@@ -2901,13 +2953,18 @@ async function viewDrillDetail(id) {
 }
 
 async function viewInbox() {
-  const subs = await must(sb.from('submissions').select('*, profiles(name, plan)').eq('status', 'pending').order('created_at'));
+  let subs = await must(sb.from('submissions').select('*, profiles(name, plan)').eq('status', 'pending').order('created_at'));
+  const staff = await staffList();
+  const on = subs.some(claimOn);
+  if (mineOnly()) subs = subs.filter((s) => s.claimed_by === state.profile.id);
   const urls = await signedVideoUrls(subs);
   return header('提出動画（確認待ち）') + `<div class="content wide">
-    ${subs.length ? `<div class="inbox-list">` + subs.map((s) => `<div class="card">
+    ${on || mineOnly() ? `<div class="mine-bar">${mineToggle()}<span class="muted small">「私が対応する」を押すと、ほかのスタッフに対応中と表示されます。</span></div>` : ''}
+    ${subs.length ? `<div class="inbox-list">` + subs.map((s) => `<div class="card${s.claimed_by && s.claimed_by !== state.profile.id ? ' claimed-other' : ''}">
         <div class="between"><div><b>${esc(s.profiles?.name || '（名前未設定）')}</b> <span class="pill">${esc(planLabel(s.profiles?.plan))}</span></div>
           <span class="muted">${fmtDate(s.created_at)}</span></div>
         <div class="muted">${esc(s.club)} / ${esc(s.angle)}　<b class="due ${replyDue(s.created_at).cls}">${replyDue(s.created_at).text}</b></div>
+        ${claimOn(s) ? `<div class="claim-line">${claimBadge(s, staff)}${claimButton(s)}</div>` : ''}
         ${swingVideo(s, urls, { tools: true })}
         ${s.question ? `<p class="pre">${esc(s.question)}</p>` : ''}
         ${s.cancel_requested_at ? `<div class="notice cancel-box"><b>会員から取り消しの依頼があります</b>（${esc(fmtShort(s.cancel_requested_at))}）${s.cancel_reason ? `<br>理由：${esc(s.cancel_reason)}` : ''}
@@ -2917,7 +2974,7 @@ async function viewInbox() {
           <button class="btn-sub" data-action="mark-reviewed" data-id="${s.id}">対応済みにする</button>
         </div>
         <a class="muted small" href="#/admin/member/${s.member_id}">会員ページを見る</a>
-      </div>`).join('') + '</div>' : '<div class="empty">確認待ちの動画はありません 🎉</div>'}
+      </div>`).join('') + '</div>' : `<div class="empty">${mineOnly() ? '自分が対応中の動画はありません' : '確認待ちの動画はありません 🎉'}</div>`}
   </div>` + adminNav('admin/inbox');
 }
 
@@ -3010,7 +3067,7 @@ async function viewMemberDetail(id, tab) {
     mRounds, mMeetings, mNotes, mPractice, karte, mSurvey, mCredits, mExits, mMemos, mCeles, subUrls, chartEntries, admins, chartMore] = await Promise.all([
     must(sb.from('profiles').select('*').eq('id', id).maybeSingle()),
     must(sb.from('tasks').select('*').eq('member_id', id).order('sort_order').order('created_at')),
-    must(sb.from('lessons').select('id, lesson_date, title, created_at, read_at, submission_id').eq('member_id', id).order('lesson_date', { ascending: false }).order('created_at', { ascending: false })),
+    must(sb.from('lessons').select('*').eq('member_id', id).order('lesson_date', { ascending: false }).order('created_at', { ascending: false })),
     subsP,
     must(sb.from('submissions').select('*').eq('member_id', id).gte('created_at', monthStart())),
     must(sb.from('roadmap_items').select('*, drills(title)').eq('member_id', id).order('publish_on')),
@@ -3318,7 +3375,7 @@ function chartPane({ m, karte, entries, admins, lessons, meetings, roadmap, goal
   // 指導の流れ（記録＋レッスン送付・面談のまとめ・ドリル公開を、日付順に1本にまとめる）
   const feed = [
     ...(entries || []).map((e) => ({ t: e.entry_date, s: e.created_at, html: chartEntryCard(e, nameOf(e.created_by), more) })),
-    ...lessons.map((l) => ({ t: l.lesson_date, s: l.created_at, html: `<div class="ch-auto"><span class="pill mute">レッスン送付</span><b>${fmtDate(l.lesson_date)}</b><span>「${esc(l.title)}」</span><a class="small" href="#/lesson/${l.id}">開く ›</a></div>` })),
+    ...lessons.map((l) => ({ t: l.lesson_date, s: l.created_at, html: `<div class="ch-auto"><span class="pill mute">レッスン送付</span><b>${fmtDate(l.lesson_date)}</b><span>「${esc(l.title)}」${l.created_by ? `<span class="muted">（${esc(nameOf(l.created_by) || 'スタッフ')}）</span>` : ''}</span><a class="small" href="#/lesson/${l.id}">開く ›</a></div>` })),
     ...meetings.filter((x) => x.status === 'done' && x.summary).map((x) => ({ t: x.scheduled_at.slice(0, 10), s: x.scheduled_at, html: `<div class="ch-auto"><span class="pill mute">面談のまとめ</span><b>${fmtDate(x.scheduled_at)}</b><span class="pre">${esc(x.summary)}</span></div>` })),
     ...roadmap.filter(rmOpen).map((r) => ({ t: r.publish_on, s: r.publish_on, html: `<div class="ch-auto"><span class="pill mute">ドリル公開</span><b>${fmtDate(r.publish_on)}</b><span>${esc(r.theme || '')}${r.drills ? `（${esc(r.drills.title)}）` : ''}</span></div>` })),
   ].sort((a, b) => (a.t === b.t ? (a.s < b.s ? 1 : -1) : a.t < b.t ? 1 : -1));
@@ -3404,7 +3461,7 @@ function karteForm(memberId, k, more = false) {
 
 // 面談の準備メモ：前回の面談から今日までの動きを1画面にまとめる
 async function viewMeetingPrep(id) {
-  const mt = await must(sb.from('meetings').select('id, member_id, scheduled_at, duration_min, status, summary').eq('id', id).maybeSingle());
+  const mt = await must(sb.from('meetings').select('*').eq('id', id).maybeSingle());
   if (!mt) return header('面談の準備メモ', 'admin/meetings') + '<div class="content"><div class="empty">面談が見つかりません</div></div>' + adminNav('admin/meetings');
   const mid = mt.member_id;
   const [m, prevList, karte, notes, rounds, roadmap, tasks] = await Promise.all([
@@ -3461,6 +3518,7 @@ async function viewMeetingPrep(id) {
     <div class="card prep-head">
       <div class="grow"><div class="muted small">${fmtShort(mt.scheduled_at)}・${mt.duration_min}分 ${meetingPill(mt)}</div>
         <h2>${memberLink(mid, m?.name)} さん</h2>
+        ${'staff_id' in mt ? `<div class="small">対応：<b>${mt.staff_id ? esc(staffName(await staffList(), mt.staff_id)) : '未定'}</b></div>` : ''}
         <div class="muted small">${esc(planLabel(m?.plan))}${prev ? `・前回の面談 ${fmtShort(prev.scheduled_at)}（${days}日前）` : '・前回の面談の記録なし（直近30日を表示）'}</div></div>
       <div class="prep-actions">
         <button type="button" class="btn btn-sm" data-action="meeting-done" data-id="${mt.id}">${mt.status === 'scheduled' ? '結果を入力' : 'まとめを編集'}</button>
@@ -4242,6 +4300,12 @@ async function viewLessonForm(route) {
     submission = await must(sb.from('submissions').select('*, profiles(name)').eq('id', route[4]).maybeSingle());
     if (!submission) return header('レッスン作成', 'admin/inbox') + '<div class="content"><div class="empty">提出が見つかりません</div></div>';
     memberId = submission.member_id;
+    if (claimOn(submission) && !submission.claimed_by && submission.status === 'pending') {
+      const now = new Date().toISOString();
+      const got = await sb.from('submissions').update({ claimed_by: state.profile.id, claimed_at: now }).eq('id', submission.id).is('claimed_by', null).select('claimed_by, claimed_at').then((r) => r.data || [], () => []);
+      if (got.length) Object.assign(submission, got[0], { justClaimed: true });
+      else submission = await must(sb.from('submissions').select('*, profiles(name)').eq('id', route[4]).maybeSingle());
+    }
   } else if (route[2] === 'new' && route[3] === 'm') {
     memberId = route[4];
   } else {
@@ -4272,6 +4336,9 @@ async function viewLessonForm(route) {
     <div class="blk" style="--o:0">
     <div class="between"><div class="muted">会員：<b>${esc(member?.name || '')}</b></div><a class="muted small" href="#/admin/templates">テンプレートを管理 ›</a></div>
     ${restored ? `<div class="notice draft-notice">📝 ${esc(fmtShort(draft.at))} の書きかけを復元しました。<button type="button" class="link" data-action="draft-discard" data-key="${esc(dKey)}">書きかけを捨てて元に戻す</button></div>` : ''}
+    ${submission && claimOn(submission) && submission.status === 'pending' ? (submission.claimed_by && submission.claimed_by !== state.profile.id
+      ? `<div class="notice warn-box">🙋 <b>${esc(staffName(await staffList(), submission.claimed_by))}さんが対応中です</b>（${fmtShort(submission.claimed_at)}〜）。二重に対応しないよう、確認してから進めてください。 ${claimButton(submission)}</div>`
+      : submission.justClaimed ? '<div class="notice">🙋 この動画は「あなたが対応中」になりました。ほかのスタッフにもそう表示されます。</div>' : '') : ''}
     ${submission ? `<div class="card"><b>提出動画</b>（${esc(submission.club)} / ${esc(submission.angle)}）${swingVideo(submission, urls, { tools: true })}
         ${submission.question ? `<p class="pre">${esc(submission.question)}</p>` : ''}</div>` : ''}
     </div>
@@ -4744,6 +4811,20 @@ const actions = {
     await must(sb.from('submissions').update({ cancel_requested_at: null, cancel_reason: '' }).eq('id', el.dataset.id));
     toast('依頼を断りました'); render();
   },
+  'sub-claim': async (el) => {
+    if (el.dataset.other && !(await confirmDialog({ title: '代わりに対応しますか？', body: '<p>ほかのスタッフが対応中です。代わりに対応すると、その人の画面にも「あなた以外が対応中」と表示されます。念のため、本人に声をかけてから進めてください。</p>', ok: '代わりに対応する' }))) return;
+    const now = new Date().toISOString();
+    let q = sb.from('submissions').update({ claimed_by: state.profile.id, claimed_at: now }).eq('id', el.dataset.id);
+    if (!el.dataset.other) q = q.is('claimed_by', null);
+    const got = await must(q.select('id'));
+    if (!got.length) { toast('ほかのスタッフが先に対応を始めました'); render(); return; }
+    toast('🙋 あなたが対応中になりました'); render();
+  },
+  'sub-release': async (el) => {
+    await must(sb.from('submissions').update({ claimed_by: null, claimed_at: null }).eq('id', el.dataset.id).eq('claimed_by', state.profile.id));
+    toast('対応をやめました（だれでも対応できる状態に戻りました）'); render();
+  },
+  'mine-toggle': () => { local.set('atg-mine', mineOnly() ? '0' : '1'); render(); },
   'mark-reviewed': async (el) => {
     if (!confirm('レッスンを作らずに対応済みにしますか？')) return;
     await must(sb.from('submissions').update({ status: 'reviewed' }).eq('id', el.dataset.id));
@@ -4764,6 +4845,7 @@ const actions = {
   'meeting-tab': (el) => { state.meetingTab = el.dataset.tab; render(); },
   'meeting-add': async (el) => {
     const [d] = splitLocal(new Date(Date.now() + DAY).toISOString());
+    const [staffOn, staff] = await Promise.all([meetingStaffOn(), staffList()]);
     const v = await confirmDialog({
       title: '面談を予約',
       body: `<div class="form modal-form">
@@ -4773,6 +4855,7 @@ const actions = {
         <div class="grid"><div><label>日付</label><input name="date" type="date" value="${d}" required></div>
           <div><label>時刻</label><input name="time" type="time" value="19:00" step="300" required></div></div>
         <label>時間（分）</label><input name="duration_min" type="number" min="5" max="180" value="25" required>
+        ${staffOn ? `<label>対応するプロ・コーチ</label><select name="staff_id">${staffOptions(staff, state.profile.id)}</select>` : ''}
         <label>支払い方法</label>
         <select name="pay_type" data-pay-type>${payTypeOptions(null)}</select>
         <p class="muted small" data-pay-hint style="margin:4px 0 0"></p>
@@ -4784,6 +4867,7 @@ const actions = {
     const at = new Date(`${v.date}T${v.time}`);
     const row = { member_id: v.member_id, scheduled_at: at.toISOString(), duration_min: Number(v.duration_min) || 25 };
     if (creditsReady) row.pay_type = v.pay_type;
+    if (staffOn) row.staff_id = v.staff_id || null;
     await must(sb.from('meetings').insert(row));
     toast(`${fmtShort(at.toISOString())} に面談を予約しました`); render();
   },
@@ -4838,16 +4922,18 @@ const actions = {
   },
   'meeting-move': async (el) => {
     const [d, t] = splitLocal(el.dataset.at);
+    const [staffOn, staff] = await Promise.all([meetingStaffOn(), staffList()]);
     const v = await confirmDialog({
-      title: '面談の日時を変更',
+      title: '面談の日時・対応者を変更',
       body: `<div class="form modal-form"><div class="grid"><div><label>日付</label><input name="date" type="date" value="${d}" required></div>
         <div><label>時刻</label><input name="time" type="time" value="${t}" step="300" required></div></div>
-        <label>時間（分）</label><input name="duration_min" type="number" min="5" max="180" value="${esc(el.dataset.min || 25)}" required></div>`,
+        <label>時間（分）</label><input name="duration_min" type="number" min="5" max="180" value="${esc(el.dataset.min || 25)}" required>
+        ${staffOn ? `<label>対応するプロ・コーチ</label><select name="staff_id">${staffOptions(staff, el.dataset.staff || '')}</select>` : ''}</div>`,
       ok: '変更する',
     });
     if (!v) return;
     const at = new Date(`${v.date}T${v.time}`);
-    await must(sb.from('meetings').update({ scheduled_at: at.toISOString(), duration_min: Number(v.duration_min) || 25, status: 'scheduled' }).eq('id', el.dataset.id));
+    await must(sb.from('meetings').update({ scheduled_at: at.toISOString(), duration_min: Number(v.duration_min) || 25, status: 'scheduled', ...(staffOn ? { staff_id: v.staff_id || null } : {}) }).eq('id', el.dataset.id));
     toast(`${fmtShort(at.toISOString())} に変更しました`); render();
   },
   'meeting-status': async (el) => {
