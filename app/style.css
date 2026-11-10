@@ -1950,3 +1950,17 @@ body.rec-open{overflow:hidden}
 .ch-karte .karte{box-shadow:none;border:0;padding:0;margin:10px 0 0}
 .ch-sum{display:grid;gap:8px}
 .ch-sum p{margin:2px 0 0}
+.rm-ms2{margin-top:6px}
+.rm-ms2 label{margin-top:0!important;font-size:12.5px;color:#8a6a2c}
+.no-ms2 .rm-ms2{display:none}
+.rm-ms-box small{display:block;margin-top:4px;color:var(--muted);font-size:12px}
+.ch-check{display:block;color:var(--muted);font-size:12px;margin-top:2px}
+.drill-info{border:1px dashed var(--line);border-radius:10px;padding:8px 12px 12px;margin-top:12px}
+.drill-info legend{font-size:13px;font-weight:700;padding:0 4px}
+.drill-info-row{margin-top:10px}
+.drill-info-row b{display:block;font-size:12.5px;color:#8a6a2c}
+.drill-info-row p{margin:2px 0 0;font-size:14px}
+.drill-usefor{color:#8a6a2c;margin-top:2px}
+.drill-rev{border-top:1px solid var(--line);padding:8px 0}
+.drill-rev:first-child{border-top:0;padding-top:0}
+.drill-rev summary{cursor:pointer;font-size:13px}

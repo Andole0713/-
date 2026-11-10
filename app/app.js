@@ -366,7 +366,8 @@ function drillCard(d, urls, extra = '') {
   return `<article class="drill-card">
     <h3>${esc(d.title)}</h3>${tagPills(d.tags)}
     ${d.description ? `<p class="pre">${esc(d.description)}</p>` : ''}
-    ${drillMedia(d, urls)}${extra}
+    ${drillMedia(d, urls)}
+    ${DRILL_INFO.filter(([n, , , , member]) => member && d[n]).map(([n, label]) => `<div class="drill-info-row"><b>${label}</b><p class="pre">${esc(d[n])}</p></div>`).join('')}${extra}
   </article>`;
 }
 // ドリルの区分（複数選べる）。グループ名：区分の一覧
@@ -391,7 +392,7 @@ function drillFilter(drills) {
     <div class="between small drill-filter-foot"><span class="drill-hit" aria-live="polite"></span><button type="button" class="link hidden" data-action="drill-tag-clear">絞り込みを解除</button></div>
   </div>`;
 }
-const drillSearchAttrs = (d) => `data-text="${esc(`${d.title} ${d.description || ''}`.toLowerCase())}" data-tags="${esc((d.tags || []).join('|'))}"`;
+const drillSearchAttrs = (d) => `data-text="${esc(`${d.title} ${d.description || ''} ${d.use_for || ''} ${d.for_who || ''}`.toLowerCase())}" data-tags="${esc((d.tags || []).join('|'))}"`;
 function applyDrillFilter() {
   const box = document.querySelector('[data-drill-filter]');
   if (!box) return;
@@ -411,7 +412,7 @@ function applyDrillFilter() {
 const tagChecks = (name, selected = []) => `<div class="tag-groups pick">${DRILL_TAGS.map(([g, list]) => `<div class="tag-group"><span>${g}</span><div>${list.map((t) => `<label class="tag-check"><input type="checkbox" name="${name}" value="${esc(t)}"${selected.includes(t) ? ' checked' : ''}><span>${esc(t)}</span></label>`).join('')}</div></div>`).join('')}</div>`;
 
 // 管理者：ドリル（動画ファイル または YouTube）を1件追加して、その id を返す
-async function createDrill({ title, description, file, url, tags = [] }, onProgress) {
+async function createDrill({ title, description, file, url, tags = [], info = {} }, onProgress) {
   if (!title) throw new Error('ドリル名を入力してください');
   let video_path = null; let video_url = null;
   if (file) {
@@ -424,16 +425,34 @@ async function createDrill({ title, description, file, url, tags = [] }, onProgr
   } else {
     throw new Error('ドリルの動画ファイルを選ぶか、YouTube のリンクを入力してください');
   }
-  const row = await must(sb.from('drills').insert({ title, description, video_path, video_url, ...(tags.length ? { tags } : {}) }).select('id').single());
+  const row = await must(sb.from('drills').insert({ title, description, video_path, video_url, ...(tags.length ? { tags } : {}), ...info }).select('id').single());
+  if (Object.keys(info).length) await saveDrillRevision(row.id, { title, description, ...info });
   return row.id;
 }
+// ドリルの「選ぶための情報」（20261111000000_chart_drill_details.sql を実行すると使える）
+// member：会員のドリル画面にも出す項目（出さないものはスタッフがドリルを選ぶときの参考）
+const DRILL_INFO = [
+  ['use_for', 'どんな悩みに使うか', '例：スライス。切り返しで上体が先に回る', 500, false],
+  ['for_who', 'どんな人に向くか', '例：初級〜中級。体が硬い人は回数を減らす', 500, false],
+  ['how_to', '練習方法', '例：トップで1秒止めてから、左足を踏み込んで切り返す。10回×毎日', 1000, true],
+  ['next_step', 'できたら次へ（進む目安）', '例：止めても形が崩れずに10回続けてできたら、次のドリルへ', 500, true],
+  ['caution', '注意点', '例：腰に痛みがあるときは行わない。力いっぱい振らない', 500, true],
+];
+const drillInfoInputs = (prefix, d = {}) => `<fieldset class="drill-info"><legend>選ぶための情報・練習のしかた（任意）</legend>
+    ${DRILL_INFO.map(([n, label, ph, max, member]) => `<label for="${prefix}${n}">${label}${member ? '' : ' <span class="muted">（スタッフ用）</span>'}</label><textarea id="${prefix}${n}" name="${prefix}${n}" rows="2" maxlength="${max}" placeholder="${ph}">${esc(d[n] || '')}</textarea>`).join('')}
+  </fieldset>`;
+const drillInfoOf = (f, prefix) => Object.fromEntries(DRILL_INFO.filter(([n]) => f[`${prefix}${n}`]).map(([n]) => [n, f[`${prefix}${n}`].value.trim()]));
+// ドリルを保存したら、その時点の内容を更新の履歴に残す（設定前は何もしない）
+const saveDrillRevision = (id, d) => sb.from('drill_revisions').insert({ drill_id: id, title: d.title, description: d.description || '',
+  ...Object.fromEntries(DRILL_INFO.map(([n]) => [n, d[n] || ''])) }).then(() => {}, () => {});
 // 新しいドリルの入力欄（ドリル集の画面とレッスン作成画面で共通）
-function drillFields(prefix) {
+function drillFields(prefix, info = false) {
   return `<label for="${prefix}title">ドリル名</label><input id="${prefix}title" name="${prefix}title" maxlength="100" placeholder="例：左足踏み込みドリル">
     <label for="${prefix}desc">説明（任意）</label><textarea id="${prefix}desc" name="${prefix}desc" rows="3" maxlength="1000" placeholder="例：トップで一瞬止めてから、左足を踏み込んで切り返します。10回×2セット"></textarea>
     <label for="${prefix}file">動画ファイル</label><input id="${prefix}file" name="${prefix}file" type="file" accept="video/*">
     <label for="${prefix}url">または YouTube のリンク</label><input id="${prefix}url" name="${prefix}url" type="url" placeholder="https://youtu.be/...">
     <fieldset class="tag-field"><legend>区分（複数選べます・任意）</legend>${tagChecks(`${prefix}tag`)}</fieldset>
+    ${info ? drillInfoInputs(prefix) : ''}
     <div id="${prefix}progress" class="hidden" aria-live="polite"><div class="between small"><span>アップロード中…</span><span class="pct">0%</span></div><div class="meter"><i style="width:0%"></i></div></div>`;
 }
 function drillFromForm(f, prefix) {
@@ -441,6 +460,7 @@ function drillFromForm(f, prefix) {
     title: f[`${prefix}title`].value.trim(), description: f[`${prefix}desc`].value.trim(),
     file: f[`${prefix}file`].files[0] || null, url: f[`${prefix}url`].value.trim(),
     tags: [...f.querySelectorAll(`input[name="${prefix}tag"]:checked`)].map((i) => i.value),
+    info: drillInfoOf(f, prefix),
   };
 }
 function drillProgress(prefix) {
@@ -2150,7 +2170,7 @@ function roadmapView(items, urls, extra = {}) {
       const head = `${isCurrent ? '<span class="rm-badge">今月のドリル</span>' : ''}
         <div class="rm-month">${mm?.label(r) || `${i + 1}か月目`}・${fmtMonth(r.publish_on)}${isNew ? '<span class="new-badge">NEW</span>' : ''}${!isCurrent && isOpen && days ? `<span class="rm-days">練習 ${days}日</span>` : ''}</div>
         <h3>${esc(r.theme || (r.drills?.title ?? 'テーマ準備中'))}</h3>
-        ${rmMsLabel(i) && r.milestone ? `<p class="rm-ms-box">🚩 ${rmMsLabel(i)}<b>${esc(r.milestone)}</b></p>` : ''}`;
+        ${rmMsLabel(i) && r.milestone ? `<p class="rm-ms-box">🚩 ${rmMsLabel(i)}<b>${esc(r.milestone)}</b>${r.milestone_check ? `<small>達成の目安：${esc(r.milestone_check)}</small>` : ''}</p>` : ''}`;
       const body = isOpen
         ? `${r.note ? `<p class="rm-note pre">${esc(r.note)}</p>` : ''}${r.drills ? drillCard(r.drills, urls) : '<p class="muted small">ドリルは準備中です。もうしばらくお待ちください。</p>'}
            ${isCurrent ? practiceBlock(r, rmPeriod(items, i), logOf(r.id)) : ''}${reflectionForm(r, refOf(r.id))}`
@@ -2235,7 +2255,7 @@ function viewGuide() {
       <ol>
         <li>コーチからレッスンが届くと、<b>メールでお知らせ</b>が届き、「履歴」に <span class="new-badge">NEW</span> が付きます</li>
         <li>解説動画とフィードバックを確認し、「次回までの練習」は練習したらタップして<b>チェック</b>しましょう</li>
-        <li>毎月のドリルがあるプランでは、ホームに「<b>今月のドリル</b>」が表示されます。練習した日は「<b>✓ 今日練習した</b>」を押して記録します</li>
+        <li>ロードマップのドリルが公開されると、ホームに「<b>今月のドリル</b>」が表示されます。練習した日は「<b>✓ 今日練習した</b>」を押して記録します</li>
       </ol>
     </section>
     <section class="card guide-step">
@@ -2721,7 +2741,7 @@ function adminRoadmapSummary(items, extra = {}) {
     <ol class="rm-mini">${items.map((r, i) => `<li class="${rmOpen(r) ? 'open' : ''}">
       <span class="n">${i < 12 ? i + 1 : `${rmCycleOf(i).year}-${rmCycleOf(i).month}`}</span>
       <span class="grow"><b>${esc(r.theme || '（テーマ未定）')}</b><small>${fmtDate(r.publish_on)}・${r.drills ? esc(r.drills.title) : '<em>ドリル未定</em>'}${rmOpen(r) ? `・練習 ${days(r.id)}日${r.seen_at ? '' : '・<em>未読</em>'}` : ''}</small>
-        ${rmMsLabel(i) ? `<span class="rm-ms-mini">🚩 ${rmMsLabel(i)}：${r.milestone ? esc(r.milestone) : '<em>未設定</em>'}</span>` : ''}
+        ${rmMsLabel(i) ? `<span class="rm-ms-mini">🚩 ${rmMsLabel(i)}：${r.milestone ? esc(r.milestone) : '<em>未設定</em>'}${r.milestone_check ? `（達成の目安：${esc(r.milestone_check)}）` : ''}</span>` : ''}
         ${ref(r.id) ? `<span class="rm-ref">💬 ${esc(ref(r.id))}</span>` : ''}</span>
       <span class="rm-act"><span class="pill ${rmOpen(r) ? 'ok' : r.hidden ? 'warn' : ''}">${rmOpen(r) ? '公開済み' : r.hidden ? '取り消し中' : '予定'}</span>
         ${rmOpen(r) ? `<button type="button" class="btn-sm btn-danger" data-action="rm-unpublish" data-id="${r.id}" data-title="${esc(r.theme || `${i + 1}か月目`)}">取り消す</button>`
@@ -2751,7 +2771,8 @@ function rmRow(r, i, expand = false) {
     <label>テーマ・目標</label><input name="theme" maxlength="100" value="${esc(r.theme || '')}" placeholder="例：アドレスと前傾角度を安定させる">
     <label>会員へのひとこと（任意）</label><textarea name="note" rows="2" maxlength="1000" placeholder="例：今月は毎日5分、鏡の前で確認しましょう">${esc(r.note || '')}</textarea>
     <div class="rm-ms"${rmMsLabel(i) ? '' : ' hidden'}><label class="rm-ms-label">🚩 ${rmMsLabel(i)}</label>
-      <input name="milestone" maxlength="200" value="${esc(r.milestone || '')}" placeholder="例：アドレスが毎回同じ形でできる／100切り"></div>
+      <input name="milestone" maxlength="200" value="${esc(r.milestone || '')}" placeholder="例：アドレスが毎回同じ形でできる／100切り">
+      <div class="rm-ms2"><label>何ができれば達成？</label><input name="milestone_check" maxlength="200" value="${esc(r.milestone_check || '')}" placeholder="例：後方の動画で、10球中8球アドレスの前傾が同じ"></div></div>
     <div class="rm-edit-foot">
       <button type="button" class="link" data-action="rm-shift">この月から後ろを1か月ずらす</button>
       ${open ? '<label class="switch small"><input type="checkbox" name="unpublish"><span>公開を取り消す（会員に見えなくする）</span></label>'
@@ -2766,13 +2787,14 @@ function rmRefresh(row) {
   row.querySelector('.rm-prev').innerHTML = rmPreview(v('publish_on'), v('theme').trim(), v('drill_id'));
 }
 async function viewRoadmapEdit(memberId) {
-  const [m, items, library, goals, msOk] = await Promise.all([
+  const [m, items, library, goals, msOk, ms2Ok] = await Promise.all([
     must(sb.from('profiles').select('id, name, goal').eq('id', memberId).maybeSingle()),
     must(sb.from('roadmap_items').select('*').eq('member_id', memberId).order('publish_on')),
     must(sb.from('drills').select('id, title').order('title')),
     must(sb.from('roadmap_goals').select('goal').eq('member_id', memberId)),
     // 節目の目標の列（20261110000000_chart_and_milestones.sql）があるか
     sb.from('roadmap_items').select('milestone').limit(1).then((r) => !r.error, () => false),
+    sb.from('roadmap_items').select('milestone_check').limit(1).then((r) => !r.error, () => false),
   ]);
   rmLibrary = library;
   const back = `admin/member/${memberId}/drill`;
@@ -2781,7 +2803,7 @@ async function viewRoadmapEdit(memberId) {
     <p class="muted small" style="margin:0 0 8px">公開日になると、その月のドリルが会員ページに自動で公開されます。変更は「保存する」を押すまで反映されません。</p>
     ${library.length ? '' : '<div class="notice">ドリル集にドリルがありません。先に<a href="#/admin/drills">ドリル集</a>で登録すると、ここで選べます。</div>'}
     ${msOk ? '' : '<div class="notice">節目の目標（3・6・12か月目）を使うには、データベースの設定（20261110000000_chart_and_milestones.sql）を実行してください。</div>'}
-    <form class="form${msOk ? '' : ' no-ms'}" data-form="roadmap" data-member="${esc(memberId)}" data-deleted="" data-ms="${msOk ? '1' : ''}">
+    <form class="form${msOk ? '' : ' no-ms'}${ms2Ok ? '' : ' no-ms2'}" data-form="roadmap" data-member="${esc(memberId)}" data-deleted="" data-ms="${msOk ? '1' : ''}" data-ms2="${ms2Ok ? '1' : ''}">
       <div class="card" style="margin-top:0"><label for="rm-goal" style="margin-top:0">ロードマップのゴール</label>
         <input id="rm-goal" name="goal" maxlength="100" value="${esc(goals[0]?.goal ?? '')}" placeholder="${esc(m.goal ? `例：${m.goal}` : '例：12か月後に90切り')}">
         <p class="muted small" style="margin:4px 0 0">何年かかけて目指す、いちばん大きな目標です。会員のロードマップの一番上と最後に表示されます。空欄のときは会員情報の「目標」を表示します。</p>
@@ -2807,22 +2829,25 @@ function rmDirty() { document.getElementById('rm-dirty')?.classList.remove('hidd
 
 // ドリル集（何人の会員にも使い回せる）
 async function viewDrills() {
-  const [drills, links] = await Promise.all([
+  const [drills, links, infoOk] = await Promise.all([
     must(sb.from('drills').select('*').order('created_at', { ascending: false })),
     must(sb.from('lesson_drills').select('drill_id')),
+    sb.from('drills').select('use_for').limit(1).then((r) => !r.error, () => false),
   ]);
   const used = links.reduce((m, x) => m.set(x.drill_id, (m.get(x.drill_id) || 0) + 1), new Map());
   return header('ドリル集') + `<div class="content">
     <p class="muted small" style="margin:0 0 8px">ここに登録したドリルは、レッスン作成画面の「ドリル動画」の欄にチェックで選べるようになり、会員に送れます。同じドリルを何人にでも使い回せるので、保存容量を節約できます。</p>
     <details class="card add-drill"${drills.length ? '' : ' open'}><summary><b>＋ 新しいドリルを登録</b></summary>
-      <form class="form" data-form="drill-new">${drillFields('nd_')}
+      ${infoOk ? '' : '<div class="notice">「どんな悩みに使うか」「練習方法」などの項目を使うには、データベースの設定（20261111000000_chart_drill_details.sql）を実行してください。</div>'}
+      <form class="form" data-form="drill-new">${drillFields('nd_', infoOk)}
         <button class="btn-block" type="submit">ドリルを登録する</button></form>
     </details>
     <div class="section-title"><h2>登録済み（${drills.length}件）</h2></div>
     ${drills.length ? drillFilter(drills) : ''}
     ${drills.map((d) => `<a class="card link drill-row" href="#/admin/drill/${d.id}" ${drillSearchAttrs(d)}>
         <div class="grow"><b>${esc(d.title)}</b>${tagPills(d.tags)}
-          <div class="muted small">${d.video_path ? '動画ファイル' : 'YouTube'}・${used.get(d.id) || 0}件のレッスンで使用・${fmtDate(d.created_at)}</div></div>
+          ${d.use_for ? `<div class="small drill-usefor">悩み：${esc(d.use_for)}</div>` : ''}
+          <div class="muted small">${d.video_path ? '動画ファイル' : 'YouTube'}・${used.get(d.id) || 0}件のレッスンで使用・${d.updated_at && d.updated_at.slice(0, 10) !== d.created_at.slice(0, 10) ? `更新 ${fmtDate(d.updated_at)}` : fmtDate(d.created_at)}</div></div>
         <span class="drill-go" aria-hidden="true">›</span>
       </a>`).join('') || '<div class="empty">まだドリルはありません</div>'}
   </div>` + adminNav('admin/drills');
@@ -2832,26 +2857,35 @@ async function viewDrills() {
 async function viewDrillDetail(id) {
   const d = await must(sb.from('drills').select('*').eq('id', id).maybeSingle());
   if (!d) return header('ドリル', 'admin/drills') + '<div class="content"><div class="empty">ドリルが見つかりません</div></div>' + adminNav('admin/drills');
-  const [urls, links, rms] = await Promise.all([
+  const infoOk = 'use_for' in d;
+  const [urls, links, rms, revs] = await Promise.all([
     signedDrillUrls([d]),
     must(sb.from('lesson_drills').select('lesson_id, lessons(id, title, lesson_date, member_id, profiles(name))').eq('drill_id', id)),
     must(sb.from('roadmap_items').select('id, publish_on, member_id, profiles(name)').eq('drill_id', id).order('publish_on')),
+    sb.from('drill_revisions').select('*').eq('drill_id', id).order('created_at', { ascending: false }).then((r) => (r.error ? null : r.data || []), () => null),
   ]);
   const lessons = links.map((x) => x.lessons).filter(Boolean).sort((a, b) => (a.lesson_date < b.lesson_date ? 1 : -1));
+  // その日に会員に渡した説明が、いつ保存した内容か（更新の履歴から探す）
+  const verOf = (ymd) => { if (!revs || !revs.length) return ''; const v = revs.find((r) => r.created_at.slice(0, 10) <= ymd); return v ? `<span class="muted small">（${fmtDate(v.created_at)} 版の説明）</span>` : ''; };
   return header(d.title, 'admin/drills') + `<div class="content wide"><div class="cols"><div class="col-main">
     <div class="card drill-detail">
       ${drillMedia(d, urls)}
       <h2>${esc(d.title)}</h2>
       ${tagPills(d.tags)}
       ${d.description ? `<p class="pre">${esc(d.description)}</p>` : '<p class="muted small">説明はありません</p>'}
-      <p class="muted small" style="margin:8px 0 0">${d.video_path ? '動画ファイル' : 'YouTube'}・登録 ${fmtDate(d.created_at)}</p>
+      ${DRILL_INFO.filter(([n]) => d[n]).map(([n, label, , , member]) => `<div class="drill-info-row"><b>${label}${member ? '' : ' <span class="muted">（スタッフ用）</span>'}</b><p class="pre">${esc(d[n])}</p></div>`).join('')}
+      <p class="muted small" style="margin:8px 0 0">${d.video_path ? '動画ファイル' : 'YouTube'}・登録 ${fmtDate(d.created_at)}${d.updated_at && d.updated_at.slice(0, 16) !== d.created_at.slice(0, 16) ? `・更新 ${fmtDate(d.updated_at)}` : ''}</p>
     </div>
     <div class="section-title"><h2>使った会員</h2><span class="muted small">レッスン ${lessons.length}件・ロードマップ ${rms.length}件</span></div>
     <div class="card">
       ${lessons.map((l) => `<div class="list-item small"><span>${fmtDate(l.lesson_date)}　${memberLink(l.member_id, l.profiles?.name)}　<a class="muted" href="#/admin/lesson/${l.id}">「${esc(l.title)}」</a></span><span class="pill">レッスン</span></div>`).join('')}
-      ${rms.map((r) => `<div class="list-item small"><span>${fmtDate(r.publish_on)}　${memberLink(r.member_id, r.profiles?.name)}</span><span class="pill">ロードマップ</span></div>`).join('')}
+      ${rms.map((r) => `<div class="list-item small"><span>${fmtDate(r.publish_on)}　${memberLink(r.member_id, r.profiles?.name)} ${verOf(r.publish_on)}</span><span class="pill">ロードマップ</span></div>`).join('')}
       ${lessons.length || rms.length ? '' : '<p class="muted small" style="margin:0">まだ使われていません</p>'}
     </div>
+    ${revs && revs.length ? `<div class="section-title"><h2>更新の履歴</h2><span class="muted small">保存するたびに残ります</span></div>
+    <div class="card">${revs.map((v) => `<details class="drill-rev"><summary>${fmtShort(v.created_at)} に保存</summary>
+        <p class="small"><b>${esc(v.title)}</b></p>${v.description ? `<p class="pre small">${esc(v.description)}</p>` : ''}
+        ${DRILL_INFO.filter(([n]) => v[n]).map(([n, label]) => `<p class="small"><span class="muted">${label}：</span>${esc(v[n])}</p>`).join('')}</details>`).join('')}</div>` : ''}
   </div><div class="col-side">
     <form class="card form" data-form="drill-edit" data-id="${d.id}">
       <b>ドリルを編集</b>
@@ -2859,6 +2893,7 @@ async function viewDrillDetail(id) {
       <label for="de-desc">説明</label><textarea id="de-desc" name="description" rows="4" maxlength="1000">${esc(d.description || '')}</textarea>
       ${d.video_url ? `<label for="de-url">YouTube のリンク</label><input id="de-url" name="video_url" type="url" value="${esc(d.video_url)}" required>` : '<p class="muted small" style="margin:8px 0 0">動画ファイルを差し替えたいときは、新しいドリルとして登録してください。</p>'}
       <fieldset class="tag-field"><legend>区分（複数選べます）</legend>${tagChecks('tag', d.tags || [])}</fieldset>
+      ${infoOk ? drillInfoInputs('de_', d) : '<p class="muted small">「どんな悩みに使うか」「練習方法」などの項目を使うには、データベースの設定（20261111000000_chart_drill_details.sql）を実行してください。</p>'}
       <button class="btn-block" type="submit">保存する</button>
     </form>
     <button class="btn-block btn-danger" data-action="delete-drill" data-id="${d.id}" data-path="${esc(d.video_path || '')}" data-title="${esc(d.title)}" data-used="${lessons.length}">このドリルを削除</button>
@@ -2972,7 +3007,7 @@ async function viewMemberDetail(id, tab) {
   const ok = (q) => q.then((r) => (r.error ? [] : r.data || []), () => []);
   const subsP = must(sb.from('submissions').select('*').eq('member_id', id).order('created_at', { ascending: false }).limit(20));
   const [m, tasks, lessons, subs, monthSubs, roadmap, rmPractice, rmRefs, rmGoals,
-    mRounds, mMeetings, mNotes, mPractice, karte, mSurvey, mCredits, mExits, mMemos, mCeles, subUrls, chartEntries, admins] = await Promise.all([
+    mRounds, mMeetings, mNotes, mPractice, karte, mSurvey, mCredits, mExits, mMemos, mCeles, subUrls, chartEntries, admins, chartMore] = await Promise.all([
     must(sb.from('profiles').select('*').eq('id', id).maybeSingle()),
     must(sb.from('tasks').select('*').eq('member_id', id).order('sort_order').order('created_at')),
     must(sb.from('lessons').select('id, lesson_date, title, created_at, read_at, submission_id').eq('member_id', id).order('lesson_date', { ascending: false }).order('created_at', { ascending: false })),
@@ -2997,6 +3032,8 @@ async function viewMemberDetail(id, tab) {
     sb.from('chart_entries').select('*').eq('member_id', id).order('entry_date', { ascending: false }).order('created_at', { ascending: false }).limit(300)
       .then((r) => (r.error ? null : r.data || []), () => null),
     sb.from('profiles').select('id, name').eq('role', 'admin').then((r) => r.data || [], () => []),
+    // カルテの追加項目（20261111000000_chart_drill_details.sql）があるか
+    sb.from('chart_entries').select('changes').limit(1).then((r) => !r.error, () => false),
   ]);
   const mst = scoreStats(mRounds, m || {});
   if (!m) return header('会員詳細', 'admin/members') + '<div class="content"><div class="empty">会員が見つかりません</div></div>';
@@ -3124,7 +3161,7 @@ async function viewMemberDetail(id, tab) {
 
   // ---- タブ：カウンセリング（アンケートの回答・カウンセリングシート）----
   const chartOpens = chartOpenNext(chartEntries);
-  const paneKarte = chartPane({ m, karte, entries: chartEntries, admins, lessons, meetings: mMeetings, roadmap, goal: rmGoals[0]?.goal || m.goal, survey: mSurvey, staff });
+  const paneKarte = chartPane({ m, karte, entries: chartEntries, admins, lessons, meetings: mMeetings, roadmap, goal: rmGoals[0]?.goal || m.goal, survey: mSurvey, staff, more: chartMore });
 
   // ---- タブ：担当者メモ ----
   const paneMemo = `<div class="section-title" style="margin-top:0"><h2>担当者メモ</h2><span class="muted small">会員には見えません</span></div>
@@ -3212,16 +3249,26 @@ const CHART_KINDS = [['meeting', '面談'], ['review', '動画添削'], ['drill'
 const chartKind = (k) => CHART_KINDS.find(([v]) => v === k)?.[1] || 'その他';
 // 記録のルール（カルテの一番上に表示する）
 const CHART_RULES = [
+  '<b>対応する前に</b>、カルテで目標・前回の助言・実施中のドリル・注意点を読む（担当は固定しないので、毎回ここから）',
   '面談・動画添削・ドリル設定をしたら、<b>その日のうちに</b>記録する',
   '<b>「次回対応」は必ず書く</b>（何もなければ「なし」）。次に対応する人が、これだけ読めば動けるように',
   '「やったこと・見たこと（事実）」と「課題・気づき（判断）」を分けて書く',
   '略語・自分だけの言い方は使わない。<b>別のコーチが読んで分かる言葉</b>で',
+  '前回と違う助言をしたときは、<b>理由を会員に説明し</b>、「続けること・変えること」に理由を残す',
   '指導の方針を変えたら、上の「指導方針・申し送り」も書き直す',
-  '担当コーチが変わるときは、種類「引き継ぎ」で、ここまでの流れと注意点をまとめて残す',
+  '短くても次の人が動ける書き方に。例：「目標は○○。今回は△△が改善。今のドリルを継続。次回は□□を確認」',
+  '判断に迷うときは、運営の責任者に相談する',
   '体の状態・家庭や仕事の事情などは、指導に必要な範囲だけ書く',
 ];
 const chartOpenNext = (entries) => (entries || []).filter((e) => !e.next_done && e.next_action && e.next_action.trim() !== 'なし');
-function chartEntryFields(e = {}, pre = 'ce') {
+// 追加の項目（20261111000000_chart_drill_details.sql を実行すると使える）
+const CHART_MORE = [
+  ['changes', '前回からの変化', '例：前傾は保てるようになった。トップの右ひじはまだ浮く'],
+  ['drill_reason', 'ドリルを選んだ理由・練習方法', '例：切り返しの順番を体で覚えるため。トップで1秒止めて10回、毎日'],
+  ['continue_change', '続けること・変えること（理由も）', '例：前傾のドリルは継続。切り返しのドリルを追加（前傾が安定したため）'],
+  ['pending', '保留中の話', '例：ドライバーの買い替えの相談。次の面談で返事をする'],
+];
+function chartEntryFields(e = {}, pre = 'ce', more = false) {
   const id = (n) => `${pre}-${n}`;
   return `<div class="grid">
       <div><label for="${id('date')}">日付</label><input id="${id('date')}" type="date" name="entry_date" value="${esc(e.entry_date || today())}" required></div>
@@ -3229,19 +3276,22 @@ function chartEntryFields(e = {}, pre = 'ce') {
     </div>
     <label for="${id('content')}">やったこと・見たこと <span class="muted">（事実）</span></label>
     <textarea id="${id('content')}" name="content" rows="3" maxlength="2000" placeholder="例：後方からの動画。アドレスで前傾が浅く、トップで右ひじが浮く。ドライバーは右に出る球が多いと本人">${esc(e.content || '')}</textarea>
+    ${more ? `<label for="${id('changes')}">${CHART_MORE[0][1]}</label><textarea id="${id('changes')}" name="changes" rows="2" maxlength="1000" placeholder="${CHART_MORE[0][2]}">${esc(e.changes || '')}</textarea>` : ''}
     <label for="${id('issues')}">課題・気づき <span class="muted">（判断）</span></label>
     <textarea id="${id('issues')}" name="issues" rows="2" maxlength="1000" placeholder="例：切り返しで上体が先に回るのが根本。まずはアドレスの前傾を安定させる">${esc(e.issues || '')}</textarea>
     <label for="${id('drills')}">出したドリル・練習</label>
     <textarea id="${id('drills')}" name="drills" rows="2" maxlength="1000" placeholder="例：トップで止める素振り 10回×毎日。壁を使った前傾キープ">${esc(e.drills || '')}</textarea>
+    ${more ? CHART_MORE.slice(1).map(([n, label, ph]) => `<label for="${id(n)}">${label}</label><textarea id="${id(n)}" name="${n}" rows="2" maxlength="1000" placeholder="${ph}">${esc(e[n] || '')}</textarea>`).join('') : ''}
     <label for="${id('next')}">次回対応 <span class="req">必須</span></label>
     <textarea id="${id('next')}" name="next_action" rows="2" maxlength="1000" required placeholder="例：次の動画で前傾が保てているか確認。できていれば切り返しのドリルへ（何もなければ「なし」）">${esc(e.next_action || '')}</textarea>`;
 }
-function chartEntryCard(e, author) {
+function chartEntryCard(e, author, more = false) {
   const open = !e.next_done && e.next_action && e.next_action.trim() !== 'なし';
   const row = (label, v) => (v ? `<div><dt>${label}</dt><dd class="pre">${esc(v)}</dd></div>` : '');
   return `<article class="ch-entry k-${e.kind}">
     <div class="ch-head"><span class="pill">${chartKind(e.kind)}</span><b>${fmtDate(e.entry_date)}</b><span class="muted small">記入：${esc(author || '—')}${e.updated_at && e.updated_at.slice(0, 16) !== e.created_at.slice(0, 16) ? '（編集済み）' : ''}</span></div>
-    <dl class="ch-dl">${row('やったこと・見たこと', e.content)}${row('課題・気づき', e.issues)}${row('ドリル・練習', e.drills)}
+    <dl class="ch-dl">${row('やったこと・見たこと', e.content)}${row('前回からの変化', e.changes)}${row('課題・気づき', e.issues)}${row('ドリル・練習', e.drills)}
+      ${row('ドリルを選んだ理由・練習方法', e.drill_reason)}${row('続けること・変えること', e.continue_change)}${row('保留中の話', e.pending)}
       ${e.next_action ? `<div class="ch-next${open ? ' open' : ' done'}"><dt>次回対応${e.next_done ? '（対応済み）' : ''}</dt><dd class="pre">${esc(e.next_action)}</dd></div>` : ''}</dl>
     <div class="ch-foot">
       ${open ? `<button type="button" class="btn-sm btn-gold" data-action="chart-done" data-id="${e.id}" data-done="1">✓ 次回対応を済みにする</button>`
@@ -3249,13 +3299,13 @@ function chartEntryCard(e, author) {
       <button type="button" class="link" data-action="chart-delete" data-id="${e.id}">削除</button>
     </div>
     <details class="ch-edit"><summary>編集する</summary>
-      <form class="form" data-form="chart-entry" data-id="${e.id}" data-member="${e.member_id}">${chartEntryFields(e, `ce-${String(e.id).slice(0, 8)}`)}
+      <form class="form" data-form="chart-entry" data-id="${e.id}" data-member="${e.member_id}" data-more="${more ? '1' : ''}">${chartEntryFields(e, `ce-${String(e.id).slice(0, 8)}`, more)}
         <button class="btn-block" type="submit">記録を保存する</button></form>
     </details>
   </article>`;
 }
 // カルテのタブ全体
-function chartPane({ m, karte, entries, admins, lessons, meetings, roadmap, goal, survey, staff }) {
+function chartPane({ m, karte, entries, admins, lessons, meetings, roadmap, goal, survey, staff, more }) {
   const k = karte || {};
   const nameOf = (id) => admins.find((a) => a.id === id)?.name || '';
   const ready = entries !== null;
@@ -3267,7 +3317,7 @@ function chartPane({ m, karte, entries, admins, lessons, meetings, roadmap, goal
   const ms = roadmap.slice(y0, y0 + 12).map((r, j) => ({ r, i: y0 + j })).filter(({ i }) => rmMsLabel(i));
   // 指導の流れ（記録＋レッスン送付・面談のまとめ・ドリル公開を、日付順に1本にまとめる）
   const feed = [
-    ...(entries || []).map((e) => ({ t: e.entry_date, s: e.created_at, html: chartEntryCard(e, nameOf(e.created_by)) })),
+    ...(entries || []).map((e) => ({ t: e.entry_date, s: e.created_at, html: chartEntryCard(e, nameOf(e.created_by), more) })),
     ...lessons.map((l) => ({ t: l.lesson_date, s: l.created_at, html: `<div class="ch-auto"><span class="pill mute">レッスン送付</span><b>${fmtDate(l.lesson_date)}</b><span>「${esc(l.title)}」</span><a class="small" href="#/lesson/${l.id}">開く ›</a></div>` })),
     ...meetings.filter((x) => x.status === 'done' && x.summary).map((x) => ({ t: x.scheduled_at.slice(0, 10), s: x.scheduled_at, html: `<div class="ch-auto"><span class="pill mute">面談のまとめ</span><b>${fmtDate(x.scheduled_at)}</b><span class="pre">${esc(x.summary)}</span></div>` })),
     ...roadmap.filter(rmOpen).map((r) => ({ t: r.publish_on, s: r.publish_on, html: `<div class="ch-auto"><span class="pill mute">ドリル公開</span><b>${fmtDate(r.publish_on)}</b><span>${esc(r.theme || '')}${r.drills ? `（${esc(r.drills.title)}）` : ''}</span></div>` })),
@@ -3285,28 +3335,29 @@ function chartPane({ m, karte, entries, admins, lessons, meetings, roadmap, goal
     <div class="section-title"><h2>目標</h2>${roadmap.length ? `<a class="btn btn-sm btn-sub" href="#/admin/roadmap/${m.id}">ロードマップで編集</a>` : ''}</div>
     <div class="card ch-goals">
       <div><span class="muted small">ゴール（長期）</span><p>${goal ? esc(goal) : '<span class="muted">—</span>'}</p></div>
-      ${ms.length ? ms.map(({ r, i }) => `<div><span class="muted small">🚩 ${rmMsLabel(i)}（${fmtMonth(r.publish_on)}）</span><p>${r.milestone ? esc(r.milestone) : '<span class="muted">未設定</span>'}</p></div>`).join('')
+      ${ms.length ? ms.map(({ r, i }) => `<div><span class="muted small">🚩 ${rmMsLabel(i)}（期限：${fmtMonth(r.publish_on)}）</span><p>${r.milestone ? esc(r.milestone) : '<span class="muted">未設定</span>'}</p>${r.milestone_check ? `<small class="ch-check">達成の目安：${esc(r.milestone_check)}</small>` : ''}</div>`).join('')
         : `<p class="muted small" style="margin:0">${roadmap.length ? '節目の目標（3・6・12か月目）は、ロードマップの編集画面で設定できます。' : 'ロードマップを作ると、3・6・12か月目の節目の目標をここで確認できます（「ドリル」タブから作成）。'}</p>`}
     </div>
 
     <form class="card form ch-base" data-form="chart-base" data-member="${m.id}" data-prev-coach="${esc(k.coach_name || '')}">
       <div class="between"><b>指導の基本情報</b><span class="muted small">${k.updated_at ? `${fmtShort(k.updated_at)} 更新` : ''}</span></div>
-      <label for="ch-coach">担当コーチ</label><input id="ch-coach" name="coach_name" maxlength="50" value="${esc(k.coach_name || '')}" placeholder="例：林">
+      <label for="ch-coach">担当プロ <span class="muted">（初回の面談とロードマップの設定）</span></label><input id="ch-coach" name="coach_name" maxlength="50" value="${esc(k.coach_name || '')}" placeholder="例：林">
       <label for="ch-focus">いま取り組んでいる課題</label><textarea id="ch-focus" name="focus" rows="2" maxlength="500" placeholder="例：アドレスの前傾を安定させる（10月〜）">${esc(k.focus || '')}</textarea>
       <label for="ch-policy">指導方針・申し送り</label><textarea id="ch-policy" name="policy" rows="3" maxlength="1000" placeholder="例：理屈より体で覚えるタイプ。一度に伝えることは1つに絞る。腰痛があるので回数の多い素振りは避ける">${esc(k.policy || '')}</textarea>
       <button class="btn-block btn-sub" type="submit"${ready ? '' : ' disabled'}>基本情報を保存する</button>
-      <p class="muted small" style="margin:4px 0 0">担当コーチを変えると、「引き継ぎ」の記録が自動で残ります。</p>
+      <p class="muted small" style="margin:4px 0 0">その後の添削・面談は、手の空いているプロ・コーチが対応します（担当は固定しません）。担当プロを変えると、「引き継ぎ」の記録が自動で残ります。</p>
     </form>
 
     <div class="section-title"><h2>指導記録を書く</h2></div>
-    <form class="card form ch-new" data-form="chart-entry" data-member="${m.id}">${chartEntryFields({}, 'ce-new')}
+    ${ready && !more ? '<div class="notice">「前回からの変化」「ドリルを選んだ理由」などの項目を使うには、データベースの設定（20261111000000_chart_drill_details.sql）を実行してください。</div>' : ''}
+    <form class="card form ch-new" data-form="chart-entry" data-member="${m.id}" data-more="${more ? '1' : ''}">${chartEntryFields({}, 'ce-new', more)}
       <button class="btn-block btn-gold" type="submit"${ready ? '' : ' disabled'}>記録を残す</button></form>
 
     <div class="section-title"><h2>指導の流れ</h2><span class="muted small">記録・レッスン送付・面談のまとめ・ドリル公開を日付順に</span></div>
     <div class="ch-feed">${feed.length ? feed.map((f) => f.html).join('') : '<div class="card"><p class="muted small" style="margin:0">まだ記録はありません。</p></div>'}</div>
 
     <details class="card ch-karte"><summary><b>カウンセリングシート</b><span class="muted small">初回カウンセリングで聞いた内容</span></summary>
-      ${staff ? '' : surveyCard(survey)}${karteForm(m.id, karte)}</details>`;
+      ${staff ? '' : surveyCard(survey)}${karteForm(m.id, karte, more)}</details>`;
 }
 
 // カウンセリングシート（会員には見えない）
@@ -3314,6 +3365,7 @@ const KARTE_FIELDS = [
   ['golf_history', 'ゴルフ歴・ラウンド頻度', '例：歴5年。月1〜2回ラウンド', 500],
   ['practice_env', '練習環境・練習頻度', '例：近所の練習場に週1回。自宅でパター練習', 500],
   ['body_notes', 'ケガ・体の状態', '例：腰痛あり。左手首を以前痛めた', 500],
+  ['first_swing', '初回のスイングの状態', '例：後方から見て前傾が浅い。トップでクラブがクロス。ドライバーは右に出る球が多い', 500, 'more'],
   ['goals', '目標（具体的に・いつまでに）', '例：来年の春までに90切り。社内コンペで優勝したい', 500],
   ['issues', '悩み・課題', '例：ドライバーのスライス。アプローチのざっくり', 500],
   ['contact_pref', '連絡方法・連絡しやすい時間帯', '例：LINE。平日20時以降', 300],
@@ -3338,13 +3390,14 @@ function surveyCard(sv) {
     <dl>${rows.map(([k, v]) => `<div><dt>${k}</dt><dd>${v ? esc(v) : '<span class="muted">—</span>'}</dd></div>`).join('')}</dl>
   </div>`;
 }
-function karteForm(memberId, k) {
+function karteForm(memberId, k, more = false) {
   k = k || {};
+  const fields = KARTE_FIELDS.filter((x) => more || x[4] !== 'more');
   const filled = KARTE_FIELDS.some(([n]) => k[n]);
   return `<form class="card form karte" data-form="karte" data-member="${memberId}">
     <div class="between"><b>カウンセリングシート</b><span class="muted small">会員には見えません${k.updated_at ? `・${fmtShort(k.updated_at)} 更新` : ''}</span></div>
     ${filled ? '' : '<p class="muted small" style="margin:4px 0 0">初回カウンセリングで聞いた内容を残しておくと、面談の準備メモにも表示されます。</p>'}
-    ${KARTE_FIELDS.map(([n, label, ph, max]) => `<label for="k_${n}">${label}</label><textarea id="k_${n}" name="${n}" rows="2" maxlength="${max}" placeholder="${ph}">${esc(k[n] || '')}</textarea>`).join('')}
+    ${fields.map(([n, label, ph, max]) => `<label for="k_${n}">${label}</label><textarea id="k_${n}" name="${n}" rows="2" maxlength="${max}" placeholder="${ph}">${esc(k[n] || '')}</textarea>`).join('')}
     <button class="btn-block" type="submit">シートを保存する</button>
   </form>`;
 }
@@ -3505,7 +3558,7 @@ const DIAG_TAGS = ['スライス', 'フック', 'プッシュ', '引っかけ', 
   'アドレス・構え', 'グリップ', 'テークバック', 'トップの形', '切り返し', 'ダウンスイング', 'インパクト', 'フォロー・フィニッシュ', '体重移動', '体の回転', '手打ち', 'リズム・テンポ',
   'アプローチ', 'バンカー', 'パター', 'コースマネジメント'];
 const RATINGS = [[3, '👍', '役に立った'], [2, '🙂', 'まあまあ'], [1, '🤔', 'わかりにくい']];
-// 月の料金（税込・仮）。売上の見込みの計算だけに使う。ユーキャン制は10か月分を月あたりに直した額
+// 月の料金（税込・仮）。売上の見込みの計算だけに使う。12か月上達プログラム（YOUCAN）は10か月分を月あたりに直した額
 const PLAN_MONTHLY_YEN = { UME: 11000, TAKE: 16500, MATSU: 22000, SUBSCRIPTION: 22000, YOUCAN: 8800 };
 const optLabel = (key, v) => SURVEY_OPTS[key]?.find(([k]) => k === v)?.[1] || '';
 const monthKey = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
@@ -3957,7 +4010,7 @@ async function viewStats() {
 
     ${sec('売上の見込み', '今の契約から計算（料金は仮）')}
     <div class="rp-grid">${tile('契約中', active.length, '名')}${tile('月の売上の見込み', mrr ? yen(mrr) : null)}${tile('1人あたり', active.length && mrr ? yen(mrr / active.length) : null)}</div>
-    <div class="card st-card"><h3>プラン別の人数</h3>${bars(planRows, { unit: '名' })}<p class="muted small">ユーキャン制は 88,000円 ÷ 10か月 で月あたりに直しています。追加の動画・面談（都度払い）は入っていません。</p></div>
+    <div class="card st-card"><h3>プラン別の人数</h3>${bars(planRows, { unit: '名' })}<p class="muted small">12か月上達プログラムは 88,000円 ÷ 10か月 で月あたりに直しています。追加の動画・面談（都度払い）は入っていません。</p></div>
 
     ${sec('継続', '契約の開始・終了の記録から計算')}
     <div class="rp-grid">${tile('平均の在籍期間', avgTenureAll != null ? Math.round(avgTenureAll * 10) / 10 : null, 'か月', '今も続けている人を含む')}${tile('辞めた人の在籍期間', avgTenureEnded != null ? Math.round(avgTenureEnded * 10) / 10 : null, 'か月', `${rangeLabel}に辞めた ${ended.length}名の平均`)}</div>
@@ -5429,7 +5482,7 @@ const forms = {
     await must(sb.from('member_karte').upsert({ member_id, coach_name: coach, focus: f.focus.value.trim(), policy: f.policy.value.trim(), updated_at: new Date().toISOString(), updated_by: state.profile.id }));
     // 担当コーチが変わったら、引き継ぎの記録を自動で残す
     if (coach !== prev) {
-      await must(sb.from('chart_entries').insert({ member_id, kind: 'handover', content: prev ? `担当コーチを「${prev}」から「${coach || '未定'}」に変更` : `担当コーチを「${coach}」に設定`, next_action: prev ? '新しい担当コーチは、指導方針・申し送りとここまでの記録を確認する' : 'なし' }));
+      await must(sb.from('chart_entries').insert({ member_id, kind: 'handover', content: prev ? `担当プロを「${prev}」から「${coach || '未定'}」に変更` : `担当プロを「${coach}」に設定`, next_action: prev ? '新しい担当プロは、指導方針・申し送りとここまでの記録を確認する' : 'なし' }));
     }
     toast('カルテの基本情報を保存しました'); render();
   },
@@ -5437,6 +5490,7 @@ const forms = {
     const row = {
       entry_date: f.entry_date.value, kind: f.kind.value,
       content: f.content.value.trim(), issues: f.issues.value.trim(), drills: f.drills.value.trim(), next_action: f.next_action.value.trim(),
+      ...(f.dataset.more === '1' ? Object.fromEntries(CHART_MORE.map(([n]) => [n, f.elements[n].value.trim()])) : {}),
     };
     if (!row.content && !row.issues && !row.drills) throw new Error('「やったこと・見たこと」「課題・気づき」「ドリル・練習」のどれかを書いてください');
     if (!row.next_action) throw new Error('「次回対応」を書いてください（何もなければ「なし」）');
@@ -5446,7 +5500,7 @@ const forms = {
   },
   karte: async (f) => {
     const row = { member_id: f.dataset.member, updated_at: new Date().toISOString(), updated_by: state.profile.id };
-    KARTE_FIELDS.forEach(([n]) => { row[n] = f.elements[n].value.trim(); });
+    KARTE_FIELDS.forEach(([n]) => { if (f.elements[n]) row[n] = f.elements[n].value.trim(); });
     await must(sb.from('member_karte').upsert(row));
     toast('カウンセリングシートを保存しました'); render();
   },
@@ -5492,10 +5546,12 @@ const forms = {
   roadmap: async (f) => {
     const member_id = f.dataset.member;
     const msOk = f.dataset.ms === '1';
+    const ms2Ok = f.dataset.ms2 === '1';
     const rows = [...f.querySelectorAll('[data-row]')].map((row, i) => ({
       id: row.dataset.id,
       // 節目（3・6・12か月目）でない月は空にする（月を消して並びが変わったときに、古い目標が残らないように）
       ...(msOk ? { milestone: rmMsLabel(i) ? row.querySelector('[name="milestone"]').value.trim() : '' } : {}),
+      ...(ms2Ok ? { milestone_check: rmMsLabel(i) ? row.querySelector('[name="milestone_check"]').value.trim() : '' } : {}),
       publish_on: row.querySelector('[name="publish_on"]').value,
       theme: row.querySelector('[name="theme"]').value.trim(),
       drill_id: row.querySelector('[name="drill_id"]').value || null,
@@ -5511,11 +5567,12 @@ const forms = {
     await Promise.all(rows.filter((r) => r.id).map((r) => must(sb.from('roadmap_items').update({
       publish_on: r.publish_on, theme: r.theme, drill_id: r.drill_id, note: r.note,
       ...(msOk ? { milestone: r.milestone } : {}),
+      ...(ms2Ok ? { milestone_check: r.milestone_check } : {}),
       ...(r.now ? { published_at: new Date().toISOString() } : {}),
       ...(r.unpublish ? { hidden: true, published_at: null, seen_at: null } : {}),
       ...(r.republish ? { hidden: false, published_at: r.publish_on > today() ? null : new Date().toISOString() } : {}),
     }).eq('id', r.id))));
-    const added = rows.filter((r) => !r.id).map((r) => ({ member_id, publish_on: r.publish_on, theme: r.theme, drill_id: r.drill_id, note: r.note, ...(msOk ? { milestone: r.milestone } : {}) }));
+    const added = rows.filter((r) => !r.id).map((r) => ({ member_id, publish_on: r.publish_on, theme: r.theme, drill_id: r.drill_id, note: r.note, ...(msOk ? { milestone: r.milestone } : {}), ...(ms2Ok ? { milestone_check: r.milestone_check } : {}) }));
     if (added.length) await must(sb.from('roadmap_items').insert(added));
     toast('ロードマップを保存しました'); render();
   },
@@ -5529,7 +5586,10 @@ const forms = {
       row.video_url = normalizeYoutube(f.video_url.value);
       if (!row.video_url) throw new Error('YouTube のリンクを入力してください');
     }
-    await must(sb.from('drills').update(row).eq('id', f.dataset.id));
+    const info = drillInfoOf(f, 'de_');
+    const more = Object.keys(info).length ? { ...info, updated_at: new Date().toISOString() } : {};
+    await must(sb.from('drills').update({ ...row, ...more }).eq('id', f.dataset.id));
+    if (Object.keys(info).length) await saveDrillRevision(f.dataset.id, { ...row, ...info });
     toast('ドリルを保存しました'); render();
   },
   'drill-new': async (f) => {
