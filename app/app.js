@@ -621,7 +621,7 @@ function themeOfMonth(p, rmNow) {
 }
 // ---------- 権利（動画・面談の回数）----------
 // 毎月プランごとの回数が付与され、付与された月から半年後の月末まで使える。使うときは期限が近いものから
-const planCredits = (planId) => planOf(planId)?.credits || null;
+const planCredits = (planId) => (planOf(planId)?.credits ? (state.quotas?.[planId] || planOf(planId).credits) : null);
 const hasMeetingPlan = (planId) => (planCredits(planId)?.meeting || 0) > 0;
 // 権利の一覧を読み込む（自分の分は、今月の分をまだ受け取っていなければ先に受け取る）。設定前（表がない）なら null
 async function loadCredits(memberId, { self = false } = {}) {
@@ -678,7 +678,7 @@ const PAGE_CAT = {
   celebrations: 'celebrate', badges: 'celebrate', help: 'help', menu: 'menu', account: 'menu', guide: 'help', install: 'help', plans: 'menu',
   'admin/dashboard': 'home', 'admin/inbox': 'video', 'admin/lesson': 'video', 'admin/meetings': 'meeting', 'admin/prep': 'meeting',
   'admin/members': 'member', 'admin/member': 'member', 'admin/roadmap': 'drill', 'admin/drills': 'drill', 'admin/drill': 'drill',
-  'admin/report': 'score', 'admin/stats': 'score', 'admin/templates': 'video', survey: 'menu',
+  'admin/report': 'score', 'admin/stats': 'score', 'admin/templates': 'video', 'admin/quotas': 'menu', survey: 'menu',
 };
 const CAT_LABEL = { home: 'Home', video: 'Swing Video', lesson: 'Lesson', drill: 'Drill', score: 'Score', celebrate: 'Celebration', help: 'Guide', menu: 'Menu', meeting: 'Meeting', member: 'Members' };
 function pageCat() {
@@ -743,7 +743,13 @@ async function must(promise) {
 async function loadProfile() {
   const uid = state.session?.user?.id;
   if (!uid) { state.profile = null; return; }
-  state.profile = await must(sb.from('profiles').select('*').eq('id', uid).single());
+  const [prof] = await Promise.all([must(sb.from('profiles').select('*').eq('id', uid).single()), loadQuotas()]);
+  state.profile = prof;
+}
+// プランごとの毎月の回数（データベースの plan_quotas）。設定画面で変えると、アプリの表示もこの数になる
+async function loadQuotas() {
+  const rows = await sb.from('plan_quotas').select('plan, video, meeting').then((r) => (r.error ? null : r.data), () => null);
+  if (rows) state.quotas = Object.fromEntries(rows.map((q) => [q.plan, { video: q.video, meeting: q.meeting }]));
 }
 
 async function callFunction(name, body) {
@@ -1405,6 +1411,7 @@ function lessonCard(l) {
   </a>`;
 }
 function keepLabel(s) {
+  if (s.favorite_at && !s.video_deleted_at) return '★ お気に入り（自動では消えません）';
   const left = daysLeft(videoExpiry(s.created_at));
   return s.video_deleted_at || left === 0 ? '保存期間終了' : `あと${left}日見られます`;
 }
@@ -1427,7 +1434,7 @@ function swingPair(s, lessons) {
     <a class="case-mine" href="#/submission/${s.id}">
       <span class="case-n" aria-hidden="true">1</span>
       <span class="pair-icon" aria-hidden="true">▶</span>
-      <span class="grow"><b>あなたのスイング</b>${s.quota_exempt ? ' <span class="pill quota-free">回数外</span>' : ''}<br>
+      <span class="grow"><b>あなたのスイング</b>${s.favorite_at && !s.video_deleted_at ? ' <span class="pill fav-pill">★ お気に入り</span>' : ''}${s.quota_exempt ? ' <span class="pill quota-free">回数外</span>' : ''}<br>
         <span class="muted small">${mmdd(s.created_at)}に送信・${keepLabel(s)}</span></span>
       <span class="pair-go" aria-hidden="true">›</span>
     </a>
@@ -1810,7 +1817,9 @@ async function viewSubmission(id) {
     signedVideoUrls([sub]),
   ]);
   const expiry = videoExpiry(sub.created_at);
-  const deleted = sub.video_deleted_at || daysLeft(expiry) === 0;
+  const fav = !!sub.favorite_at;
+  const deleted = sub.video_deleted_at || (!fav && daysLeft(expiry) === 0);
+  const favOn = 'favorite_at' in sub && !sub.video_deleted_at && sub.member_id === state.profile.id;
   return header('送った動画', 'history') + `<div class="content">
     <div class="between"><div><div class="muted">送信日</div><b style="font-size:18px">${fmtDate(sub.created_at)}</b></div>
       <span>${sub.quota_exempt ? '<span class="pill quota-free">回数外</span> ' : ''}${sub.status === 'pending' ? '<span class="pill warn">確認待ち</span>' : '<span class="pill ok">解説済み</span>'}</span></div>
@@ -1818,7 +1827,10 @@ async function viewSubmission(id) {
     <div class="card">
       ${deleted ? `<p class="muted">保存期間（${RETENTION_LABEL}）を過ぎたため、動画は削除されました。</p>` : swingVideo(sub, urls)}
       <div class="list-item"><span class="muted">クラブ・撮影方向</span><span>${esc(sub.club)} / ${esc(sub.angle)}</span></div>
-      <div class="list-item"><span class="muted">保存期限</span><span>${deleted ? '終了' : `${fmtDate(expiry.toISOString())}（あと${daysLeft(expiry)}日）`}</span></div>
+      <div class="list-item"><span class="muted">保存期限</span><span>${deleted ? '終了' : fav ? '★ お気に入りのため、自動では消えません' : `${fmtDate(expiry.toISOString())}（あと${daysLeft(expiry)}日）`}</span></div>
+      ${favOn ? `<div class="fav-row">${fav
+        ? `<button type="button" class="btn-sm fav-btn on" data-action="fav-off" data-id="${sub.id}" data-created="${sub.created_at}">★ お気に入り中</button><span class="muted small">お気に入りの動画は、3か月たっても消えません</span>`
+        : `<button type="button" class="btn-sm fav-btn" data-action="fav-on" data-id="${sub.id}">☆ お気に入りにする</button><span class="muted small">お気に入りにすると、3か月たっても消えません（3つまで）</span>`}</div>` : ''}
     </div>
     ${sub.question ? `<div class="card"><b>送ったお悩み・質問</b><p class="pre" style="margin:6px 0 0">${esc(sub.question)}</p></div>` : ''}
     ${sub.status !== 'pending' ? '' : sub.cancel_requested_at
@@ -2704,7 +2716,7 @@ async function viewDashboard() {
     </div>
     ${allPending.some(claimOn) || meetings.some((m) => 'staff_id' in m) || mine ? `<div class="mine-bar">${mineToggle()}${mine ? '<span class="muted small">自分が対応中の動画・自分が対応する面談だけを表示しています</span>' : ''}</div>` : ''}
     <div class="dash-top"><p class="dash-legend"><span class="lg todo">対応が必要</span><span class="lg watch">様子を見る</span><span class="lg info">お知らせ</span><span class="lg celebrate">お祝い</span></p>
-      <span class="dash-links"><a class="btn btn-sm btn-sub" href="#/admin/templates">✎ テンプレート</a><a class="btn btn-sm btn-sub" href="#/admin/announce">📣 お知らせを送る</a><a class="btn btn-sm ${fbOpen ? 'btn-alert' : 'btn-sub'}" href="#/admin/feedback">🛠 不具合・要望${fbOpen ? ` <em>${fbOpen}件</em>` : ''}</a></span></div>
+      <span class="dash-links"><a class="btn btn-sm btn-sub" href="#/admin/templates">✎ テンプレート</a><a class="btn btn-sm btn-sub" href="#/admin/quotas">⚙ プランの回数</a><a class="btn btn-sm btn-sub" href="#/admin/announce">📣 お知らせを送る</a><a class="btn btn-sm ${fbOpen ? 'btn-alert' : 'btn-sub'}" href="#/admin/feedback">🛠 不具合・要望${fbOpen ? ` <em>${fbOpen}件</em>` : ''}</a></span></div>
     <div class="cols">
       <div class="col-main">${left.map((h, i) => `<div class="blk" style="--o:${i}">${h}</div>`).join('')}</div>
       <div class="col-side">${right.map((h, i) => `<div class="blk" style="--o:${10 + i}">${h}</div>`).join('')}
@@ -3598,6 +3610,27 @@ const tplPicker = (field) => {
     ${items.length ? `<select data-tpl-for="${field}" aria-label="${TPL_FIELDS[field]}のテンプレートから挿入"><option value="">テンプレートから挿入…</option>${items.map((t) => `<option value="${t.id}">${esc(t.title)}</option>`).join('')}</select>` : ''}
     <button type="button" class="link" data-action="tpl-save" data-field="${field}">この欄の文をテンプレートに保存</button></div>`;
 };
+// 設定：プランごとの毎月の回数（動画・面談）
+async function viewQuotaSettings() {
+  const rows = await sb.from('plan_quotas').select('plan, video, meeting').then((r) => (r.error ? null : r.data), () => null);
+  if (!rows) return header('プランの回数', 'admin/dashboard') + '<div class="content"><div class="notice">データベースの設定（20261018000000_credits.sql）がまだのため表示できません。</div></div>' + adminNav('');
+  const q = Object.fromEntries(rows.map((x) => [x.plan, x]));
+  const plans = PLANS.filter((pl) => pl.credits);
+  return header('プランの回数', 'admin/dashboard') + `<div class="content">
+    <p class="page-lead">プランごとに、毎月1日に付与する動画（添削）と面談の回数を決めます。保存すると、次に付与するとき（毎月1日）からこの回数になります。すでに付与した回数は変わりません。</p>
+    <form class="card form quota-form" data-form="quotas">
+      <div class="quota-head"><span>プラン</span><span>動画</span><span>面談</span></div>
+      ${plans.map((pl) => { const v = q[pl.id] || { video: pl.credits.video, meeting: pl.credits.meeting }; return `<div class="quota-row" data-plan="${pl.id}">
+          <div><b>${esc(pl.name)}</b>${pl.hidden ? '<small class="muted">お客様には非表示</small>' : ''}${q[pl.id] ? '' : '<small class="warn-text">まだ保存されていません</small>'}</div>
+          <label><input type="number" name="v_${pl.id}" min="0" max="20" value="${v.video}" required aria-label="${esc(pl.name)}の動画の回数"><span>回</span></label>
+          <label><input type="number" name="m_${pl.id}" min="0" max="10" value="${v.meeting}" required aria-label="${esc(pl.name)}の面談の回数"><span>回</span></label>
+        </div>`; }).join('')}
+      <button class="btn-block btn-gold" type="submit">保存する</button>
+    </form>
+    <p class="muted small">プランの名前や説明文、料金の表示はアプリの設定ファイル（app/config.js）で決まっています。変えたいときはご相談ください。</p>
+  </div>` + adminNav('');
+}
+
 async function viewTemplates() {
   const list = await must(sb.from('lesson_templates').select('*').order('title'));
   return header('レッスン文のテンプレート', 'admin/dashboard') + `<div class="content">
@@ -4510,6 +4543,7 @@ async function render() {
       if (r[1] === 'report') return paint(await viewReport(r[2]));
       if (r[1] === 'stats') return paint(await viewStats());
       if (r[1] === 'templates') return paint(await viewTemplates());
+      if (r[1] === 'quotas') return paint(await viewQuotaSettings());
       if (r[1] === 'announce') return paint(await viewAnnounceAdmin());
       if (r[1] === 'feedback') return paint(await viewFeedbackAdmin());
       if (r[1] === 'members') { paint(await viewMembers()); applyMemberFilter(); return; }
@@ -5305,6 +5339,40 @@ const actions = {
     box.querySelector('[data-action="cmp-play"]').textContent = '▶ 同時に再生';
   },
   // 見比べ：右に出す動画を切り替える
+  // 送った動画のお気に入り（3つまで。お気に入りは3か月たっても消えない）
+  'fav-on': async (el) => {
+    const r = await sb.rpc('set_submission_favorite', { p_sub: el.dataset.id, p_on: true });
+    if (!r.error) { toast('★ お気に入りにしました（3か月たっても消えません）'); render(); return; }
+    if (!/3つまで/.test(r.error.message || '')) throw new Error(r.error.message);
+    // 3つ埋まっているとき：どれを外して入れ替えるかを選ぶ
+    const favs = await must(sb.from('submissions').select('id, created_at, club, angle').eq('member_id', state.profile.id).not('favorite_at', 'is', null).order('created_at'));
+    const old = (x) => daysLeft(videoExpiry(x.created_at)) === 0;
+    const v = await confirmDialog({
+      title: 'お気に入りは3つまでです',
+      body: `<p>どれかを外すと、この動画をお気に入りにできます。外す動画を選んでください。</p>
+        <div class="form modal-form"><label>外す動画</label><select name="old" required>${favs.map((x) => `<option value="${x.id}">${fmtDate(x.created_at)}　${esc(x.club)} / ${esc(x.angle)}${old(x) ? '（外すと削除されます）' : ''}</option>`).join('')}</select></div>
+        <p class="small warn-text">⚠ 外した動画は、ふつうの動画と同じく<b>送ってから3か月で自動で削除</b>されます。すでに3か月を過ぎている動画は、<b>近いうちに削除され、元に戻せません</b>。</p>`,
+      ok: '外して入れ替える',
+    });
+    if (!v) return;
+    await must(sb.rpc('set_submission_favorite', { p_sub: v.old, p_on: false }));
+    await must(sb.rpc('set_submission_favorite', { p_sub: el.dataset.id, p_on: true }));
+    toast('お気に入りを入れ替えました'); render();
+  },
+  'fav-off': async (el) => {
+    const exp = videoExpiry(el.dataset.created);
+    const over = daysLeft(exp) === 0;
+    const ok = await confirmDialog({
+      title: 'お気に入りを外しますか？',
+      body: over
+        ? '<p class="warn-text">⚠ この動画は送ってから3か月を過ぎているため、外すと<b>近いうちに自動で削除され、元に戻せません</b>。</p>'
+        : `<p>外すと、ふつうの動画と同じく <b>${fmtDate(exp.toISOString())}</b>（送ってから3か月）に自動で削除されます。</p>`,
+      ok: '外す',
+    });
+    if (!ok) return;
+    await must(sb.rpc('set_submission_favorite', { p_sub: el.dataset.id, p_on: false }));
+    toast('お気に入りを外しました'); render();
+  },
   'cmp-pick': (el) => {
     const box = el.closest('.cmp'); const fig = box.querySelector('.cmp-right'); const v = fig.querySelector('video');
     box.querySelectorAll('video').forEach((x) => x.pause());
@@ -5627,6 +5695,17 @@ const forms = {
     });
     await Promise.all(jobs);
     toast('目標を保存しました'); render();
+  },
+  quotas: async (f) => {
+    const rows = [...f.querySelectorAll('.quota-row')].map((row) => {
+      const plan = row.dataset.plan;
+      const video = Number(f.elements[`v_${plan}`].value); const meeting = Number(f.elements[`m_${plan}`].value);
+      if (!(video >= 0 && video <= 20 && meeting >= 0 && meeting <= 10)) throw new Error('動画は0〜20回、面談は0〜10回で入れてください');
+      return { plan, video, meeting };
+    });
+    await must(sb.from('plan_quotas').upsert(rows));
+    await loadQuotas();
+    toast('プランの回数を保存しました（次の付与から反映）'); render();
   },
   'chart-entry': async (f) => {
     const row = {
