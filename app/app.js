@@ -1388,7 +1388,7 @@ async function viewSubmit() {
     ${usage}
     <a class="shoot-cta" href="${SWINGFRAME_URL}"><span class="ico" aria-hidden="true">●</span>
       <span><b>SwingFrame で撮影する</b><small>ガイドに合わせて撮影。撮ったあと再生画面の「⛳ コーチへ」を押すと、そのままここに届きます</small></span><i aria-hidden="true">›</i></a>
-    <div class="notice">正面または後方から、全身とクラブが入るように撮影してください。<a href="#/guide">撮り方ガイドを見る</a><br>送った動画は<b>${RETENTION_LABEL}</b>保存され、その後自動で削除されます。</div>
+    <div class="notice">正面または後方から、全身とクラブが入るように撮影してください。<a href="#/guide">撮り方ガイドを見る</a><br>送った動画は<b>${RETENTION_LABEL}</b>保存され、その後自動で削除されます。<b>お気に入り（3つまで）</b>にした動画は消えずに残せます。</div>
     <button type="button" class="btn-block btn-gold send-start" data-action="wiz-open">${icon('video')} 動画を送る</button>
     ${submitWizard(myClubs)}
   </div>` + memberNav('submit');
@@ -1482,7 +1482,7 @@ async function viewHistory() {
 
   return header('レッスン・送った動画') + `<div class="content wide">
     <p class="page-lead">1枚のカードが1回の相談です。<b>① あなたのスイング</b> と、それへの <b>② コーチの解説</b> がセットになっています。</p>
-    <p class="muted small" style="margin:0 0 8px">新しい順に並んでいます。送った動画は送信から${RETENTION_LABEL}見られます。</p>
+    <p class="muted small" style="margin:0 0 8px">新しい順に並んでいます。送った動画は送信から${RETENTION_LABEL}見られます。お気に入り（3つまで）にした動画は、そのあとも消えません。</p>
     ${clubs.length > 1 ? `<div class="filter-chips" role="group" aria-label="クラブで絞り込む">
       ${[['', 'すべて'], ...clubs.map((c) => [c, c])].map(([v, label]) => `<button type="button" data-action="history-filter" data-club="${esc(v)}" class="${filter === v ? 'on' : ''}" aria-pressed="${filter === v}">${esc(label)}</button>`).join('')}
     </div>` : ''}
@@ -2277,7 +2277,7 @@ function viewGuide() {
         <li>SwingFrame から届いた動画を確認する（カメラロールの動画を送るときは「<b>動画を選ぶ</b>」から選ぶ）</li>
         <li>クラブ・撮影方向・お悩みを入力して「<b>動画を送信する</b>」</li>
       </ol>
-      <p class="muted small" style="margin:0">送れる本数はプラン・コースによって決まっています（残りの回数はマイページで確認できます）。送った動画は3か月間、履歴から見返せます。</p>
+      <p class="muted small" style="margin:0">送れる本数はプラン・コースによって決まっています（残りの回数はマイページで確認できます）。送った動画は3か月間、履歴から見返せます。残しておきたい動画は、送った動画の画面で「☆ お気に入り」にすると消えません（3つまで）。</p>
     </section>
     <section class="card guide-step">
       <div class="step-no"><span>STEP</span>3</div>
