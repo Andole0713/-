@@ -1993,3 +1993,11 @@ body.rec-open{overflow:hidden}
 .vt-mini button:nth-child(2){border-left:1px solid var(--hair)}
 .cmp-both{display:flex;flex-direction:column;align-items:center;gap:2px;margin:8px 0 2px}
 .cmp-both small{font-size:11px;color:var(--muted)}
+/* 見比べ：右に出す動画を選ぶ */
+.cmp-pick{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;margin:0 0 10px;padding-bottom:2px}
+.cmp-pick::-webkit-scrollbar{display:none}
+.cmp-pick button{flex:none;display:flex;flex-direction:column;align-items:flex-start;gap:0;background:#fff;color:var(--text);border:1px solid var(--hair);border-radius:10px;padding:6px 12px;font-size:12.5px;font-weight:700;box-shadow:none;margin:0;min-height:0;max-width:150px}
+.cmp-pick button small{font-weight:400;color:var(--muted);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:126px}
+.cmp-pick button.on{background:var(--ink);color:var(--gold-2);border-color:var(--ink)}
+.cmp-pick button.on small{color:#d9d4c7}
+.cmp-r-small{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}

@@ -1690,24 +1690,28 @@ function practiceBar(l) {
   const done = (l.practice_done || []).filter((i) => i < total).length;
   return `<div class="pbar-wrap${done === total ? ' all' : ''}"><div class="pbar" role="progressbar" aria-valuemin="0" aria-valuemax="${total}" aria-valuenow="${done}" aria-label="練習の進み具合"><i style="width:${total ? Math.round(done / total * 100) : 0}%"></i></div><b class="pbar-n">${done}/${total}</b></div>`;
 }
-// 同じクラブで前に送った動画と、横に並べて見比べる
-function compareBlock(prev, cur, urls) {
-  if (!prev || !urls[prev.video_path] || !urls[cur.video_path]) return '';
+// 自分の動画（今回）と、前回の動画・コーチの解説動画・ドリル動画を横に並べて見比べる
+// cands：右側に出せる動画 [{ label, small, url }]（YouTube の動画はコマ送りできないので入れない）
+function compareBlock(cands, cur, urls, ytCount = 0) {
+  if (!cur || !urls[cur.video_path] || !cands.length) return '';
   const md = (iso) => { const d = new Date(iso); return `${d.getMonth() + 1}/${d.getDate()}`; };
-  const v = (x) => `<video class="swing-video" src="${esc(urls[x.video_path])}#t=0.1" controls playsinline preload="metadata" muted></video>`;
-  // それぞれの動画だけを1コマずつ動かすボタン（長押しで連続）
+  const vid = (url, cls = '') => `<video class="swing-video${cls}" src="${esc(url)}#t=0.1" controls playsinline preload="metadata" muted></video>`;
   const one = (who) => `<span class="vt-group vt-step vt-mini" role="group" aria-label="${who}の動画だけコマ送り">
       <button type="button" data-action="cmp-one" data-dir="-1" aria-label="${who}の動画を1コマ戻す（長押しで連続）">◀</button>
       <button type="button" data-action="cmp-one" data-dir="1" aria-label="${who}の動画を1コマ進める（長押しで連続）">▶</button></span>`;
+  const c0 = cands[0];
+  const kinds = [...new Set(cands.map((c) => c.kind))];
+  const kindLabel = { prev: '前回', coach: '解説', drill: 'ドリル' };
   return `<div class="cmp-box">
-    <button type="button" class="cmp-open" data-action="cmp-toggle" aria-expanded="false">⇆ 前回の動画と見比べる<small>${esc(fmtDate(prev.created_at))}・${esc(prev.club)}</small></button>
+    <button type="button" class="cmp-open" data-action="cmp-toggle" aria-expanded="false">⇆ ${kinds.map((k) => kindLabel[k]).join('・')}の動画と見比べる<small>自分の動画と横に並べて、コマ送りで比べられます</small></button>
     <div class="cmp" hidden>
+      ${cands.length > 1 ? `<div class="cmp-pick" role="group" aria-label="右に出す動画">${cands.map((c, i) => `<button type="button" data-action="cmp-pick" data-url="${esc(c.url)}" data-label="${esc(c.label)}" data-small="${esc(c.small)}" aria-pressed="${i === 0}" class="${i === 0 ? 'on' : ''}">${esc(c.label)}<small>${esc(c.small)}</small></button>`).join('')}</div>` : ''}
       <div class="cmp-grid">
-        <figure><figcaption>前回 <small>${md(prev.created_at)}</small></figcaption>${v(prev)}${one('前回')}</figure>
-        <figure><figcaption class="now">今回 <small>${md(cur.created_at)}</small></figcaption>${v(cur)}${one('今回')}</figure>
+        <figure><figcaption class="now">自分（今回） <small>${md(cur.created_at)}</small></figcaption>${vid(urls[cur.video_path])}${one('自分')}</figure>
+        <figure class="cmp-right"><figcaption><span class="cmp-r-label">${esc(c0.label)}</span> <small class="cmp-r-small">${esc(c0.small)}</small></figcaption>${vid(c0.url)}${one('右')}</figure>
       </div>
       <div class="cmp-both" role="group" aria-label="2本まとめてコマ送り"><span class="vt-group vt-step">${stepButtons('cmp-step', '2本とも')}</span><small>2本いっしょに</small></div>
-      <p class="muted small">それぞれをアドレスの位置に合わせてから「同時に再生」を押すと、違いがよくわかります。</p>
+      <p class="muted small">それぞれをアドレスなど同じ姿勢に合わせてから「同時に再生」を押すと、違いがよくわかります。${ytCount ? '<br>YouTube の動画は、見比べには使えません。' : ''}</p>
       <div class="vid-tools" role="group" aria-label="2本まとめて操作">
         <span class="vt-group">${[[0.25, '¼'], [0.5, '½'], [1, '等速']].map(([r, l]) => `<button type="button" data-action="cmp-rate" data-rate="${r}" aria-pressed="${r === 1}" class="${r === 1 ? 'on' : ''}">${l}</button>`).join('')}</span>
         <span class="vt-group"><button type="button" data-action="cmp-play">▶ 同時に再生</button></span>
@@ -1763,7 +1767,17 @@ async function viewLesson(id, back = 'history') {
     </div>
     <div class="blk" style="--o:5">
     ${cur ? `<section class="card lesson-sec" id="ls-mine">${secTitle('◉', '送った動画')}${swingVideo(cur, urls, { tools: true })}
-        ${compareBlock(prev, cur, urls)}
+        ${(() => {
+          // 右に出せる動画：前回の動画（同じクラブ・同じ向き）・コーチの解説動画・ドリル動画（動画ファイルのもの）
+          const md = (iso) => { const d = new Date(iso); return `${d.getMonth() + 1}/${d.getDate()}`; };
+          const cands = [
+            ...(prev && urls[prev.video_path] ? [{ kind: 'prev', label: '前回', small: `${md(prev.created_at)}・${prev.club}`, url: urls[prev.video_path] }] : []),
+            ...(cvUrl ? [{ kind: 'coach', label: '解説動画', small: 'コーチ', url: cvUrl }] : []),
+            ...drills.filter((d) => d.video_path && drillUrls[d.video_path]).map((d) => ({ kind: 'drill', label: 'ドリル', small: d.title, url: drillUrls[d.video_path] })),
+          ];
+          const yt = (l.video_url ? 1 : 0) + drills.filter((d) => !d.video_path && d.video_url).length;
+          return compareBlock(cands, cur, urls, yt);
+        })()}
         ${mine ? `<a class="muted small" href="#/submission/${l.submission_id}">送った動画の詳細（保存期限など）›</a>` : ''}
         ${l.submissions.question ? `<div class="my-q"><span>送ったときのお悩み・質問</span><p class="pre">${esc(l.submissions.question)}</p></div>` : ''}</section>` : ''}
     </div>
@@ -5289,6 +5303,18 @@ const actions = {
     const box = el.closest('.cmp');
     box.querySelectorAll('video').forEach((v) => { v.pause(); v.currentTime = Math.max(0, Math.min(v.duration || 0, v.currentTime + Number(el.dataset.dir) / 30)); });
     box.querySelector('[data-action="cmp-play"]').textContent = '▶ 同時に再生';
+  },
+  // 見比べ：右に出す動画を切り替える
+  'cmp-pick': (el) => {
+    const box = el.closest('.cmp'); const fig = box.querySelector('.cmp-right'); const v = fig.querySelector('video');
+    box.querySelectorAll('video').forEach((x) => x.pause());
+    box.querySelector('[data-action="cmp-play"]').textContent = '▶ 同時に再生';
+    v.src = `${el.dataset.url}#t=0.1`; v.load();
+    const rate = Number(box.querySelector('[data-action="cmp-rate"].on')?.dataset.rate || 1);
+    v.addEventListener('loadedmetadata', () => { v.playbackRate = rate; }, { once: true });
+    fig.querySelector('.cmp-r-label').textContent = el.dataset.label;
+    fig.querySelector('.cmp-r-small').textContent = el.dataset.small;
+    el.parentElement.querySelectorAll('button').forEach((b) => { const on = b === el; b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on)); });
   },
   'cmp-one': (el) => {
     const v = el.closest('figure').querySelector('video');
