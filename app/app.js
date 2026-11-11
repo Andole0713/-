@@ -898,7 +898,7 @@ function viewPlans() {
     ${troubled ? `<div class="notice">お支払いの確認ができていません（${esc(STATUS_LABEL[p.subscription_status]?.[0] ?? p.subscription_status)}）。
         カード情報を更新してください。<button class="btn-block" data-action="portal">お支払い情報を更新する</button></div>` : ''}
     ${troubled ? '' : PLANS.filter((pl) => !pl.hidden).map((pl) => `<div class="card plan${pl.recommended ? ' rec' : ''}">
-        <div class="between"><span class="eyebrow">${esc(pl.en)}</span>${pl.recommended ? '<span class="pill">中級〜上級者におすすめ</span>' : ''}</div>
+        <div class="between"><span class="eyebrow">${esc(pl.en)}</span>${pl.recommended ? '<span class="pill">おすすめ</span>' : ''}</div>
         <h3>${esc(pl.name)}</h3>
         <p class="lead">${esc(pl.lead)}</p>
         <dl class="spec">${pl.target ? `<div><dt>対象</dt><dd>${esc(pl.target)}</dd></div>` : ''}<div><dt>お支払い</dt><dd>${esc(pl.payment)}</dd></div></dl>
