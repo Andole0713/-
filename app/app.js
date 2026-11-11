@@ -1695,18 +1695,22 @@ function compareBlock(prev, cur, urls) {
   if (!prev || !urls[prev.video_path] || !urls[cur.video_path]) return '';
   const md = (iso) => { const d = new Date(iso); return `${d.getMonth() + 1}/${d.getDate()}`; };
   const v = (x) => `<video class="swing-video" src="${esc(urls[x.video_path])}#t=0.1" controls playsinline preload="metadata" muted></video>`;
+  // それぞれの動画だけを1コマずつ動かすボタン（長押しで連続）
+  const one = (who) => `<span class="vt-group vt-step vt-mini" role="group" aria-label="${who}の動画だけコマ送り">
+      <button type="button" data-action="cmp-one" data-dir="-1" aria-label="${who}の動画を1コマ戻す（長押しで連続）">◀</button>
+      <button type="button" data-action="cmp-one" data-dir="1" aria-label="${who}の動画を1コマ進める（長押しで連続）">▶</button></span>`;
   return `<div class="cmp-box">
     <button type="button" class="cmp-open" data-action="cmp-toggle" aria-expanded="false">⇆ 前回の動画と見比べる<small>${esc(fmtDate(prev.created_at))}・${esc(prev.club)}</small></button>
     <div class="cmp" hidden>
       <div class="cmp-grid">
-        <figure><figcaption>前回 <small>${md(prev.created_at)}</small></figcaption>${v(prev)}</figure>
-        <figure><figcaption class="now">今回 <small>${md(cur.created_at)}</small></figcaption>${v(cur)}</figure>
+        <figure><figcaption>前回 <small>${md(prev.created_at)}</small></figcaption>${v(prev)}${one('前回')}</figure>
+        <figure><figcaption class="now">今回 <small>${md(cur.created_at)}</small></figcaption>${v(cur)}${one('今回')}</figure>
       </div>
+      <div class="cmp-both" role="group" aria-label="2本まとめてコマ送り"><span class="vt-group vt-step">${stepButtons('cmp-step', '2本とも')}</span><small>2本いっしょに</small></div>
       <p class="muted small">それぞれをアドレスの位置に合わせてから「同時に再生」を押すと、違いがよくわかります。</p>
       <div class="vid-tools" role="group" aria-label="2本まとめて操作">
         <span class="vt-group">${[[0.25, '¼'], [0.5, '½'], [1, '等速']].map(([r, l]) => `<button type="button" data-action="cmp-rate" data-rate="${r}" aria-pressed="${r === 1}" class="${r === 1 ? 'on' : ''}">${l}</button>`).join('')}</span>
         <span class="vt-group"><button type="button" data-action="cmp-play">▶ 同時に再生</button></span>
-        <span class="vt-group vt-step">${stepButtons('cmp-step', '2本とも')}</span>
       </div>
     </div>
   </div>`;
@@ -5286,6 +5290,12 @@ const actions = {
     box.querySelectorAll('video').forEach((v) => { v.pause(); v.currentTime = Math.max(0, Math.min(v.duration || 0, v.currentTime + Number(el.dataset.dir) / 30)); });
     box.querySelector('[data-action="cmp-play"]').textContent = '▶ 同時に再生';
   },
+  'cmp-one': (el) => {
+    const v = el.closest('figure').querySelector('video');
+    v.pause();
+    v.currentTime = Math.max(0, Math.min(v.duration || 0, v.currentTime + Number(el.dataset.dir) / 30));
+    el.closest('.cmp').querySelector('[data-action="cmp-play"]').textContent = '▶ 同時に再生';
+  },
   'vid-step': (el) => {
     const v = el.closest('.vid-wrap').querySelector('video');
     v.pause();
@@ -5757,7 +5767,7 @@ document.addEventListener('click', async (ev) => {
 });
 
 // コマ送りのボタン：押すと1コマ、長押しで一定の速さで連続（◀・▶ は1秒に8コマ、◀◀・▶▶ は1秒に15コマ）
-const HOLD_STEP = ['vid-step', 'cmp-step'];
+const HOLD_STEP = ['vid-step', 'cmp-step', 'cmp-one'];
 const STEP_MS = 125; const STEP_FAST_MS = 66;
 let stepTimer = null; let stepEl = null;
 function stopStepHold() { clearTimeout(stepTimer); stepTimer = null; stepEl?.classList.remove('holding'); stepEl = null; }
