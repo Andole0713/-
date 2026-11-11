@@ -2001,3 +2001,6 @@ body.rec-open{overflow:hidden}
 .cmp-pick button.on{background:var(--ink);color:var(--gold-2);border-color:var(--ink)}
 .cmp-pick button.on small{color:#d9d4c7}
 .cmp-r-small{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* 見比べ：横長の動画は2本を縦に並べて、画面の幅いっぱいに */
+.cmp-grid.stack{grid-template-columns:1fr;gap:12px}
+.cmp-grid.stack .swing-video{max-height:none;width:100%}

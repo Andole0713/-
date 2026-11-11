@@ -5792,6 +5792,17 @@ document.addEventListener('click', async (ev) => {
   try { await actions[el.dataset.action](el); } catch (e) { console.error(e); toast(e.message || 'エラーが発生しました', true); }
 });
 
+// 見比べ：どちらかの動画が横長なら、2本を縦に並べる（両方とも縦長なら横に並べる）
+function cmpLayout(grid) {
+  const vs = [...grid.querySelectorAll('video')];
+  const wide = vs.some((v) => v.videoWidth && v.videoWidth > v.videoHeight * 1.05);
+  grid.classList.toggle('stack', wide);
+}
+document.addEventListener('loadedmetadata', (ev) => {
+  const grid = ev.target.closest?.('.cmp-grid');
+  if (grid) cmpLayout(grid);
+}, true);
+
 // コマ送りのボタン：押すと1コマ、長押しで一定の速さで連続（◀・▶ は1秒に8コマ、◀◀・▶▶ は1秒に15コマ）
 const HOLD_STEP = ['vid-step', 'cmp-step', 'cmp-one'];
 const STEP_MS = 125; const STEP_FAST_MS = 66;
