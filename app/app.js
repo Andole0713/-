@@ -860,9 +860,9 @@ function showPlanDetail(pl) {
     <span class="eyebrow">${esc(pl.en)}</span>
     <h2 id="plan-sheet-title">${esc(pl.name)}</h2>
     <p class="lead">${esc(pl.lead)}</p>
-    <dl class="spec"><div><dt>対象</dt><dd>${esc(pl.target)}</dd></div><div><dt>お支払い</dt><dd>${esc(pl.payment)}</dd></div><div><dt>料金</dt><dd>${esc(pl.price)}</dd></div></dl>
-    <h3>こんな方におすすめ</h3>
-    <ul class="ps-check">${d.forWho.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>
+    <dl class="spec">${pl.target ? `<div><dt>対象</dt><dd>${esc(pl.target)}</dd></div>` : ''}<div><dt>お支払い</dt><dd>${esc(pl.payment)}</dd></div><div><dt>料金</dt><dd>${esc(pl.price)}</dd></div></dl>
+    ${d.forWho?.length ? `<h3>こんな方におすすめ</h3>
+    <ul class="ps-check">${d.forWho.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}
     <h3>内容</h3>
     <div class="ps-contents">${d.contents.map(([t, x]) => `<div><b>${esc(t)}</b><p>${esc(x)}</p></div>`).join('')}</div>
     <h3>1か月の流れ</h3>
@@ -901,7 +901,7 @@ function viewPlans() {
         <div class="between"><span class="eyebrow">${esc(pl.en)}</span>${pl.recommended ? '<span class="pill">中級〜上級者におすすめ</span>' : ''}</div>
         <h3>${esc(pl.name)}</h3>
         <p class="lead">${esc(pl.lead)}</p>
-        <dl class="spec"><div><dt>対象</dt><dd>${esc(pl.target)}</dd></div><div><dt>お支払い</dt><dd>${esc(pl.payment)}</dd></div></dl>
+        <dl class="spec">${pl.target ? `<div><dt>対象</dt><dd>${esc(pl.target)}</dd></div>` : ''}<div><dt>お支払い</dt><dd>${esc(pl.payment)}</dd></div></dl>
         <div class="price">${esc(pl.price)}</div>
         <ul>${pl.features.map((f) => `<li>${esc(f)}</li>`).join('')}</ul>
         ${pl.detail ? `<button type="button" class="btn-block btn-sub plan-detail-btn" data-action="plan-detail" data-plan="${esc(pl.id)}">詳細を見る</button>` : ''}
