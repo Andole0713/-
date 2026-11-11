@@ -87,6 +87,7 @@ Deno.serve(async (req) => {
         .from("submissions")
         .select("id, video_path")
         .is("video_deleted_at", null)
+        .is("favorite_at", null) // 会員がお気に入りにした動画（3つまで）は消さない
         .lt("created_at", cutoff.toISOString())
         .order("created_at")
         .limit(BATCH);
