@@ -85,3 +85,27 @@ if ('IntersectionObserver' in window) {
 } else {
   document.querySelectorAll('.reveal').forEach((el) => el.classList.add('in'));
 }
+
+// ヒーローの添削動画の見本：再生バーを動画に合わせて動かす。動きを減らす設定の人には止めた画像を見せる
+(() => {
+  const v = document.querySelector('.hv-video');
+  if (!v) return;
+  const bar = document.querySelector('.hv-track span');
+  const time = document.querySelector('.hv-time');
+  const fmt = (t) => '0:' + String(Math.floor(t)).padStart(2, '0');
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    v.removeAttribute('autoplay'); v.pause();
+    v.closest('.hv-card')?.querySelector('.hv-play')?.classList.add('paused');
+    return;
+  }
+  v.muted = true;
+  v.play().catch(() => {});
+  const tick = () => {
+    if (v.duration) {
+      bar.style.width = (v.currentTime / v.duration * 100).toFixed(1) + '%';
+      time.textContent = fmt(v.currentTime) + ' / ' + fmt(v.duration);
+    }
+    requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
+})();
