@@ -3890,8 +3890,9 @@ const DIAG_TAGS = ['スライス', 'フック', 'プッシュ', '引っかけ', 
   'アドレス・構え', 'グリップ', 'テークバック', 'トップの形', '切り返し', 'ダウンスイング', 'インパクト', 'フォロー・フィニッシュ', '体重移動', '体の回転', '手打ち', 'リズム・テンポ',
   'アプローチ', 'バンカー', 'パター', 'コースマネジメント'];
 const RATINGS = [[3, '👍', '役に立った'], [2, '🙂', 'まあまあ'], [1, '🤔', 'わかりにくい']];
-// 月の料金（税込・仮）。売上の見込みの計算だけに使う。12か月上達プログラム（YOUCAN）は10か月分を月あたりに直した額
-const PLAN_MONTHLY_YEN = { UME: 11000, TAKE: 16500, MATSU: 22000, SUBSCRIPTION: 22000, YOUCAN: 8800 };
+// 月の料金。売上の見込みの計算だけに使う（面談1回6,000円・添削1本5,500円で計算）。
+// 12か月上達プログラム（YOUCAN）は年69,800円を12か月で割った額
+const PLAN_MONTHLY_YEN = { UME: 11500, TAKE: 17000, MATSU: 23000, KIWAMI: 26000, SUBSCRIPTION: 23000, YOUCAN: 5817 };
 const optLabel = (key, v) => SURVEY_OPTS[key]?.find(([k]) => k === v)?.[1] || '';
 const monthKey = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
 
