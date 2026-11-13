@@ -17,7 +17,13 @@ const COLORS = ['#ff3b30', '#ffd60a', '#ffffff', '#0a84ff', '#34c759', '#ff9f0a'
 const TOOLS = [
   ['select', '✥', '選ぶ・動かす', 'V'], ['text', 'T', 'テロップ', 'T'], ['line', '／', '直線', 'L'], ['arrow', '↗', '矢印', 'A'],
   ['circle', '◯', '円', 'O'], ['angle', '∠', '角度', 'G'], ['pen', '✎', '手書き', 'P'], ['num', '①', '番号', 'N'],
+  ['spot', '◎', 'スポット', 'H'], ['blur', '▦', 'ぼかし', 'B'],
 ];
+const TRANS = [['', 'なし'], ['fade', 'ふわっと'], ['black', '暗転'], ['white', '白く光る']];
+const MASKS = ['blur', 'spot']; // 映像に効果をかけるもの（線より先に描く）
+const lerp = (a, b, k) => a + (b - a) * k;
+const lerpP = (p, q, k) => ({ x: lerp(p.x, q.x, k), y: lerp(p.y, q.y, k) });
+const ease = (k) => (k < 0.5 ? 2 * k * k : 1 - (-2 * k + 2) ** 2 / 2);
 const TEXT_STYLES = {
   outline: { label: '白文字＋黒ふち', color: '#ffffff', stroke: '#000000' },
   yellow: { label: '黄色の帯', color: '#111111', bg: '#ffd60a' },
@@ -212,7 +218,7 @@ export function openEditor({ title = '' } = {}) {
     function snap() { undo.push(JSON.stringify(P)); if (undo.length > 100) undo.shift(); redo = []; }
     function restore(json) { P = JSON.parse(json); if (sel && !selObj()) sel = null; changed(true); }
     function changed(keepUndo) {
-      layout(); T = clamp(T, 0, L.total); syncPanel(); renderTl(); dirty();
+      layout(); T = clamp(T, 0, L.total); syncPanel(); renderTl(); dirty(); refreshSnaps();
       $('.ved-empty').hidden = P.segs.length > 0;
       wrap.querySelectorAll('[data-e="undo"]').forEach((x) => { x.disabled = !undo.length; }); $('[data-e="redo"]').disabled = !redo.length;
       $('.ved-total').textContent = fmtT(L.total);
@@ -222,6 +228,7 @@ export function openEditor({ title = '' } = {}) {
       void keepUndo;
     }
     const dirty = () => { needDraw = true; };
+    let snapTimer = 0; const refreshSnaps = () => { clearTimeout(snapTimer); snapTimer = setTimeout(() => ensureSnaps().catch(() => {}), 250); };
 
     // ===== 素材の読み込み =====
     async function addBlob(blob, key = uid()) {
@@ -279,6 +286,12 @@ export function openEditor({ title = '' } = {}) {
 
     // ===== 描く =====
     const blurC = document.createElement('canvas');
+    // 動きながら拡大：区間のはじめ（zoom・zx・zy）から終わり（kb）へ、なめらかに寄る
+    function segView(s, lt) {
+      if (!s.kb) return s;
+      const k = ease(clamp(lt / Math.max(0.01, segDur(s)), 0, 1));
+      return { zoom: lerp(s.zoom || 1, s.kb.z, k), zx: lerp(s.zx ?? 0.5, s.kb.x, k), zy: lerp(s.zy ?? 0.5, s.kb.y, k) };
+    }
     function drawFit(c, src, sw, sh, W, H, s) {
       const z = s.zoom || 1; const cw = sw / z; const ch = sh / z;
       const cx = clamp((s.zx ?? 0.5) * sw, cw / 2, sw - cw / 2); const cy = clamp((s.zy ?? 0.5) * sh, ch / 2, sh - ch / 2);
@@ -382,23 +395,110 @@ export function openEditor({ title = '' } = {}) {
       }
       c.restore();
     }
+    // スポットライト（見せたい所以外を暗く）・ぼかし／モザイク
+    const tmpC = document.createElement('canvas');
+    function boxOf(o, W, H) { const x = Math.min(o.a.x, o.b.x) * W; const y = Math.min(o.a.y, o.b.y) * H; return { x, y, w: Math.abs(o.b.x - o.a.x) * W, h: Math.abs(o.b.y - o.a.y) * H }; }
+    function drawMask(c, o, W, H, alpha) {
+      const b = boxOf(o, W, H); if (b.w < 2 || b.h < 2) return;
+      c.save(); c.globalAlpha = alpha;
+      if (o.type === 'spot') {
+        const dark = `rgba(0,0,0,${o.dark ?? 0.62})`;
+        if (o.shape === 'rect') { c.fillStyle = dark; c.beginPath(); c.rect(0, 0, W, H); c.roundRect(b.x, b.y, b.w, b.h, Math.min(b.w, b.h) * 0.08); c.fill('evenodd'); }
+        else {
+          // ふちをやわらかく（楕円のグラデーション）
+          const cx = b.x + b.w / 2; const cy = b.y + b.h / 2; const rx = b.w / 2; const ry = b.h / 2;
+          c.translate(cx, cy); c.scale(rx, ry);
+          const g = c.createRadialGradient(0, 0, 0, 0, 0, 1.12); g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(0.86, 'rgba(0,0,0,0)'); g.addColorStop(1, dark);
+          c.fillStyle = g; c.fillRect(-cx / rx - 1, -cy / ry - 1, W / rx + 2, H / ry + 2);
+        }
+        if (o.ring) { c.setTransform(1, 0, 0, 1, 0, 0); c.globalAlpha = alpha; c.strokeStyle = o.c || '#ffd60a'; c.lineWidth = Math.max(2, Math.min(W, H) / 220); c.beginPath(); if (o.shape === 'rect') c.roundRect(b.x, b.y, b.w, b.h, Math.min(b.w, b.h) * 0.08); else c.ellipse(b.x + b.w / 2, b.y + b.h / 2, b.w / 2, b.h / 2, 0, 0, Math.PI * 2); c.stroke(); }
+      } else {
+        c.beginPath(); c.roundRect(b.x, b.y, b.w, b.h, Math.min(b.w, b.h) * 0.12); c.clip();
+        const str = o.str ?? 12;
+        if (o.mode === 'mosaic') {
+          const cell = Math.max(3, str * 1.3 * Math.min(W, H) / 720); const tw = Math.max(1, Math.round(b.w / cell)); const th = Math.max(1, Math.round(b.h / cell));
+          tmpC.width = tw; tmpC.height = th; tmpC.getContext('2d').drawImage(c.canvas, b.x, b.y, b.w, b.h, 0, 0, tw, th);
+          c.imageSmoothingEnabled = false; c.drawImage(tmpC, 0, 0, tw, th, b.x, b.y, b.w, b.h); c.imageSmoothingEnabled = true;
+        } else {
+          const pad = str * 3; tmpC.width = Math.ceil(b.w + pad * 2); tmpC.height = Math.ceil(b.h + pad * 2);
+          tmpC.getContext('2d').drawImage(c.canvas, b.x - pad, b.y - pad, tmpC.width, tmpC.height, 0, 0, tmpC.width, tmpC.height);
+          c.filter = `blur(${str * Math.min(W, H) / 720}px)`; c.drawImage(tmpC, b.x - pad, b.y - pad); c.filter = 'none';
+        }
+      }
+      c.restore();
+    }
+    // 動くものを追いかける：はじめの枠（a・b）から終わりの枠（a2・b2）へ動かす
+    function geoAt(o, t) {
+      if (!o.a2) return o; const s = absStart(o); if (s == null) return o;
+      const k = clamp((t - s) / Math.max(0.01, o.len), 0, 1);
+      return { ...o, a: lerpP(o.a, o.a2, k), b: lerpP(o.b, o.b2, k) };
+    }
+    // 追いかけるときに、今どちらの枠を直すか（終わりに近ければ終わりの枠）
+    function editEnd(o) { if (!o.a2) return false; const s = absStart(o); return s != null && T - s > o.len / 2; }
     // 出し方（ふわっと出る・描かれる）
     function ovAlpha(o, t, s) {
       const e = s + o.len; if (o.anim === 'none') return [1, 1];
       const fade = Math.min(0.25, o.len / 4); let a = clamp((t - s) / fade, 0, 1) * clamp((e - t) / fade, 0, 1);
       let pr = 1;
-      if (o.type !== 'text' && o.anim !== 'fade') { pr = clamp((t - s) / Math.min(0.6, o.len / 2), 0, 1); a = clamp((e - t) / fade, 0, 1); pr = 1 - (1 - pr) ** 2; }
+      if (o.type !== 'text' && !MASKS.includes(o.type) && o.anim !== 'fade') { pr = clamp((t - s) / Math.min(0.6, o.len / 2), 0, 1); a = clamp((e - t) / fade, 0, 1); pr = 1 - (1 - pr) ** 2; }
       return [a, pr];
     }
     function drawOverlays(c, W, H, t, editing) {
-      P.ovs.forEach((o) => {
+      const order = [...P.ovs.filter((o) => o.type === 'blur'), ...P.ovs.filter((o) => o.type === 'spot'), ...P.ovs.filter((o) => !MASKS.includes(o.type))];
+      order.forEach((o) => {
         const sp = ovSpan(o); if (!sp) return;
         const isSel = editing && sel?.kind === 'ov' && sel.id === o.id;
         if (!(t >= sp[0] && t < sp[1]) && !isSel) return;
         let [a, pr] = (t >= sp[0] && t < sp[1]) ? ovAlpha(o, t, sp[0]) : [0.35, 1];
         if (editing && !playing && t >= sp[0] && t < sp[1]) { a = 1; pr = 1; }
-        if (o.type === 'text') drawText(c, o, W, H, a); else drawShape(c, o, W, H, a, pr);
+        const g = geoAt(o, t);
+        if (o.type === 'text') drawText(c, g, W, H, a); else if (MASKS.includes(o.type)) drawMask(c, g, W, H, a); else drawShape(c, g, W, H, a, pr);
       });
+    }
+    // 場面の切り替え
+    const snaps = new Map(); // ふわっと切り替えるときの、前の場面の最後の1コマ
+    function snapKey(i) { const prev = L.list[i - 1]; const [W, H] = dims(); return prev ? `${W}x${H}|${JSON.stringify(prev.s)}` : ''; }
+    async function grabFrame(x, t, W, H) {
+      const c = document.createElement('canvas'); c.width = W; c.height = H; const cx = c.getContext('2d');
+      cx.fillStyle = '#000'; cx.fillRect(0, 0, W, H);
+      const s = x.s; const lt = t - x.start;
+      if (s.kind === 'card') { drawCard(cx, W, H, s, Math.min(lt, s.dur - 0.5)); return c; }
+      const m = M.get(s.key); if (!m) return c;
+      let src = m.img;
+      if (m.video) {
+        if (!m.grab) { m.grab = document.createElement('video'); m.grab.muted = true; m.grab.preload = 'auto'; m.grab.src = m.url; $('.ved-media').appendChild(m.grab); await new Promise((r) => { if (m.grab.readyState >= 1) r(); else { m.grab.onloadedmetadata = r; setTimeout(r, 4000); } }); }
+        await seekTo(m.grab, clamp(srcTime(x, t), 0, m.dur - 0.02)); src = m.grab;
+      }
+      if (src) drawFit(cx, src, m.w, m.h, W, H, segView(s, lt));
+      return c;
+    }
+    let snapBusy = null;
+    async function ensureSnaps() {
+      if (snapBusy) await snapBusy;
+      snapBusy = (async () => {
+        const [W, H] = dims(); const want = new Set();
+        for (let i = 1; i < L.list.length; i++) {
+          const x = L.list[i]; if (x.s.tr?.type !== 'fade') continue;
+          const key = snapKey(i); want.add(key); if (snaps.has(key)) continue;
+          const prev = L.list[i - 1]; snaps.set(key, await grabFrame(prev, prev.end - 0.02, W, H));
+        }
+        [...snaps.keys()].forEach((k) => { if (!want.has(k)) snaps.delete(k); });
+        dirty();
+      })();
+      await snapBusy; snapBusy = null;
+    }
+    function drawTrans(c, W, H, t) {
+      const i = L.list.findIndex((x) => t >= x.start - 1e-6 && t < x.end - 1e-6); if (i < 0) return;
+      const x = L.list[i]; const lt = t - x.start; const tr = x.s.tr; const next = L.list[i + 1];
+      const dip = (col, a) => { if (a <= 0) return; c.save(); c.globalAlpha = clamp(a, 0, 1); c.fillStyle = col; c.fillRect(0, 0, W, H); c.restore(); };
+      if (tr?.type) {
+        const d = tr.d || 0.6;
+        if (tr.type === 'fade' && i > 0) { const img = snaps.get(snapKey(i)); if (img && lt < d) { c.save(); c.globalAlpha = 1 - ease(lt / d); c.drawImage(img, 0, 0, W, H); c.restore(); } }
+        else if (tr.type === 'black' || (tr.type === 'fade' && i === 0)) dip('#000', 1 - lt / (i === 0 ? d : d / 2));
+        else if (tr.type === 'white') dip('#fff', 1 - lt / (d / 2));
+      }
+      const nt = next?.s.tr;
+      if (nt && (nt.type === 'black' || nt.type === 'white')) { const d = (nt.d || 0.6) / 2; dip(nt.type === 'black' ? '#000' : '#fff', 1 - (x.end - t) / d); }
     }
     // 1コマを描く（プレビュー・書き出し共通）
     function renderFrame(c, W, H, t, editing = false) {
@@ -407,9 +507,10 @@ export function openEditor({ title = '' } = {}) {
       if (x) {
         const s = x.s;
         if (s.kind === 'card') drawCard(c, W, H, s, t - x.start);
-        else { const m = M.get(s.key); const src = m?.video || m?.img; if (src && (m.img || m.video.readyState >= 2)) drawFit(c, src, m.w, m.h, W, H, s); }
+        else { const m = M.get(s.key); const src = m?.video || m?.img; if (src && (m.img || m.video.readyState >= 2)) drawFit(c, src, m.w, m.h, W, H, segView(s, t - x.start)); }
       }
       drawOverlays(c, W, H, t, editing);
+      drawTrans(c, W, H, t);
     }
 
     // ===== プレビュー =====
@@ -495,11 +596,11 @@ export function openEditor({ title = '' } = {}) {
     const pxu = () => cv.getBoundingClientRect().width / cv.width; // 画面上の1px
     function drawDraft() {
       const [W, H] = dims();
-      if (draft) { if (draft.type === 'text') drawText(ctx, draft, W, H, 1); else drawShape(ctx, draft, W, H, 1, 1); }
+      if (draft) { if (draft.type === 'text') drawText(ctx, draft, W, H, 1); else if (MASKS.includes(draft.type)) { drawMask(ctx, { mode: 'blur', str: 12, dark: 0.62, ...draft }, W, H, 1); ctx.save(); ctx.setLineDash([8, 6]); ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; const bb = boxOf(draft, W, H); ctx.strokeRect(bb.x, bb.y, bb.w, bb.h); ctx.restore(); } else drawShape(ctx, draft, W, H, 1, 1); }
       if (anglePts.length) drawShape(ctx, { type: 'angle', c: color, w: 1, p: anglePts }, W, H, 1, 1);
     }
     function ovBox(o) {
-      const [W, H] = dims();
+      const [W, H] = dims(); o = geoAt(o, T);
       if (o.type === 'text') { const b = textBox(ctx, o, W, H); return { x: b.x / W, y: b.y / H, w: b.w / W, h: b.h / H }; }
       const pts = o.type === 'pen' || o.type === 'angle' ? o.p : o.type === 'num' ? [o.a] : [o.a, o.b];
       const xs = pts.map((q) => q.x); const ys = pts.map((q) => q.y); const pad = o.type === 'num' ? 0.045 : 0.015;
@@ -507,6 +608,7 @@ export function openEditor({ title = '' } = {}) {
     }
     function handlesOf(o) {
       if (o.type === 'line' || o.type === 'arrow' || o.type === 'circle') return [['a', o.a], ['b', o.b]];
+      if (MASKS.includes(o.type)) { const g = geoAt(o, T); return [['a', g.a], ['b', g.b], ['ab', { x: g.a.x, y: g.b.y }], ['ba', { x: g.b.x, y: g.a.y }]]; }
       if (o.type === 'angle') return o.p.map((q, i) => [i, q]);
       if (o.type === 'text') { const b = ovBox(o); return [['size', { x: b.x + b.w, y: b.y + b.h }]]; }
       return [];
@@ -533,7 +635,11 @@ export function openEditor({ title = '' } = {}) {
       // 今の場面が「止めた画面」なら、その区間のあいだ出す。動画なら3秒
       const x = segAt(T); if (!x) return null;
       let len = 3; if (x.s.kind !== 'clip') len = x.end - T; len = r2(clamp(len, 0.5, Math.max(0.5, L.total - T)));
-      Object.assign(o, { id: uid(), len, anim: o.type === 'text' ? 'fade' : 'draw' }); anchor(o, T);
+      Object.assign(o, { id: uid(), len, anim: o.type === 'text' || o.type === 'spot' ? 'fade' : o.type === 'blur' ? 'none' : 'draw' }); anchor(o, T);
+      if (o.type === 'spot') Object.assign(o, { shape: 'ellipse', dark: 0.62, ring: false, c: '#ffd60a' });
+      if (o.type === 'blur') { Object.assign(o, { mode: 'blur', str: 12 }); delete o.c; }
+      // ぼかしは、その場面の終わりまで（映り込みを隠すことが多いので）
+      if (o.type === 'blur') { const x2 = segAt(T); if (x2) o.len = r2(Math.max(0.5, x2.end - T)); }
       return o;
     }
     cv.addEventListener('pointerdown', (e) => {
@@ -542,7 +648,7 @@ export function openEditor({ title = '' } = {}) {
       const p = pt(e); cv.setPointerCapture(e.pointerId);
       if (tool === 'select') {
         const h = hitOv(p);
-        if (h) { select('ov', h.o.id); drag = { o: h.o, h: h.h, p0: p, orig: JSON.stringify(h.o), before: JSON.stringify(P), moved: false }; }
+        if (h) { select('ov', h.o.id); drag = { o: h.o, h: h.h, p0: p, orig: JSON.stringify(h.o), before: JSON.stringify(P), moved: false, end: editEnd(h.o) }; }
         else select(null);
         return;
       }
@@ -577,7 +683,14 @@ export function openEditor({ title = '' } = {}) {
           if (o.type === 'text') { o.x = clamp(orig.x + dx, 0, 1); o.y = clamp(orig.y + dy, 0, 1); }
           else if (o.type === 'pen' || o.type === 'angle') o.p = orig.p.map(mv);
           else if (o.type === 'num') o.a = mv(orig.a);
-          else { o.a = mv(orig.a); o.b = mv(orig.b); }
+          else if (MASKS.includes(o.type) && orig.a2) {
+            if (drag.end) { o.a2 = mv(orig.a2); o.b2 = mv(orig.b2); } else { o.a = mv(orig.a); o.b = mv(orig.b); }
+          } else { o.a = mv(orig.a); o.b = mv(orig.b); }
+        } else if (MASKS.includes(o.type)) {
+          const A = drag.end ? 'a2' : 'a'; const Bk = drag.end ? 'b2' : 'b';
+          if (drag.h === 'a') o[A] = p; else if (drag.h === 'b') o[Bk] = p;
+          else if (drag.h === 'ab') { o[A] = { x: p.x, y: orig[A].y }; o[Bk] = { x: orig[Bk].x, y: p.y }; }
+          else if (drag.h === 'ba') { o[Bk] = { x: p.x, y: orig[Bk].y }; o[A] = { x: orig[A].x, y: p.y }; }
         } else if (drag.h === 'size') {
           const [W, H] = dims(); const b0 = textBox(ctx, orig, W, H); const k = clamp(((p.x * W - b0.x) / b0.w + (p.y * H - b0.y) / b0.h) / 2, 0.3, 4);
           o.size = r2(clamp(orig.size * k, 2, 20));
@@ -602,7 +715,7 @@ export function openEditor({ title = '' } = {}) {
     function setTool(k) {
       tool = k; anglePts = []; wrap.querySelectorAll('[data-e="tool"]').forEach((b) => b.classList.toggle('on', b.dataset.v === k));
       cv.style.cursor = k === 'select' ? 'default' : 'crosshair';
-      const hints = { text: 'テロップを置きたい場所をクリック', line: 'ドラッグして線を引く', arrow: 'ドラッグして矢印を引く', circle: 'ドラッグして円を描く（Shift で正円）', angle: '角度：はじめに片方の端をクリック', pen: 'ドラッグして自由に描く', num: '番号を置きたい場所をクリック（1, 2, 3…と増えます）' };
+      const hints = { text: 'テロップを置きたい場所をクリック', line: 'ドラッグして線を引く', arrow: 'ドラッグして矢印を引く', circle: 'ドラッグして円を描く（Shift で正円）', angle: '角度：はじめに片方の端をクリック', pen: 'ドラッグして自由に描く', num: '番号を置きたい場所をクリック（1, 2, 3…と増えます）', spot: 'ドラッグして、明るく見せたい所を囲む', blur: 'ドラッグして、隠したい所を囲む' };
       if (hints[k]) tip(hints[k], 2500);
       dirty();
     }
@@ -621,7 +734,7 @@ export function openEditor({ title = '' } = {}) {
       pnl.dataset.for = sel ? `${sel.kind}:${sel.id}` : '';
       if (!o) { pnl.innerHTML = panelHome(); return; }
       if (sel.kind === 'seg') pnl.innerHTML = panelSeg(o);
-      else if (sel.kind === 'ov') pnl.innerHTML = o.type === 'text' ? panelText(o) : panelShape(o);
+      else if (sel.kind === 'ov') pnl.innerHTML = o.type === 'text' ? panelText(o) : MASKS.includes(o.type) ? panelMask(o) : panelShape(o);
       else if (sel.kind === 'nar') pnl.innerHTML = panelNar(o);
       else if (sel.kind === 'bgm') pnl.innerHTML = panelBgm();
     }
@@ -631,7 +744,7 @@ export function openEditor({ title = '' } = {}) {
         <h3>BGM</h3>${bgmBlock()}
         <h3>テロップの型</h3><p class="ved-note">テロップを選んで「この形を型に保存」を押すと、次から同じ形で置けます。</p>
         ${presets.length ? `<div class="ved-presets">${presets.map((x, i) => `<span class="ved-preset${x.def ? ' def' : ''}"><button type="button" data-e="preset-def" data-v="${i}" title="新しいテロップをこの形にする">${x.def ? '★ ' : ''}${esc(x.name)}</button><button type="button" data-e="preset-del" data-v="${i}" aria-label="型を消す">×</button></span>`).join('')}</div>` : '<p class="ved-note">まだありません。</p>'}
-        <h3>ヒント</h3><ul class="ved-hints"><li>タイムラインの映像をドラッグで並べ替え、端をつまんで長さを調整できます。</li><li>「⏸ ここで止める」で一時停止した画面を入れると、線や番号の説明がしやすくなります。</li><li>止めた画面の上で描いたものは、その画面のあいだ出ます。</li><li>「🎙 ナレーションを録る」で、動画を流しながら声を入れられます。話した言葉を字幕にすることもできます。</li></ul>`;
+        <h3>ヒント</h3><ul class="ved-hints"><li>タイムラインの映像をドラッグで並べ替え、端をつまんで長さを調整できます。</li><li>「⏸ ここで止める」で一時停止した画面を入れると、線や番号の説明がしやすくなります。</li><li>止めた画面の上で描いたものは、その画面のあいだ出ます。</li><li>「🎙 ナレーションを録る」で、動画を流しながら声を入れられます。話した言葉を字幕にすることもできます。</li><li>映像を選ぶと、場面の切り替え（ふわっと・暗転）と、動きながらの拡大を設定できます。</li><li>「◎ スポット」で見せたい所以外を暗く、「▦ ぼかし」で映り込みを隠せます。動くものは「追いかける」で位置を合わせられます。</li></ul>`;
     }
     function bgmBlock() {
       return `${P.bgm ? `<div class="ved-bgm-now">♪ ${esc(P.bgm.name)} <button type="button" class="ved-mini" data-e="bgm-del">外す</button></div>
@@ -659,9 +772,17 @@ export function openEditor({ title = '' } = {}) {
         h += `<label class="ved-lab">タイトル</label><textarea rows="2" data-p="title" maxlength="60">${esc(s.title || '')}</textarea>
           <label class="ved-lab">小さい文字</label><input type="text" data-p="sub" maxlength="60" value="${esc(s.sub || '')}">`;
       } else {
-        h += `<label class="ved-lab">拡大 <b>${r2(s.zoom || 1)}倍</b></label><input type="range" min="1" max="3" step="0.05" data-p="zoom" value="${s.zoom || 1}">
-          ${(s.zoom || 1) > 1 ? `<label class="ved-lab">左右の位置</label><input type="range" min="0" max="1" step="0.01" data-p="zx" value="${s.zx ?? 0.5}"><label class="ved-lab">上下の位置</label><input type="range" min="0" max="1" step="0.01" data-p="zy" value="${s.zy ?? 0.5}">` : ''}`;
+        const pos = (zx, zy, px) => `<label class="ved-lab">左右の位置</label><input type="range" min="0" max="1" step="0.01" data-p="${px}x" value="${zx}"><label class="ved-lab">上下の位置</label><input type="range" min="0" max="1" step="0.01" data-p="${px}y" value="${zy}">`;
+        h += `<h3>拡大</h3><label class="ved-chk"><input type="checkbox" data-p="kbOn"${s.kb ? ' checked' : ''}> 動きながら拡大する（はじめ → 終わりへ寄る・引く）</label>
+          ${s.kb ? `<div class="ved-row wrap"><button type="button" class="ved-mini" data-e="kb-preset" data-v="in">全体 → 寄る</button><button type="button" class="ved-mini" data-e="kb-preset" data-v="out">寄る → 全体</button></div><p class="ved-note">位置を動かすと、プレビューがはじめ・終わりの画面に切り替わります。</p>` : ''}
+          <label class="ved-lab">${s.kb ? 'はじめの拡大' : '拡大'} <b>${r2(s.zoom || 1)}倍</b></label><input type="range" min="1" max="3" step="0.05" data-p="zoom" value="${s.zoom || 1}">
+          ${(s.zoom || 1) > 1 || s.kb ? pos(s.zx ?? 0.5, s.zy ?? 0.5, 'z') : ''}
+          ${s.kb ? `<label class="ved-lab">終わりの拡大 <b>${r2(s.kb.z)}倍</b></label><input type="range" min="1" max="3" step="0.05" data-p="kbz" value="${s.kb.z}">${pos(s.kb.x, s.kb.y, 'kb')}` : ''}`;
       }
+      const idx = P.segs.indexOf(s);
+      h += `<h3>${idx === 0 ? 'はじまり方' : '前の場面からの切り替え'}</h3><div class="ved-seg-btns">${TRANS.filter(([k]) => idx > 0 || k !== 'white').map(([k, l]) => `<button type="button" data-p="trType" data-val="${k}" class="${(s.tr?.type || '') === k ? 'on' : ''}">${idx === 0 && k === 'fade' ? '黒から' : l}</button>`).join('')}</div>
+        ${s.tr?.type ? `<label class="ved-lab">切り替えの長さ <b>${r2(s.tr.d || 0.6)}秒</b></label><input type="range" min="0.2" max="1.5" step="0.1" data-p="trD" value="${s.tr.d || 0.6}">` : ''}
+        ${P.segs.length > 2 ? `<button type="button" class="ved-mini" data-e="tr-all">全部のつなぎ目を同じにする</button>` : ''}`;
       h += `<div class="ved-row wrap"><button type="button" class="ved-mini" data-e="seg-dup">複製</button><button type="button" class="ved-mini" data-e="seg-left">◀ 前へ</button><button type="button" class="ved-mini" data-e="seg-right">後ろへ ▶</button><button type="button" class="ved-mini danger" data-e="del">消す</button></div>`;
       return h;
     }
@@ -676,6 +797,21 @@ export function openEditor({ title = '' } = {}) {
         <label class="ved-lab">出し方</label><div class="ved-seg-btns">${[['fade', 'ふわっと'], ['none', 'パッと']].map(([k, l]) => `<button type="button" data-p="anim" data-val="${k}" class="${(o.anim || 'fade') === k ? 'on' : ''}">${l}</button>`).join('')}</div>
         ${timing(o)}
         <div class="ved-row wrap"><button type="button" class="ved-mini" data-e="preset-save">この形を型に保存</button><button type="button" class="ved-mini" data-e="ov-dup">複製</button><button type="button" class="ved-mini danger" data-e="del">消す</button></div>`;
+    }
+    function panelMask(o) {
+      const spot = o.type === 'spot';
+      return `<h3>${spot ? '◎ スポットライト' : '▦ ぼかし'}</h3>
+        ${spot ? `<label class="ved-lab">形</label><div class="ved-seg-btns">${[['ellipse', '丸'], ['rect', '四角']].map(([k, l]) => `<button type="button" data-p="shape" data-val="${k}" class="${(o.shape || 'ellipse') === k ? 'on' : ''}">${l}</button>`).join('')}</div>
+          <label class="ved-lab">まわりの暗さ <b>${Math.round((o.dark ?? 0.62) * 100)}%</b></label><input type="range" min="0.2" max="0.9" step="0.02" data-p="dark" value="${o.dark ?? 0.62}">
+          <label class="ved-chk"><input type="checkbox" data-p="ring"${o.ring ? ' checked' : ''}> ふちに線を出す</label>${o.ring ? colorRow(o.c || '#ffd60a') : ''}`
+    : `<label class="ved-lab">かけ方</label><div class="ved-seg-btns">${[['blur', 'ぼかし'], ['mosaic', 'モザイク']].map(([k, l]) => `<button type="button" data-p="mode" data-val="${k}" class="${(o.mode || 'blur') === k ? 'on' : ''}">${l}</button>`).join('')}</div>
+          <label class="ved-lab">強さ</label><input type="range" min="4" max="30" step="1" data-p="str" value="${o.str ?? 12}">`}
+        <label class="ved-chk"><input type="checkbox" data-p="track"${o.a2 ? ' checked' : ''}> 動くものを追いかける（はじめと終わりで位置を変える）</label>
+        ${o.a2 ? `<p class="ved-note">「はじめへ」で枠を合わせ、「終わりへ」でもう一度合わせると、その間をなめらかに動きます。今は<b>${editEnd(o) ? '終わり' : 'はじめ'}の枠</b>を直しています。</p>
+          <div class="ved-row"><button type="button" class="ved-mini" data-e="ov-gostart">◀ はじめへ</button><button type="button" class="ved-mini" data-e="ov-goend">終わりへ ▶</button></div>` : ''}
+        <label class="ved-lab">出し方</label><div class="ved-seg-btns">${[['fade', 'ふわっと'], ['none', 'パッと']].map(([k, l]) => `<button type="button" data-p="anim" data-val="${k}" class="${(o.anim || 'fade') === k ? 'on' : ''}">${l}</button>`).join('')}</div>
+        ${timing(o)}
+        <div class="ved-row wrap"><button type="button" class="ved-mini" data-e="ov-dup">複製</button><button type="button" class="ved-mini danger" data-e="del">消す</button></div>`;
     }
     function panelShape(o) {
       const name = { line: '／ 直線', arrow: '↗ 矢印', circle: '◯ 円', angle: '∠ 角度', pen: '✎ 手書き', num: '① 番号' }[o.type];
@@ -715,6 +851,14 @@ export function openEditor({ title = '' } = {}) {
         return;
       }
       if (k === 'speed') { o.speed = Number(val); return; }
+      if (k === 'kbOn') { o.kb = el.checked ? { z: Math.min(3, Math.max(1.8, (o.zoom || 1) + 0.8)), x: o.zx ?? 0.5, y: o.zy ?? 0.5 } : null; return; }
+      if (k === 'kbz' || k === 'kbx' || k === 'kby') { const v = Number(val); if (!o.kb || !Number.isFinite(v)) return 'skip'; o.kb[k.slice(2)] = v; return 'soft'; }
+      if (k === 'trType') { o.tr = val ? { type: val, d: o.tr?.d || 0.6 } : null; return; }
+      if (k === 'trD') { if (o.tr) o.tr.d = Number(val); return 'soft'; }
+      if (k === 'dark') { o.dark = Number(val); return 'soft'; }
+      if (k === 'str') { o.str = Number(val); return 'soft'; }
+      if (k === 'ring') { o.ring = el.checked; return; }
+      if (k === 'track') { if (el.checked) { o.a2 = { ...o.a }; o.b2 = { ...o.b }; } else { delete o.a2; delete o.b2; } return; }
       if (k === 'mute' || k === 'slowSound') { o[k] = el.checked; return; }
       if (k === 'text' || k === 'title' || k === 'sub' || k === 'label') { o[k] = val; return 'soft'; }
       if (k === 'style') { o.style = val; o.color = ''; return; }
@@ -724,8 +868,12 @@ export function openEditor({ title = '' } = {}) {
       const el = e.target.closest('[data-p]'); if (!el || el.tagName === 'BUTTON') return;
       const r = applyProp(el, el.type === 'checkbox' ? el.checked : el.value);
       if (r === 'skip') return;
+      // 動きながら拡大：はじめ・終わりのどちらを直しているか、プレビューで見えるように
+      const so = selObj(); const kp = el.dataset.p;
+      if (sel?.kind === 'seg' && so?.kb && ['zoom', 'zx', 'zy', 'kbz', 'kbx', 'kby'].includes(kp)) { layout(); const st = L.starts.get(so.id); seek(kp.startsWith('kb') ? st + segDur(so) - 0.04 : st + 0.01); }
       layout(); dirty(); renderTl();
-      const lab = el.previousElementSibling?.querySelector?.('b'); if (lab && el.type === 'range') lab.textContent = el.dataset.p === 'zoom' || el.dataset.p === 'size' ? (el.dataset.p === 'zoom' ? `${r2(el.value)}倍` : r2(el.value)) : `${Math.round(el.value * 100)}%`;
+      const lab = el.previousElementSibling?.querySelector?.('b');
+      if (lab && el.type === 'range') { const kk = el.dataset.p; lab.textContent = kk === 'zoom' || kk === 'kbz' ? `${r2(el.value)}倍` : kk === 'size' ? r2(el.value) : kk === 'trD' ? `${r2(el.value)}秒` : `${Math.round(el.value * 100)}%`; }
       if (ready) { clearTimeout(saveTimer); saveTimer = setTimeout(() => kvSet(DRAFT_KEY, JSON.stringify(P)), 800); }
     });
     $('.ved-panel').addEventListener('change', (e) => {
@@ -751,7 +899,7 @@ export function openEditor({ title = '' } = {}) {
       });
       return [out, Math.max(1, lanes.length)];
     }
-    const OV_NAME = { text: 'T', line: '／', arrow: '↗', circle: '◯', angle: '∠', pen: '✎', num: '#' };
+    const OV_NAME = { text: 'T', line: '／', arrow: '↗', circle: '◯', angle: '∠', pen: '✎', num: '#', spot: '◎', blur: '▦' };
     function renderTl() {
       const total = L.total; const W = Math.max(tlScroll.clientWidth - 4, total * pps + 80);
       const [ovLane, nOv] = lanesOf(P.ovs, ovSpan); const [narLane, nNar] = lanesOf(P.nars, (n) => { const s = absStart(n); return s == null ? null : [s, s + n.len]; });
@@ -763,13 +911,13 @@ export function openEditor({ title = '' } = {}) {
         const m = M.get(s.key); const th = s.kind === 'card' ? '' : (m?.thumb ? `style="background-image:url(${m.thumb})"` : '');
         const label = s.kind === 'card' ? (s.style === 'end' ? 'エンディング' : 'オープニング') : s.kind === 'still' ? '⏸ 止める' : esc(s.name || '動画');
         return `<div class="ved-seg k-${s.kind}${sel?.kind === 'seg' && sel.id === s.id ? ' sel' : ''}" data-seg="${s.id}" style="left:${start * pps}px;width:${Math.max(4, (end - start) * pps - 2)}px">
-          <span class="th" ${th}></span><span class="nm">${label}</span>${s.kind === 'clip' && s.speed !== 1 ? `<em>${s.speed}x</em>` : ''}${s.mute ? '<em>🔇</em>' : ''}
+          <span class="th" ${th}></span>${s.tr?.type ? `<b class="trm" title="切り替え：${(TRANS.find(([k]) => k === s.tr.type) || [])[1]}">⧓</b>` : ''}${s.kb ? '<em>🔍</em>' : ''}<span class="nm">${label}</span>${s.kind === 'clip' && s.speed !== 1 ? `<em>${s.speed}x</em>` : ''}${s.mute ? '<em>🔇</em>' : ''}
           ${s.kind === 'clip' ? '<i class="hd l" data-h="l"></i>' : ''}<i class="hd r" data-h="r"></i></div>`;
       }).join('');
       const ovs = P.ovs.map((o) => {
         const sp = ovSpan(o); if (!sp) return '';
         const txt = o.type === 'text' ? esc(o.text.split('\n')[0]) : o.type === 'num' ? `${o.n}${o.label ? ` ${esc(o.label)}` : ''}` : o.type === 'angle' ? `${Math.round(angDeg(o.p))}°` : '';
-        return `<div class="ved-ov t-${o.type}${sel?.kind === 'ov' && sel.id === o.id ? ' sel' : ''}" data-ov="${o.id}" style="left:${sp[0] * pps}px;width:${Math.max(6, o.len * pps - 1)}px;top:${ovLane.get(o.id) * LH + 3}px;height:${LH - 3}px;line-height:${LH - 5}px;--c:${o.c || o.color || '#e2cc9a'}"><b>${OV_NAME[o.type]}</b> ${txt}<i class="hd l" data-h="l"></i><i class="hd r" data-h="r"></i></div>`;
+        return `<div class="ved-ov t-${o.type}${sel?.kind === 'ov' && sel.id === o.id ? ' sel' : ''}" data-ov="${o.id}" style="left:${sp[0] * pps}px;width:${Math.max(6, o.len * pps - 1)}px;top:${ovLane.get(o.id) * LH + 3}px;height:${LH - 3}px;line-height:${LH - 5}px;--c:${o.type === 'blur' ? '#8e8e93' : o.type === 'spot' ? '#ffd60a' : (o.c || o.color || '#e2cc9a')}"><b>${OV_NAME[o.type]}</b> ${txt}<i class="hd l" data-h="l"></i><i class="hd r" data-h="r"></i></div>`;
       }).join('');
       const nars = P.nars.map((n) => { const s = absStart(n); if (s == null) return ''; return `<div class="ved-nar${sel?.kind === 'nar' && sel.id === n.id ? ' sel' : ''}" data-nar="${n.id}" style="left:${s * pps}px;width:${Math.max(6, n.len * pps - 1)}px;top:${narLane.get(n.id) * LH + 3}px">🎙 ${r2(n.len)}秒</div>`; }).join('');
       const bgm = P.bgm ? `<div class="ved-bgmbar${sel?.kind === 'bgm' ? ' sel' : ''}" data-bgm="1" style="left:0;width:${Math.max(20, total * pps)}px">♪ ${esc(P.bgm.name)}　${Math.round(P.bgm.vol * 100)}%</div>` : `<button type="button" class="ved-bgm-add" data-e="bgm-open">＋ BGM を入れる</button>`;
@@ -994,6 +1142,7 @@ export function openEditor({ title = '' } = {}) {
       const { Muxer, ArrayBufferTarget } = await import(MUXER_URL);
       const bitrate = P.size === 'hd' ? 8e6 : 4.5e6;
       const vcodec = await pickVideoCodec(W, H, bitrate); if (!vcodec) throw new Error('このブラウザでは mp4 に書き出せません。パソコンの Chrome をお使いください');
+      onProg(0, '切り替えの準備をしています…'); await ensureSnaps();
       onProg(0, '音をまとめています…');
       const audio = await renderAudio(total);
       let acodec = null;
@@ -1081,7 +1230,7 @@ export function openEditor({ title = '' } = {}) {
     function showHelp() {
       modal(`<h3>⌨ 使い方とショートカット</h3>
         <div class="ved-help"><div><h4>基本の流れ</h4><ol><li>「＋ 動画・画像を追加」で動画を読み込む（複数可）</li><li>タイムラインで並べ替え・端をつまんでカット、「✂ 分ける」でいらない所を分けて消す</li><li>見せたい場面で「⏸ ここで止める」→ 線・番号・角度を描く</li><li>テロップを入れる（右の欄で形・大きさ・出す時間）</li><li>「🎙 ナレーションを録る」で声と字幕を入れる</li><li>BGM を選んで「書き出す」</li></ol></div>
-        <div><h4>ショートカット</h4><table>${[['スペース', '再生・一時停止'], ['← / →', '1コマ戻す・進める'], ['Shift + ← / →', '1秒戻す・進める'], ['Home / End', '最初・最後へ'], ['S', '今の位置で分ける'], ['F', 'ここで止める（静止画を入れる）'], ['R', 'ナレーションを録る・止める'], ['Delete', '選んだものを消す'], ['Ctrl + Z', '元に戻す'], ['Ctrl + Shift + Z', 'やり直す'], ['Ctrl + D', '選んだものを複製'], ['V T L A O G P N', '道具の切り替え'], ['Ctrl + ホイール', 'タイムラインの拡大・縮小']].map(([k, v]) => `<tr><th>${k}</th><td>${v}</td></tr>`).join('')}</table></div></div>
+        <div><h4>ショートカット</h4><table>${[['スペース', '再生・一時停止'], ['← / →', '1コマ戻す・進める'], ['Shift + ← / →', '1秒戻す・進める'], ['Home / End', '最初・最後へ'], ['S', '今の位置で分ける'], ['F', 'ここで止める（静止画を入れる）'], ['R', 'ナレーションを録る・止める'], ['Delete', '選んだものを消す'], ['Ctrl + Z', '元に戻す'], ['Ctrl + Shift + Z', 'やり直す'], ['Ctrl + D', '選んだものを複製'], ['V T L A O G P N H B', '道具の切り替え'], ['Ctrl + ホイール', 'タイムラインの拡大・縮小']].map(([k, v]) => `<tr><th>${k}</th><td>${v}</td></tr>`).join('')}</table></div></div>
         <p class="ved-note">編集中の内容は、このパソコンのブラウザに自動で保存されます（別のパソコンでは続きを開けません）。</p>`, [['ok', '閉じる']]);
     }
     function dup() {
@@ -1095,7 +1244,7 @@ export function openEditor({ title = '' } = {}) {
       if (closed) return; closed = true;
       cancelAnimationFrame(raf); ro.disconnect(); window.removeEventListener('keydown', onKey);
       if (recState) { try { recState.mr.stop(); recState.stream.getTracks().forEach((t) => t.stop()); } catch { /* なし */ } }
-      M.forEach((m) => { m.video?.pause(); m.audio?.pause(); if (m.url) URL.revokeObjectURL(m.url); });
+      M.forEach((m) => { m.video?.pause(); m.grab?.pause(); m.audio?.pause(); if (m.url) URL.revokeObjectURL(m.url); });
       clearTimeout(saveTimer); if (ready) kvSet(DRAFT_KEY, JSON.stringify(P));
       wrap.remove(); document.body.classList.remove('rec-open');
       resolve(file || null);
@@ -1116,12 +1265,12 @@ export function openEditor({ title = '' } = {}) {
       else if (k === 'freeze') { if (playing) pause(); freezeAt(); }
       else if (k === 'del') deleteSel();
       else if (k === 'clear-lines') {
-        const isLine = (o) => o.type !== 'text';
+        const isLine = (o) => o.type !== 'text' && !MASKS.includes(o.type);
         const all = P.ovs.filter(isLine);
         if (!all.length) { tip('消す線がありません', 1800); return; }
         const here = all.filter((o) => { const sp = ovSpan(o); return sp && T >= sp[0] - 1e-6 && T < sp[1]; });
         const btns = here.length && here.length < all.length ? [['cancel', 'やめる'], ['all', `動画全体の線を消す（${all.length}個）`], ['here', `今の場面の線だけ消す（${here.length}個）`]] : [['cancel', 'やめる'], ['all', `線を全部消す（${all.length}個）`]];
-        const r = await modal('<h3>描いた線を消しますか？</h3><p>線・矢印・円・角度・手書き・番号を消します（テロップは残ります）。消したあとでも「↶ 1つ戻す」で元に戻せます。</p>', btns);
+        const r = await modal('<h3>描いた線を消しますか？</h3><p>線・矢印・円・角度・手書き・番号を消します（テロップ・スポット・ぼかしは残ります）。消したあとでも「↶ 1つ戻す」で元に戻せます。</p>', btns);
         if (!r || r.btn === 'cancel') return;
         const del = new Set((r.btn === 'here' ? here : all).map((o) => o.id));
         snap(); P.ovs = P.ovs.filter((o) => !del.has(o.id)); if (sel?.kind === 'ov' && del.has(sel.id)) sel = null; anglePts = []; draft = null;
@@ -1137,6 +1286,14 @@ export function openEditor({ title = '' } = {}) {
         await kvClear(); M.forEach((m) => { m.video?.remove(); if (m.url) URL.revokeObjectURL(m.url); }); M.clear(); B.clear();
         P = blank(); undo = []; redo = []; sel = null; T = 0; changed();
       }
+      else if (k === 'ov-gostart' || k === 'ov-goend') { const o = selObj(); const s0 = o && absStart(o); if (s0 != null) { seek(k === 'ov-gostart' ? s0 + 0.01 : s0 + o.len - 0.04); syncPanel(); } }
+      else if (k === 'kb-preset') {
+        const o = selObj(); if (!o) return; snap();
+        const cx = o.kb?.x ?? o.zx ?? 0.5; const cy = o.kb?.y ?? o.zy ?? 0.5; const z = Math.max(1.8, o.kb?.z ?? 2, o.zoom > 1 ? o.zoom : 0);
+        if (b.dataset.v === 'in') { o.zoom = 1; o.zx = 0.5; o.zy = 0.5; o.kb = { z, x: cx, y: cy }; } else { o.zoom = z; o.zx = cx; o.zy = cy; o.kb = { z: 1, x: 0.5, y: 0.5 }; }
+        changed(); syncPanel(); const st = L.starts.get(o.id); seek(st + 0.01);
+      }
+      else if (k === 'tr-all') { const o = selObj(); if (!o) return; snap(); const tr = o.tr ? { ...o.tr } : null; P.segs.forEach((x, i) => { if (i > 0) x.tr = tr ? { ...tr } : null; }); changed(); tip(tr ? '全部のつなぎ目に同じ切り替えを入れました' : '全部のつなぎ目の切り替えを外しました', 2000); }
       else if (k === 'ov-tohere') { const o = selObj(); if (o) { snap(); anchor(o, T); changed(); } }
       else if (k === 'ov-toseg') { const o = selObj(); const x = segAt(T); if (o && x) { snap(); anchor(o, x.start); o.len = r2(x.end - x.start); changed(); } }
       else if (k === 'ov-pos') { const o = selObj(); if (o) { snap(); o.y = Number(b.dataset.v); o.x = 0.5; changed(); } }

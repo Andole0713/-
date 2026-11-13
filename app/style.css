@@ -2153,3 +2153,4 @@ body.rec-open{overflow:hidden}
 .ved-tools-sep{display:block;height:1px;background:var(--line);margin:6px 4px}
 .ved-tools .ved-tool-act{color:#f3e6c8}
 .ved-tools .ved-tool-act:hover:not(:disabled){background:rgba(200,169,106,.14)}
+.ved-seg .trm{position:relative;flex:none;color:var(--gold-2);font-size:13px;text-shadow:0 1px 3px #000}
