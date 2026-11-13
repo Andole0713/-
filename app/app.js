@@ -681,6 +681,7 @@ const PAGE_CAT = {
   'admin/dashboard': 'home', 'admin/inbox': 'video', 'admin/lesson': 'video', 'admin/meetings': 'meeting', 'admin/prep': 'meeting',
   'admin/members': 'member', 'admin/member': 'member', 'admin/roadmap': 'drill', 'admin/drills': 'drill', 'admin/drill': 'drill',
   'admin/report': 'score', 'admin/stats': 'score', 'admin/templates': 'video', 'admin/quotas': 'menu', survey: 'menu',
+  concierge: 'meeting', 'admin/concierge': 'meeting',
 };
 const CAT_LABEL = { home: 'Home', video: 'Swing Video', lesson: 'Lesson', drill: 'Drill', score: 'Score', celebrate: 'Celebration', help: 'Guide', menu: 'Menu', meeting: 'Meeting', member: 'Members' };
 function pageCat() {
@@ -730,7 +731,7 @@ function nav(items, active) {
     .join('')}</nav>`;
 }
 // 画面の色分け：機能ごとに色を決め、メニュー・ページの上部・見出しに使う（style.css の --c-*）
-const memberNav = (active) => nav([['home', 'home', 'ホーム', 0, 'home'], ['submit', 'video', '撮影・提出', 0, 'video'], ['history', 'book', 'レッスン', state.unread, 'lesson'], ['drills', 'target', 'ドリル', state.drillUnread, 'drill'], ['menu', 'grid', 'メニュー', state.celebrateUnread, 'menu']], active);
+const memberNav = (active) => nav([['home', 'home', 'ホーム', 0, 'home'], ['submit', 'video', '撮影・提出', 0, 'video'], ['history', 'book', 'レッスン', state.unread, 'lesson'], ['drills', 'target', 'ドリル', state.drillUnread, 'drill'], ['menu', 'grid', 'メニュー', (state.celebrateUnread || 0) + (state.ccUnread || 0), 'menu']], active);
 // 契約前の会員（プランを選ぶ前）のメニュー
 const guestNav = (active) => nav([['plans', 'card', 'プラン', 0, 'menu'], ['help', 'help', 'はじめての方へ', 0, 'help'], ['account', 'user', 'アカウント', 0, 'menu']], active);
 const newBadge = (l) => (l.read_at ? '' : '<span class="new-badge">NEW</span>');
@@ -983,7 +984,7 @@ async function viewMemberHome() {
   // 互いに関係のないデータは、まとめて同時に取りに行く（順番待ちを減らして表示を速くする）
   let [tasks, lessons, subs, monthSubs, monthLessons, roadmap,
     rounds, myMeetings, subCount, readCount, checkedLessons, myPractice,
-    celes, , creditRows, asks, lastMemo] = await Promise.all([
+    celes, , creditRows, asks, lastMemo, nextMeet] = await Promise.all([
     must(sb.from('tasks').select('*').eq('member_id', p.id).order('sort_order').order('created_at')),
     must(sb.from('lessons').select('id, lesson_date, title, point, practice, practice_done, read_at').eq('member_id', p.id).order('lesson_date', { ascending: false }).order('created_at', { ascending: false }).limit(1)),
     must(sb.from('submissions').select('id, created_at, club, status').eq('member_id', p.id).eq('status', 'pending').order('created_at', { ascending: false })),
@@ -1005,6 +1006,10 @@ async function viewMemberHome() {
     // 自分のメモのいちばん新しい1件（ホームのメモ欄。データベースの設定前は欄ごと出さない）
     sb.from('member_memos').select('id, body, created_at').eq('member_id', p.id).order('created_at', { ascending: false }).limit(1)
       .then((r) => (r.error ? null : r.data?.[0] || false), () => null),
+    // 次の面談の参加リンク・案内（データベースの設定前は出さない）
+    sb.from('meetings').select('scheduled_at, duration_min, join_url, join_info').eq('member_id', p.id).eq('status', 'scheduled')
+      .gte('scheduled_at', new Date(Date.now() - 2 * 3600000).toISOString()).order('scheduled_at').limit(1)
+      .then((r) => (r.error ? null : r.data?.[0] || null), () => null),
   ]);
   const practiceLogs = myPractice.length;
   const lastMeeting = myMeetings[0];
@@ -1096,7 +1101,9 @@ async function viewMemberHome() {
         <div><span class="label">解説動画</span><b>${monthLessons.length}<small>本</small></b></div>`}
         <div><span class="label">次回の面談</span>${p.next_meeting_at && new Date(p.next_meeting_at).getTime() > Date.now() - 2 * 3600000 ? meetingWhen(p.next_meeting_at) : '<b class="none">未定</b>'}</div>
       </div>
+      ${nextMeet && (nextMeet.join_url || nextMeet.join_info) ? joinBox(nextMeet) : ''}
       ${lastMeeting ? `<details class="last-meeting"><summary>前回の面談（${fmtShort(lastMeeting.scheduled_at)}）のまとめ</summary><p class="pre">${esc(lastMeeting.summary)}</p></details>` : ''}
+      <a class="cc-entry" href="#/concierge"><span class="cc-ic">${icon('chat')}</span><span class="grow"><b>コンシェルジュサポート</b><small>面談の日程・お支払い・アプリの使い方のご連絡</small></span>${state.ccUnread ? `<em class="mt-badge">${state.ccUnread}</em>` : ''}<i aria-hidden="true">›</i></a>
       <div class="meeting-book">${lineBtn('LINEで面談を予約する')}</div>
       <details class="support-more"><summary>回数・有効期限・予約のしかた</summary>
         ${cr && cr.live.length ? `<p class="small credit-exp">有効期限：${expiryText(cr.live)}（期限が近いものから使われます）</p>` : ''}
@@ -2392,6 +2399,7 @@ function viewMenu() {
       mini('help', 'chat', 'お知らせ', '#/notices'),
     ], true)}
     ${group('お問い合わせ', [
+      tile('meeting', 'chat', 'コンシェルジュサポート', '面談の日程・参加方法、お支払い・手続き、アプリの使い方のご連絡', '#/concierge', state.ccUnread),
       tile('line', 'chat', 'LINEで問い合わせる', '分からないこと・ご相談はこちら', CONTACT.lineUrl, 0, true),
       tile('menu', 'help', '不具合・ご要望を送る', 'アプリの不具合や「こうなったらいいな」をお知らせください', '#/feedback'),
     ])}
@@ -2510,6 +2518,127 @@ const mineOnly = () => local.get('atg-mine') === '1';
 const mineToggle = () => `<button type="button" class="btn btn-sm ${mineOnly() ? 'btn-gold' : 'btn-sub'}" data-action="mine-toggle" aria-pressed="${mineOnly()}">${mineOnly() ? '✓ ' : ''}自分の担当だけ表示</button>`;
 const staffOptions = (list, sel) => `<option value="">（未定）</option>${list.map((x) => `<option value="${x.id}"${x.id === sel ? ' selected' : ''}>${esc(x.name || 'スタッフ')}</option>`).join('')}`;
 const meetingStaffOn = () => sb.from('meetings').select('staff_id').limit(1).then((r) => !r.error, () => false);
+// 面談の参加リンク・案内（20261115000000_concierge.sql を実行すると使える）
+const meetingLinkOn = () => sb.from('meetings').select('join_url').limit(1).then((r) => !r.error, () => false);
+const MEET_URL_KEY = 'atg-meet-url'; // 前に使った参加リンク（毎回同じZoomの部屋を使うときに、入力を省く）
+const meetLinkFields = (url = '', info = '') => `<label>参加リンク <span class="muted">（Zoom・Google Meet などのURL。任意）</span></label>
+  <input name="join_url" type="url" maxlength="500" inputmode="url" placeholder="https://zoom.us/j/..." value="${esc(url)}">
+  <label>案内 <span class="muted">（ミーティングID・パスコード・ひとこと。任意）</span></label>
+  <textarea name="join_info" rows="3" maxlength="1000" placeholder="ミーティングID：123 456 7890&#10;パスコード：abc123&#10;開始5分前から入れます">${esc(info)}</textarea>
+  <p class="muted small" style="margin:4px 0 0">会員のホームの「次回の面談」に「面談に参加する」ボタンと案内が出ます。</p>`;
+function meetLinkRow(v) {
+  let url = String(v.join_url || '').trim();
+  if (url && !/^https?:\/\//i.test(url) && /^[\w-]+(\.[\w-]+)+(\/\S*)?$/.test(url)) url = `https://${url}`; // 「zoom.us/j/…」のように https:// を省いたとき
+  if (url && !/^https?:\/\/\S+$/i.test(url)) throw new Error('参加リンクは https:// から始まるURLを入れてください');
+  if (url) local.set(MEET_URL_KEY, url);
+  return { join_url: url || null, join_info: String(v.join_info || '').trim() };
+}
+// 会員のホームに出す「面談に参加する」
+const joinBox = (m) => `<div class="join-box"><div class="join-h">${icon('video')}<b>${fmtShort(m.scheduled_at)} の面談</b><small>${m.duration_min || 25}分</small></div>
+  ${m.join_url ? `<a class="btn btn-gold btn-block join-go" href="${esc(m.join_url)}" target="_blank" rel="noopener">▶ 面談に参加する</a>` : ''}
+  ${m.join_info ? `<p class="pre small join-info">${esc(m.join_info)}</p>` : ''}</div>`;
+
+// ---------- コンシェルジュサポート（会員とスタッフの連絡）----------
+// スイングの質問は受けない（動画の質問欄・面談へ案内する）。会員は用件を選んでから送る
+const CC_CATS = [['meeting', '面談・日程のこと'], ['payment', 'お支払い・手続き'], ['app', 'アプリの使い方'], ['other', 'その他']];
+const CC_QUICK = ['確認しました', '面談に参加できなくなりました', '面談の日程を変更したいです'];
+const CC_HOURS = '受付時間 11:00〜20:00　1〜2営業日以内にお返事します';
+const CC_TEMPLATES = [
+  ['スイングの質問への返信', 'ご質問ありがとうございます。\nスイングや練習のご相談は、次に動画を送るときの「質問」欄に書いていただくと、動画を見ながら詳しくお答えできます。オンライン面談でもお受けしていますので、ぜひご活用ください。'],
+  ['面談の案内', '次回のオンライン面談のご案内です。\nホームの「次回の面談」にある「▶ 面談に参加する」から入れます。開始5分前から入室できます。当日はよろしくお願いいたします。'],
+  ['受け付けました', 'ご連絡ありがとうございます。内容を確認して、改めてご連絡いたします。'],
+  ['日程変更の受付', 'ご連絡ありがとうございます。日程の変更を承りました。ご都合のよい日時の候補を2〜3つ教えていただけますか？'],
+];
+const ccCat = (k) => (k === 'quick' ? '' : (CC_CATS.find(([v]) => v === k) || [, ''])[1]);
+// やりとりの表示（staffView：スタッフが見るとき。会員の連絡が左、スタッフが右）
+function ccThread(list, staffView, nameOf = () => '') {
+  if (!list.length) return '';
+  let day = '';
+  return list.map((m) => {
+    const d = fmtDate(m.created_at); const head = d !== day ? `<div class="cc-day">${d}</div>` : ''; day = d;
+    const mine = staffView ? m.from_staff : !m.from_staff;
+    const who = m.from_staff ? (staffView ? (nameOf(m.sender_id) || 'スタッフ') : 'コンシェルジュ') : (staffView ? '会員' : '');
+    const t = new Date(m.created_at).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
+    const read = mine && m.read_at ? '<span class="cc-read">既読</span>' : '';
+    return `${head}<div class="cc-msg ${mine ? 'me' : 'them'}${m.from_staff ? ' staff' : ''}">
+      ${who ? `<div class="cc-who">${esc(who)}${ccCat(m.category) ? ` <span class="cc-tag">${ccCat(m.category)}</span>` : ''}</div>` : (ccCat(m.category) ? `<div class="cc-who"><span class="cc-tag">${ccCat(m.category)}</span></div>` : '')}
+      <div class="cc-bubble">${esc(m.body).replace(/\n/g, '<br>')}</div><div class="cc-meta">${read}${t}</div></div>`;
+  }).join('');
+}
+const ccScroll = () => setTimeout(() => { const t = document.querySelector('.cc-thread'); if (t?.lastElementChild) t.lastElementChild.scrollIntoView({ block: 'center' }); }, 60);
+async function viewConcierge() {
+  const p = state.profile;
+  const r = await sb.from('concierge_messages').select('*').eq('member_id', p.id).order('created_at').limit(300).then((x) => x, (e) => ({ error: e }));
+  if (r.error) {
+    return header('コンシェルジュサポート', 'menu') + `<div class="content"><div class="card"><p>コンシェルジュサポートは準備中です。ご連絡はLINEでお願いします。</p>${lineBtn('LINEで連絡する')}</div></div>` + memberNav('menu');
+  }
+  const list = r.data || [];
+  if (list.some((m) => m.from_staff && !m.read_at)) sb.rpc('concierge_mark_read', { p_member: p.id }).then(() => { state.ccUnread = 0; }, () => {});
+  if (list.length) ccScroll();
+  return header('コンシェルジュサポート', 'menu') + `<div class="content cc-page">
+    <div class="card cc-guide">
+      <b>こちらでお受けしていること</b>
+      <ul><li>面談の日程・参加方法</li><li>お支払い・ご契約の手続き</li><li>アプリの使い方</li></ul>
+      <p class="cc-note">スイングや練習のご質問は、<a href="#/submit">動画を送るとき</a>の「質問」欄か、オンライン面談でお受けしています（動画を見ながらお答えできるため）。</p>
+      <p class="muted small" style="margin:6px 0 0">${CC_HOURS}</p>
+    </div>
+    <div class="cc-thread">${list.length ? ccThread(list, false) : '<p class="muted small cc-empty">まだやりとりはありません。面談の案内なども、ここに届きます。</p>'}</div>
+    <div class="cc-quick"><span class="muted small">ボタンで返す：</span>${CC_QUICK.map((q) => `<button type="button" class="btn btn-sm btn-sub" data-action="cc-quick" data-text="${esc(q)}">${esc(q)}</button>`).join('')}</div>
+    <form class="form card cc-form" data-form="concierge">
+      <fieldset class="cc-cats"><legend>ご用件を選んでください</legend>${CC_CATS.map(([k, l]) => `<label class="chip"><input type="radio" name="category" value="${k}" required><span>${l}</span></label>`).join('')}</fieldset>
+      <label for="cc-body">内容</label><textarea id="cc-body" name="body" rows="4" maxlength="1000" required placeholder="例：来週の面談の時間を18時に変更できますか？"></textarea>
+      <button class="btn-block" type="submit">送る</button>
+    </form>
+  </div>` + memberNav('menu');
+}
+// スタッフ：お返事待ち（最後の連絡が会員からのもの）を探す
+function ccPending(msgs) {
+  const last = new Map(); msgs.forEach((m) => last.set(m.member_id, m));
+  return [...last.values()].filter((m) => !m.from_staff);
+}
+async function viewConciergeAdmin(memberId) {
+  const staff = await staffList();
+  const nameOf = (id) => staff.find((x) => x.id === id)?.name || '';
+  if (!memberId) {
+    const [r, people] = await Promise.all([
+      sb.from('concierge_messages').select('member_id, from_staff, body, category, created_at, read_at').gte('created_at', isoDaysFrom(-180)).order('created_at').then((x) => x, (e) => ({ error: e })),
+      must(sb.from('profiles').select('id, name, role').order('name')),
+    ]);
+    if (r.error) return header('コンシェルジュサポート', 'admin/dashboard') + '<div class="content"><div class="error">データベースの設定（20261115000000_concierge.sql）がまだのため使えません。</div></div>' + adminNav('admin/dashboard');
+    const members = people.filter((m) => m.role !== 'admin'); const nm = new Map(members.map((m) => [m.id, m.name || '（名前未設定）']));
+    const last = new Map(); r.data.forEach((m) => last.set(m.member_id, m));
+    const threads = [...last.values()].sort((a, b) => (Number(!a.from_staff) - Number(!b.from_staff)) * -1 || (a.created_at < b.created_at ? 1 : -1));
+    return header('コンシェルジュサポート', 'admin/dashboard') + `<div class="content">
+      <p class="page-lead">会員とのご連絡です。<b>お返事待ち</b>は、会員から届いてまだ返していないものです。</p>
+      <form class="form card cc-new" data-form="cc-open"><label>会員に新しく送る</label><div class="row-inline"><select name="member_id" required><option value="">会員を選ぶ</option>${members.map((m) => `<option value="${m.id}">${esc(m.name || '（名前未設定）')}</option>`).join('')}</select><button type="submit" class="btn btn-sm">開く</button></div></form>
+      ${threads.length ? threads.map((m) => `<a class="card cc-row${m.from_staff ? '' : ' wait'}" href="#/admin/concierge/${m.member_id}">
+        <div class="between"><b>${esc(nm.get(m.member_id) || '（削除された会員）')}</b><span class="muted small">${fmtShort(m.created_at)}</span></div>
+        <div class="small">${m.from_staff ? '<span class="pill">返信済み</span>' : `<span class="pill warn">お返事待ち</span>${ccCat(m.category) ? ` <span class="cc-tag">${ccCat(m.category)}</span>` : ''}`} ${esc(m.body.slice(0, 60))}</div></a>`).join('') : emptyBox('💬', 'まだやりとりはありません')}
+    </div>` + adminNav('admin/dashboard');
+  }
+  const [r, m, nextMt] = await Promise.all([
+    sb.from('concierge_messages').select('*').eq('member_id', memberId).order('created_at').limit(500).then((x) => x, (e) => ({ error: e })),
+    must(sb.from('profiles').select('id, name, email, plan').eq('id', memberId).maybeSingle()),
+    sb.from('meetings').select('id, scheduled_at, duration_min, staff_id, join_url').eq('member_id', memberId).eq('status', 'scheduled').gte('scheduled_at', new Date(Date.now() - 2 * 3600000).toISOString()).order('scheduled_at').limit(1)
+      .then((x) => (x.error ? null : x.data?.[0] || null), () => null),
+  ]);
+  if (r.error) return header('コンシェルジュサポート', 'admin/concierge') + '<div class="content"><div class="error">データベースの設定（20261115000000_concierge.sql）がまだのため使えません。</div></div>' + adminNav('admin/dashboard');
+  if (!m) return header('コンシェルジュサポート', 'admin/concierge') + '<div class="content"><div class="empty">会員が見つかりません</div></div>' + adminNav('admin/dashboard');
+  const list = r.data || [];
+  if (list.some((x) => !x.from_staff && !x.read_at)) sb.rpc('concierge_mark_read', { p_member: memberId }).then(() => {}, () => {});
+  if (list.length) ccScroll();
+  return header(`${m.name || '会員'}さんとの連絡`, 'admin/concierge') + `<div class="content cc-page">
+    <div class="card cc-meta-card"><div class="between"><div>${memberLink(m.id, m.name)}<span class="muted small">　${esc(planLabel(m.plan))}</span></div>
+      ${nextMt ? `<span class="small">次回の面談 <b>${fmtShort(nextMt.scheduled_at)}</b>　参加リンク：${nextMt.join_url ? '<span class="pill ok">あり</span>' : `<span class="pill warn">なし</span>`}
+        <button type="button" class="btn btn-sm btn-sub" data-action="meeting-move" data-id="${nextMt.id}" data-at="${nextMt.scheduled_at}" data-min="${nextMt.duration_min}" data-staff="${esc(nextMt.staff_id || '')}">リンク・日時</button></span>` : '<span class="muted small">次回の面談は未定</span>'}</div></div>
+    <div class="cc-thread">${list.length ? ccThread(list, true, nameOf) : '<p class="muted small cc-empty">まだやりとりはありません。</p>'}</div>
+    <form class="form card cc-form" data-form="cc-reply"><input type="hidden" name="member_id" value="${m.id}">
+      <div class="cc-tpls"><span class="muted small">定型文：</span>${CC_TEMPLATES.map(([l], i) => `<button type="button" class="btn btn-sm btn-sub" data-action="cc-tpl" data-i="${i}">${esc(l)}</button>`).join('')}</div>
+      <label for="cc-reply">返信</label><textarea id="cc-reply" name="body" rows="5" maxlength="1000" required></textarea>
+      <button class="btn-block" type="submit">送る</button>
+    </form>
+  </div>` + adminNav('admin/dashboard');
+}
 
 // ベスト更新・ベストタイ・平均より大きく良いスコアを探す（18ホールのみ）
 // お祝いを送る（ダッシュボードのベスト更新・会員詳細から）。会員のアプリのホームに届く
@@ -2598,6 +2727,9 @@ async function viewDashboard() {
     sb.from('member_notices').select('*').is('acked_at', null).order('created_at', { ascending: false }).limit(50).then((r) => r.data || []),
     must(sb.from('lessons').select('id, member_id, title, created_at, profiles!member_id(name)').is('read_at', null).lte('created_at', isoDaysFrom(-UNREAD_DAYS)).gte('created_at', isoDaysFrom(-60)).order('created_at')),
   ]);
+  const ccMsgs = await sb.from('concierge_messages').select('member_id, from_staff, body, category, created_at').gte('created_at', isoDaysFrom(-60)).order('created_at')
+    .then((x) => (x.error ? [] : x.data || []), () => []);
+  const ccWait = ccPending(ccMsgs);
   const people = members.filter((m) => m.role !== 'admin');
   const staff = members.filter((m) => m.role === 'admin');
   const active = people.filter(isActive);
@@ -2632,7 +2764,7 @@ async function viewDashboard() {
   const overdue = pending.filter((x) => replyDue(x.created_at).over);
   const celebrations = findCelebrations(rounds18, people, new Set(acks.map((a) => a.ref_id)));
   const cancelReq = pending.filter((x) => x.cancel_requested_at);
-  const todo = notices.length + cancelReq.length + pending.length + lateMeetings.length + needMeeting.length + unpaid.length + rmSoon.length + pastDue.length + soonExpire.length;
+  const todo = ccWait.length + notices.length + cancelReq.length + pending.length + lateMeetings.length + needMeeting.length + unpaid.length + rmSoon.length + pastDue.length + soonExpire.length;
   state.adminTodo = todo;
 
   // kind: todo=対応が必要（赤・「対応が必要」の数に含む） / watch=様子を見る（黄） / info=お知らせ（青）
@@ -2642,6 +2774,9 @@ async function viewDashboard() {
     </section>`;
   const row = (main, sub = '', right = '') => `<div class="dash-row"><div class="grow">${main}${sub ? `<small>${sub}</small>` : ''}</div>${right}</div>`;
   const left = [
+    ...(ccWait.length ? [section('コンシェルジュサポート：お返事待ち', '✉', ccWait.map((x) => row(`${memberLink(x.member_id, nameOf(x.member_id))}${ccCat(x.category) ? `　<span class="cc-tag">${ccCat(x.category)}</span>` : ''}`,
+      `${esc(x.body.slice(0, 50))}${x.body.length > 50 ? '…' : ''}<br>${fmtShort(x.created_at)}`,
+      `<a class="btn btn-sm" href="#/admin/concierge/${x.member_id}">返信する</a>`)), '', '<a class="dash-more" href="#/admin/concierge">すべての連絡 ›</a>')] : []),
     ...(notices.length ? [section('解約・退会のお知らせ', '!', notices.map((n) => row(`${n.member_id ? memberLink(n.member_id, n.member_name) : esc(n.member_name || '（削除済みの会員）')}　<span class="pill ${NOTICE_KIND[n.kind]?.[1] || ''}">${NOTICE_KIND[n.kind]?.[0] || ''}</span>`,
       `${esc(n.detail)}<br>${fmtShort(n.created_at)}`,
       `<button type="button" class="btn btn-sm btn-sub" data-action="notice-ack" data-id="${n.id}">確認済み</button>`)), '')] : []),
@@ -2756,7 +2891,7 @@ async function viewMeetings() {
     const actions = m.status === 'scheduled'
       ? `<a class="btn btn-sm btn-gold" href="#/admin/prep/${m.id}">準備メモ</a>
          <button type="button" class="btn btn-sm" data-action="meeting-done" data-id="${m.id}">結果を入力</button>
-         <button type="button" class="btn btn-sm btn-sub" data-action="meeting-move" data-id="${m.id}" data-at="${m.scheduled_at}" data-min="${m.duration_min}" data-staff="${esc(m.staff_id || '')}">日時・対応者</button>
+         <button type="button" class="btn btn-sm btn-sub" data-action="meeting-move" data-id="${m.id}" data-at="${m.scheduled_at}" data-min="${m.duration_min}" data-staff="${esc(m.staff_id || '')}">${m.join_url ? '🔗 ' : ''}日時・リンク</button>
          <button type="button" class="btn btn-sm btn-sub" data-action="meeting-status" data-id="${m.id}" data-status="canceled">キャンセル</button>`
       : `<button type="button" class="btn btn-sm btn-sub" data-action="meeting-done" data-id="${m.id}">まとめを編集</button>`;
     return `${head}<div class="card meeting-row">
@@ -3192,7 +3327,7 @@ async function viewMemberDetail(id, tab) {
     <div class="card">
       ${nextMt ? `<div class="next-meeting"><span>次回</span><b>${fmtShort(nextMt.scheduled_at)}</b><small>${nextMt.duration_min}分</small>
           <a class="btn btn-sm btn-gold" href="#/admin/prep/${nextMt.id}">準備メモ</a>
-          <button type="button" class="btn btn-sm btn-sub" data-action="meeting-move" data-id="${nextMt.id}" data-at="${nextMt.scheduled_at}" data-min="${nextMt.duration_min}">日時変更</button></div>`
+          <button type="button" class="btn btn-sm btn-sub" data-action="meeting-move" data-id="${nextMt.id}" data-at="${nextMt.scheduled_at}" data-min="${nextMt.duration_min}" data-staff="${esc(nextMt.staff_id || '')}">${nextMt.join_url ? '🔗 ' : ''}日時・リンク</button></div>`
         : '<p class="muted small" style="margin:0">次回の面談は入っていません。LINEで日程が決まったら「＋ 予約」から登録します。</p>'}
       ${nextMt ? `<p class="small" style="margin:6px 0 0">支払い：${payPill(nextMt) || '—'}${nextMt.pay_type === 'unpaid' ? ` <button type="button" class="link inline" data-action="meeting-paid" data-id="${nextMt.id}">支払い済みにする</button>` : ''}</p>` : ''}
       ${recentMt.length ? `<div class="mt-history">${recentMt.map((x) => `<div class="list-item small"><div class="grow">${fmtShort(x.scheduled_at)} ${meetingPill(x)} ${payPill(x)}${x.pay_type === 'unpaid' && x.status !== 'canceled' ? ` <button type="button" class="link inline" data-action="meeting-paid" data-id="${x.id}">支払い済みにする</button>` : ''}${x.summary ? `<div class="muted">${esc(x.summary.slice(0, 60))}</div>` : ''}</div>
@@ -3326,7 +3461,7 @@ async function viewMemberDetail(id, tab) {
   return header(m.name || '会員詳細', 'admin/members') + `<div class="content wide md-page">
     ${m.deletion_requested_at ? `<div class="notice warn-box">この会員はアカウントの削除を申し込んでいます。<b>${fmtDate(deleteOn(m))}</b> にすべての記録が削除されます（それまでに会員がログインすると元に戻せます）。</div>`
       : m.cancel_at ? `<div class="notice">Webで解約済みです。<b>${fmtDate(m.cancel_at)}</b> まで利用できます。</div>` : ''}
-    <div class="card md-head"><div class="between"><div><b>${esc(m.name || '（名前未設定）')}</b><div class="muted small">${esc(m.email)}・登録日 ${fmtDate(m.created_at)}</div></div>${memberPill(m)}</div></div>
+    <div class="card md-head"><div class="between"><div><b>${esc(m.name || '（名前未設定）')}</b><div class="muted small">${esc(m.email)}・登録日 ${fmtDate(m.created_at)}</div></div><div class="md-head-r">${memberPill(m)}<a class="btn btn-sm btn-sub" href="#/admin/concierge/${m.id}">💬 連絡</a></div></div></div>
     <div class="md-tabs" role="tablist">${tabs.map(([k, label, , badge, bc]) => `<button type="button" role="tab" data-action="md-tab" data-tab="${k}" class="${k === cur ? 'on' : ''}" aria-selected="${k === cur}">${label}${badge ? `<em class="${bc || ''}">${badge}</em>` : ''}</button>`).join('')}</div>
     ${tabs.map(([k, , html]) => `<section class="md-pane" data-pane="${k}"${k === cur ? '' : ' hidden'}>${html}</section>`).join('')}
   </div>` + adminNav('admin/members');
@@ -4546,6 +4681,7 @@ async function render() {
       if (r[1] === 'stats') return paint(await viewStats());
       if (r[1] === 'templates') return paint(await viewTemplates());
       if (r[1] === 'quotas') return paint(await viewQuotaSettings());
+      if (r[1] === 'concierge') return paint(await viewConciergeAdmin(r[2]));
       if (r[1] === 'announce') return paint(await viewAnnounceAdmin());
       if (r[1] === 'feedback') return paint(await viewFeedbackAdmin());
       if (r[1] === 'members') { paint(await viewMembers()); applyMemberFilter(); return; }
@@ -4569,16 +4705,20 @@ async function render() {
     if (r[0] === 'scores' && isActive(p)) return paint(await viewScores());
     if (r[0] === 'install') return paint(viewInstall());
     if (!p.onboarded_at) return go('guide');
-    const [unreadLessons, unreadDrills, unseenCele] = await Promise.all([
+    const [unreadLessons, unreadDrills, unseenCele, unreadCc] = await Promise.all([
       sb.from('lessons').select('id', { count: 'exact', head: true }).eq('member_id', p.id).is('read_at', null),
       sb.from('roadmap_items').select('id', { count: 'exact', head: true }).eq('member_id', p.id).is('seen_at', null).eq('hidden', false)
         .or(`published_at.not.is.null,publish_on.lte.${today()}`),
       sb.from('celebrations').select('id', { count: 'exact', head: true }).eq('member_id', p.id).is('seen_at', null),
+      sb.from('concierge_messages').select('id', { count: 'exact', head: true }).eq('member_id', p.id).eq('from_staff', true).is('read_at', null)
+        .then((x) => x, () => ({ count: 0 })),
     ]);
     state.celebrateUnread = unseenCele.count || 0;
+    state.ccUnread = unreadCc.error ? 0 : unreadCc.count || 0;
     state.unread = unreadLessons.count || 0;
     state.drillUnread = unreadDrills.count || 0;
     if (r[0] === 'menu') return paint(viewMenu());
+    if (r[0] === 'concierge') return paint(await viewConcierge());
     if (r[0] === 'celebrations') return paint(await viewCelebrations());
     if (r[0] === 'badges') return paint(await viewBadges());
     if (r[0] === 'submit') {
@@ -4917,9 +5057,18 @@ const actions = {
     toast('SwingFrame の動画を取り消しました'); render();
   },
   'meeting-tab': (el) => { state.meetingTab = el.dataset.tab; render(); },
+  'cc-quick': async (el) => {
+    if (!(await confirmDialog({ title: `「${el.dataset.text}」と送りますか？`, body: '<p>コンシェルジュサポートに送ります。</p>', ok: '送る' }))) return;
+    await must(sb.from('concierge_messages').insert({ member_id: state.profile.id, category: 'quick', body: el.dataset.text }));
+    toast('送りました'); render();
+  },
+  'cc-tpl': (el) => {
+    const ta = document.getElementById('cc-reply'); const t = CC_TEMPLATES[Number(el.dataset.i)]?.[1] || '';
+    if (!ta) return; ta.value = ta.value.trim() ? `${ta.value.trim()}\n\n${t}` : t; ta.focus();
+  },
   'meeting-add': async (el) => {
     const [d] = splitLocal(new Date(Date.now() + DAY).toISOString());
-    const [staffOn, staff] = await Promise.all([meetingStaffOn(), staffList()]);
+    const [staffOn, staff, linkOn] = await Promise.all([meetingStaffOn(), staffList(), meetingLinkOn()]);
     const v = await confirmDialog({
       title: '面談を予約',
       body: `<div class="form modal-form">
@@ -4933,6 +5082,7 @@ const actions = {
         <label>支払い方法</label>
         <select name="pay_type" data-pay-type>${payTypeOptions(null)}</select>
         <p class="muted small" data-pay-hint style="margin:4px 0 0"></p>
+        ${linkOn ? meetLinkFields(local.get(MEET_URL_KEY) || '') : ''}
       </div>`,
       ok: '予約する',
       onOpen: (wrap) => refreshPayType(wrap),
@@ -4942,6 +5092,7 @@ const actions = {
     const row = { member_id: v.member_id, scheduled_at: at.toISOString(), duration_min: Number(v.duration_min) || 25 };
     if (creditsReady) row.pay_type = v.pay_type;
     if (staffOn) row.staff_id = v.staff_id || null;
+    if (linkOn) Object.assign(row, meetLinkRow(v));
     await must(sb.from('meetings').insert(row));
     toast(`${fmtShort(at.toISOString())} に面談を予約しました`); render();
   },
@@ -4996,18 +5147,21 @@ const actions = {
   },
   'meeting-move': async (el) => {
     const [d, t] = splitLocal(el.dataset.at);
-    const [staffOn, staff] = await Promise.all([meetingStaffOn(), staffList()]);
+    const [staffOn, staff, cur] = await Promise.all([meetingStaffOn(), staffList(),
+      sb.from('meetings').select('join_url, join_info').eq('id', el.dataset.id).maybeSingle().then((x) => (x.error ? null : x.data), () => null)]);
+    const linkOn = !!cur;
     const v = await confirmDialog({
-      title: '面談の日時・対応者を変更',
+      title: '面談の日時・対応者・参加リンク',
       body: `<div class="form modal-form"><div class="grid"><div><label>日付</label><input name="date" type="date" value="${d}" required></div>
         <div><label>時刻</label><input name="time" type="time" value="${t}" step="300" required></div></div>
         <label>時間（分）</label><input name="duration_min" type="number" min="5" max="180" value="${esc(el.dataset.min || 25)}" required>
-        ${staffOn ? `<label>対応するプロ・コーチ</label><select name="staff_id">${staffOptions(staff, el.dataset.staff || '')}</select>` : ''}</div>`,
+        ${staffOn ? `<label>対応するプロ・コーチ</label><select name="staff_id">${staffOptions(staff, el.dataset.staff || '')}</select>` : ''}
+        ${linkOn ? meetLinkFields(cur.join_url || local.get(MEET_URL_KEY) || '', cur.join_info || '') : ''}</div>`,
       ok: '変更する',
     });
     if (!v) return;
     const at = new Date(`${v.date}T${v.time}`);
-    await must(sb.from('meetings').update({ scheduled_at: at.toISOString(), duration_min: Number(v.duration_min) || 25, status: 'scheduled', ...(staffOn ? { staff_id: v.staff_id || null } : {}) }).eq('id', el.dataset.id));
+    await must(sb.from('meetings').update({ scheduled_at: at.toISOString(), duration_min: Number(v.duration_min) || 25, status: 'scheduled', ...(staffOn ? { staff_id: v.staff_id || null } : {}), ...(linkOn ? meetLinkRow(v) : {}) }).eq('id', el.dataset.id));
     toast(`${fmtShort(at.toISOString())} に変更しました`); render();
   },
   'meeting-status': async (el) => {
@@ -5471,6 +5625,19 @@ const actions = {
 };
 
 const forms = {
+  concierge: async (f) => {
+    const cat = f.querySelector('input[name="category"]:checked')?.value;
+    if (!cat) throw new Error('ご用件を選んでください');
+    const body = f.body.value.trim(); if (!body) throw new Error('内容を入力してください');
+    await must(sb.from('concierge_messages').insert({ member_id: state.profile.id, category: cat, body }));
+    toast('送りました。お返事までお待ちください'); render();
+  },
+  'cc-reply': async (f) => {
+    const body = f.body.value.trim(); if (!body) throw new Error('返信を入力してください');
+    await must(sb.from('concierge_messages').insert({ member_id: f.member_id.value, from_staff: true, body }));
+    toast('送りました'); render();
+  },
+  'cc-open': async (f) => { if (f.member_id.value) go(`admin/concierge/${f.member_id.value}`); },
   login: async (f) => {
     unlockAudio();
     // ログインしたら、そのあと必ずオープニング動画を流す（同じ画面で一度ログアウトしてから入り直した場合も）。
