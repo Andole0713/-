@@ -2537,7 +2537,6 @@ function meetLinkRow(v) {
 const joinBox = (m) => `<div class="join-box"><div class="join-h">${icon('video')}<b>${fmtShort(m.scheduled_at)} の面談</b><small>${m.duration_min || 25}分</small></div>
   ${m.join_url ? `<a class="btn btn-gold btn-block join-go" href="${esc(m.join_url)}" target="_blank" rel="noopener">▶ 面談に参加する</a>` : ''}
   ${m.join_info ? `<p class="pre small join-info">${esc(m.join_info)}</p>` : ''}
-  ${m.join_url ? '<p class="join-note">面談の内容は、記録のため Zoom の要約機能を使います（ご希望でなければ面談の始めにお伝えください）。</p>' : ''}
   ${'pre_at' in m ? (m.pre_at ? `<a class="join-pre done" href="#/meeting-pre/${m.id}">✓ 事前アンケートに回答済み（直す）</a>`
     : new Date(m.scheduled_at).getTime() - Date.now() < 8 * DAY ? `<a class="btn btn-sub btn-block join-pre" href="#/meeting-pre/${m.id}">📝 事前アンケートに答える（3分・前日までに）</a>` : '') : ''}</div>`;
 
@@ -3732,6 +3731,10 @@ async function viewMeetingPrep(id) {
   const recordForm = `<section class="card mtg-rec"><div class="between"><b>📝 面談の記録</b><span class="muted small">面談中は単語だけでOK。終わってから整えて保存</span></div>
       <form class="form" data-form="mtg-record" data-id="${mt.id}" data-member="${mid}">
         <div class="seg-radio">${[['done', '完了'], ['no_show', '欠席'], ['canceled', 'キャンセル']].map(([k, l]) => `<label><input type="radio" name="mstatus" value="${k}"${(done ? mt.status : 'done') === k ? ' checked' : ''}><span>${l}</span></label>`).join('')}</div>
+        <div class="mtg-ai"><b>Zoomの要約</b> <span class="muted small">（任意・会員には見えません）</span>
+          <p class="muted small" style="margin:2px 0 6px">面談のあとに届く Zoom の要約を貼り付けて、そのまま直せます。保存するとカルテに残ります。「まとめの下書きにする」で、会員へのまとめの欄に入れて直すこともできます。</p>
+          <textarea name="ai" rows="6" maxlength="4000" placeholder="Zoomの要約をここに貼り付け（貼り付けたあと、自由に直せます）"></textarea>
+          <div class="mtg-ai-btns"><button type="button" class="btn btn-sm btn-sub" data-action="mtg-ai-sum">↓ 会員へのまとめの下書きにする</button></div></div>
         <label>① 前回の課題・事前アンケートの確認</label><textarea name="content" rows="3" maxlength="2000">${esc(done ? '' : preText(mt))}</textarea>
         <label>② よくなった点</label><textarea name="changes" rows="2" maxlength="1000" placeholder="例：トップで右ひじが浮かなくなった"></textarea>
         <label>③ 今日のアドバイス <span class="muted">（課題は1つに絞る）</span></label><textarea name="issues" rows="2" maxlength="1000" placeholder="例：切り返しで上体が先に回るので、下半身から動かす"></textarea>
@@ -3741,9 +3744,6 @@ async function viewMeetingPrep(id) {
         <textarea name="drills" rows="2" maxlength="1000" placeholder="例：トップで止める素振り 10回×毎日"></textarea>
         <label>⑤ 次回までに・次回確認すること <span class="muted">（会員にも伝わる書き方で）</span></label><textarea name="next_action" rows="2" maxlength="1000" placeholder="例：次の動画で、切り返しで下半身から動けているか確認します"></textarea>
         <label>スタッフだけのメモ <span class="muted">（会員には見えません・任意）</span></label><textarea name="memo" rows="2" maxlength="1000" placeholder="例：腰に少し違和感あり。次回も確認"></textarea>
-        <details class="mtg-ai"><summary>Zoomの要約を貼り付ける（任意）</summary>
-          <p class="muted small" style="margin:4px 0">面談のあとに届くZoomの要約（AI Companion）を貼り付けると、カルテに一緒に残ります（会員には見えません）。①〜⑤を書くときの見返しにも使えます。</p>
-          <textarea name="ai" rows="5" maxlength="4000" placeholder="Zoomの要約をここに貼り付け"></textarea></details>
         <div class="between"><label style="margin:0">会員へのまとめ <span class="muted">（①〜⑤から自動で作ります。直してもOK）</span></label><button type="button" class="link inline" data-action="mtg-resum">作り直す</button></div>
         <textarea name="summary" rows="6" maxlength="2000" data-auto="${mt.summary ? '0' : '1'}">${esc(mt.summary || '')}</textarea>
         <label class="chk-line"><input type="checkbox" name="notify" checked> コンシェルジュサポートで「まとめを載せました」と知らせる</label>
@@ -5140,6 +5140,13 @@ const actions = {
     const ta = el.closest('form')?.drills; if (!ta) return;
     ta.value = ta.value.trim() ? `${ta.value.trim()}\n・${el.dataset.title}` : `・${el.dataset.title}`;
     ta.dispatchEvent(new Event('input', { bubbles: true }));
+  },
+  'mtg-ai-sum': (el) => {
+    const f = el.closest('form'); const ai = f.ai.value.trim();
+    if (!ai) { toast('先に Zoom の要約を貼り付けてください', true); return; }
+    if (f.summary.value.trim() && !confirm('会員へのまとめを、Zoom の要約で置き換えますか？')) return;
+    f.summary.value = ai; f.summary.dataset.auto = '0'; f.summary.focus();
+    toast('まとめの欄に入れました。会員向けに直してから保存してください');
   },
   'mtg-resum': (el) => {
     const f = el.closest('form'); f.summary.value = mtgSummary(f); f.summary.dataset.auto = '1';
