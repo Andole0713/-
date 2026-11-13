@@ -3731,6 +3731,10 @@ async function viewMeetingPrep(id) {
   const recordForm = `<section class="card mtg-rec"><div class="between"><b>📝 面談の記録</b><span class="muted small">面談中は単語だけでOK。終わってから整えて保存</span></div>
       <form class="form" data-form="mtg-record" data-id="${mt.id}" data-member="${mid}">
         <div class="seg-radio">${[['done', '完了'], ['no_show', '欠席'], ['canceled', 'キャンセル']].map(([k, l]) => `<label><input type="radio" name="mstatus" value="${k}"${(done ? mt.status : 'done') === k ? ' checked' : ''}><span>${l}</span></label>`).join('')}</div>
+        <div class="mtg-ai"><b>Zoomの要約</b> <span class="muted small">（任意・会員には見えません）</span>
+          <p class="muted small" style="margin:2px 0 6px">面談のあとに届く Zoom の要約を貼り付けて、そのまま直せます。保存するとカルテに残ります。「まとめの下書きにする」で、会員へのまとめの欄に入れて直すこともできます。</p>
+          <textarea name="ai" rows="6" maxlength="4000" placeholder="Zoomの要約をここに貼り付け（貼り付けたあと、自由に直せます）"></textarea>
+          <div class="mtg-ai-btns"><button type="button" class="btn btn-sm btn-sub" data-action="mtg-ai-sum">↓ 会員へのまとめの下書きにする</button></div></div>
         <label>① 前回の課題・事前アンケートの確認</label><textarea name="content" rows="3" maxlength="2000">${esc(done ? '' : preText(mt))}</textarea>
         <label>② よくなった点</label><textarea name="changes" rows="2" maxlength="1000" placeholder="例：トップで右ひじが浮かなくなった"></textarea>
         <label>③ 今日のアドバイス <span class="muted">（課題は1つに絞る）</span></label><textarea name="issues" rows="2" maxlength="1000" placeholder="例：切り返しで上体が先に回るので、下半身から動かす"></textarea>
@@ -5137,6 +5141,13 @@ const actions = {
     ta.value = ta.value.trim() ? `${ta.value.trim()}\n・${el.dataset.title}` : `・${el.dataset.title}`;
     ta.dispatchEvent(new Event('input', { bubbles: true }));
   },
+  'mtg-ai-sum': (el) => {
+    const f = el.closest('form'); const ai = f.ai.value.trim();
+    if (!ai) { toast('先に Zoom の要約を貼り付けてください', true); return; }
+    if (f.summary.value.trim() && !confirm('会員へのまとめを、Zoom の要約で置き換えますか？')) return;
+    f.summary.value = ai; f.summary.dataset.auto = '0'; f.summary.focus();
+    toast('まとめの欄に入れました。会員向けに直してから保存してください');
+  },
   'mtg-resum': (el) => {
     const f = el.closest('form'); f.summary.value = mtgSummary(f); f.summary.dataset.auto = '1';
   },
@@ -5743,11 +5754,12 @@ const forms = {
     if (!v('summary')) throw new Error('会員へのまとめを入れてください（①〜⑤を書くと自動で作られます）');
     await must(sb.from('meetings').update({ status: 'done', summary: v('summary') }).eq('id', f.dataset.id));
     // 電子カルテに残す（設定前なら担当者メモに残す）
-    const base = { member_id: member, entry_date: today(), kind: 'meeting', content: v('content') || '面談', issues: v('issues'), drills: v('drills'), next_action: v('next_action') || 'なし' };
+    const ai = v('ai');
+    const base = { member_id: member, entry_date: today(), kind: 'meeting', content: `${v('content') || '面談'}${ai ? `\n\n【Zoomの要約】\n${ai}` : ''}`.slice(0, 2000), issues: v('issues'), drills: v('drills'), next_action: v('next_action') || 'なし' };
     let r = await sb.from('chart_entries').insert({ ...base, changes: v('changes'), pending: v('memo') });
     if (r.error) r = await sb.from('chart_entries').insert({ ...base, content: [base.content, v('changes') && `よくなった点：${v('changes')}`, v('memo') && `メモ：${v('memo')}`].filter(Boolean).join('\n') });
     if (r.error) {
-      const txt = [v('content'), v('changes') && `よくなった点：${v('changes')}`, v('issues') && `アドバイス：${v('issues')}`, v('drills') && `ドリル：${v('drills')}`, v('next_action') && `次回：${v('next_action')}`, v('memo') && `メモ：${v('memo')}`].filter(Boolean).join('\n');
+      const txt = [v('content'), ai && `Zoomの要約：${ai}`, v('changes') && `よくなった点：${v('changes')}`, v('issues') && `アドバイス：${v('issues')}`, v('drills') && `ドリル：${v('drills')}`, v('next_action') && `次回：${v('next_action')}`, v('memo') && `メモ：${v('memo')}`].filter(Boolean).join('\n');
       if (txt) await must(sb.from('staff_notes').insert({ member_id: member, body: `【面談 ${fmtShort(mt.scheduled_at)}】${txt}`.slice(0, 2000) }));
     }
     if (f.notify?.checked) await sb.from('concierge_messages').insert({ member_id: member, from_staff: true, body: '本日はオンライン面談ありがとうございました。\nホームの「前回の面談のまとめ」に、今日のポイントと次の練習を載せました。次の動画もお待ちしています。' }).then(() => {}, () => {});
