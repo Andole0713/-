@@ -133,7 +133,10 @@ export function openEditor({ title = '' } = {}) {
         <button type="button" class="ved-x" data-e="close" aria-label="閉じる">×</button>
       </div>
       <div class="ved-body">
-        <div class="ved-tools">${TOOLS.map(([k, ic, l, key]) => `<button type="button" data-e="tool" data-v="${k}" class="${k === 'select' ? 'on' : ''}" title="${l}（${key}）"><b>${ic}</b><small>${l}</small></button>`).join('')}</div>
+        <div class="ved-tools">${TOOLS.map(([k, ic, l, key]) => `<button type="button" data-e="tool" data-v="${k}" class="${k === 'select' ? 'on' : ''}" title="${l}（${key}）"><b>${ic}</b><small>${l}</small></button>`).join('')}
+          <span class="ved-tools-sep"></span>
+          <button type="button" data-e="undo" class="ved-tool-act" title="1つ前に戻す（Ctrl+Z）"><b>↶</b><small>1つ戻す</small></button>
+          <button type="button" data-e="clear-lines" class="ved-tool-act" title="描いた線・矢印・円・角度・番号を消す"><b>⌫</b><small>線を全部消す</small></button></div>
         <div class="ved-center">
           <div class="ved-stage"><canvas class="ved-cv"></canvas>
             <div class="ved-empty"><p><b>動画を読み込んで始めましょう</b></p><p>下の「＋ 動画・画像を追加」を押すか、ここに動画ファイルをドラッグしてください。<br>複数まとめて選ぶと、選んだ順につながります。</p><button type="button" data-e="add" class="ved-go">＋ 動画・画像を追加</button></div>
@@ -211,7 +214,7 @@ export function openEditor({ title = '' } = {}) {
     function changed(keepUndo) {
       layout(); T = clamp(T, 0, L.total); syncPanel(); renderTl(); dirty();
       $('.ved-empty').hidden = P.segs.length > 0;
-      $('[data-e="undo"]').disabled = !undo.length; $('[data-e="redo"]').disabled = !redo.length;
+      wrap.querySelectorAll('[data-e="undo"]').forEach((x) => { x.disabled = !undo.length; }); $('[data-e="redo"]').disabled = !redo.length;
       $('.ved-total').textContent = fmtT(L.total);
       if (!ready) return;
       clearTimeout(saveTimer); $('.ved-save').textContent = '保存中…';
@@ -1112,6 +1115,18 @@ export function openEditor({ title = '' } = {}) {
       else if (k === 'split') { if (playing) pause(); snap(); if (splitAt(T)) { changed(); tip('分けました。いらない方を選んで「消す」', 2500); } else undo.pop(); }
       else if (k === 'freeze') { if (playing) pause(); freezeAt(); }
       else if (k === 'del') deleteSel();
+      else if (k === 'clear-lines') {
+        const isLine = (o) => o.type !== 'text';
+        const all = P.ovs.filter(isLine);
+        if (!all.length) { tip('消す線がありません', 1800); return; }
+        const here = all.filter((o) => { const sp = ovSpan(o); return sp && T >= sp[0] - 1e-6 && T < sp[1]; });
+        const btns = here.length && here.length < all.length ? [['cancel', 'やめる'], ['all', `動画全体の線を消す（${all.length}個）`], ['here', `今の場面の線だけ消す（${here.length}個）`]] : [['cancel', 'やめる'], ['all', `線を全部消す（${all.length}個）`]];
+        const r = await modal('<h3>描いた線を消しますか？</h3><p>線・矢印・円・角度・手書き・番号を消します（テロップは残ります）。消したあとでも「↶ 1つ戻す」で元に戻せます。</p>', btns);
+        if (!r || r.btn === 'cancel') return;
+        const del = new Set((r.btn === 'here' ? here : all).map((o) => o.id));
+        snap(); P.ovs = P.ovs.filter((o) => !del.has(o.id)); if (sel?.kind === 'ov' && del.has(sel.id)) sel = null; anglePts = []; draft = null;
+        changed(); tip(`${del.size}個の線を消しました`, 1800);
+      }
       else if (k === 'narr') { if (recState) stopNarr(); else { if (playing) pause(); startNarr(); } }
       else if (k === 'card') addCard(b.dataset.v);
       else if (k === 'export') doExport();
