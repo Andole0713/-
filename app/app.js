@@ -681,7 +681,7 @@ const PAGE_CAT = {
   'admin/dashboard': 'home', 'admin/inbox': 'video', 'admin/lesson': 'video', 'admin/meetings': 'meeting', 'admin/prep': 'meeting',
   'admin/members': 'member', 'admin/member': 'member', 'admin/roadmap': 'drill', 'admin/drills': 'drill', 'admin/drill': 'drill',
   'admin/report': 'score', 'admin/stats': 'score', 'admin/templates': 'video', 'admin/quotas': 'menu', survey: 'menu',
-  concierge: 'meeting', 'admin/concierge': 'meeting',
+  concierge: 'meeting', 'admin/concierge': 'meeting', 'meeting-pre': 'meeting',
 };
 const CAT_LABEL = { home: 'Home', video: 'Swing Video', lesson: 'Lesson', drill: 'Drill', score: 'Score', celebrate: 'Celebration', help: 'Guide', menu: 'Menu', meeting: 'Meeting', member: 'Members' };
 function pageCat() {
@@ -1007,7 +1007,7 @@ async function viewMemberHome() {
     sb.from('member_memos').select('id, body, created_at').eq('member_id', p.id).order('created_at', { ascending: false }).limit(1)
       .then((r) => (r.error ? null : r.data?.[0] || false), () => null),
     // 次の面談の参加リンク・案内（データベースの設定前は出さない）
-    sb.from('meetings').select('scheduled_at, duration_min, join_url, join_info').eq('member_id', p.id).eq('status', 'scheduled')
+    sb.from('meetings').select('*').eq('member_id', p.id).eq('status', 'scheduled')
       .gte('scheduled_at', new Date(Date.now() - 2 * 3600000).toISOString()).order('scheduled_at').limit(1)
       .then((r) => (r.error ? null : r.data?.[0] || null), () => null),
   ]);
@@ -1101,7 +1101,7 @@ async function viewMemberHome() {
         <div><span class="label">解説動画</span><b>${monthLessons.length}<small>本</small></b></div>`}
         <div><span class="label">次回の面談</span>${p.next_meeting_at && new Date(p.next_meeting_at).getTime() > Date.now() - 2 * 3600000 ? meetingWhen(p.next_meeting_at) : '<b class="none">未定</b>'}</div>
       </div>
-      ${nextMeet && (nextMeet.join_url || nextMeet.join_info) ? joinBox(nextMeet) : ''}
+      ${nextMeet && (nextMeet.join_url || nextMeet.join_info || 'pre_at' in nextMeet) ? joinBox(nextMeet) : ''}
       ${lastMeeting ? `<details class="last-meeting"><summary>前回の面談（${fmtShort(lastMeeting.scheduled_at)}）のまとめ</summary><p class="pre">${esc(lastMeeting.summary)}</p></details>` : ''}
       <a class="cc-entry" href="#/concierge"><span class="cc-ic">${icon('chat')}</span><span class="grow"><b>コンシェルジュサポート</b><small>面談の日程・お支払い・アプリの使い方のご連絡</small></span>${state.ccUnread ? `<em class="mt-badge">${state.ccUnread}</em>` : ''}<i aria-hidden="true">›</i></a>
       <div class="meeting-book">${lineBtn('LINEで面談を予約する')}</div>
@@ -2536,7 +2536,9 @@ function meetLinkRow(v) {
 // 会員のホームに出す「面談に参加する」
 const joinBox = (m) => `<div class="join-box"><div class="join-h">${icon('video')}<b>${fmtShort(m.scheduled_at)} の面談</b><small>${m.duration_min || 25}分</small></div>
   ${m.join_url ? `<a class="btn btn-gold btn-block join-go" href="${esc(m.join_url)}" target="_blank" rel="noopener">▶ 面談に参加する</a>` : ''}
-  ${m.join_info ? `<p class="pre small join-info">${esc(m.join_info)}</p>` : ''}</div>`;
+  ${m.join_info ? `<p class="pre small join-info">${esc(m.join_info)}</p>` : ''}
+  ${'pre_at' in m ? (m.pre_at ? `<a class="join-pre done" href="#/meeting-pre/${m.id}">✓ 事前アンケートに回答済み（直す）</a>`
+    : new Date(m.scheduled_at).getTime() - Date.now() < 8 * DAY ? `<a class="btn btn-sub btn-block join-pre" href="#/meeting-pre/${m.id}">📝 事前アンケートに答える（3分・前日までに）</a>` : '') : ''}</div>`;
 
 // ---------- コンシェルジュサポート（会員とスタッフの連絡）----------
 // スイングの質問は受けない（動画の質問欄・面談へ案内する）。会員は用件を選んでから送る
@@ -2793,7 +2795,7 @@ async function viewDashboard() {
     section('面談：結果の入力待ち', '!', lateMeetings.map((m) => row(`${memberLink(m.member_id, m.profiles?.name)}`, `${fmtShort(m.scheduled_at)} の面談`,
       `<button type="button" class="btn btn-sm" data-action="meeting-done" data-id="${m.id}">結果を入力</button>`)), '入力待ちの面談はありません'),
     section(mine ? '自分が対応する面談（7日）' : '今後7日の面談', '◷', upcoming.map((m) => row(`<b>${fmtShort(m.scheduled_at)}</b>　${memberLink(m.member_id, m.profiles?.name)}`, `${m.duration_min}分${todayMeetings.includes(m) ? '・<b class="today">今日</b>' : ''}${'staff_id' in m ? `・${m.staff_id ? `対応：${esc(staffName(staff, m.staff_id))}` : '<b class="late">対応者未定</b>'}` : ''}`,
-      `<a class="btn btn-sm btn-sub" href="#/admin/prep/${m.id}">準備メモ</a>`)), '予定はありません', '<a class="dash-more" href="#/admin/meetings">面談管理 ›</a>', 'info'),
+      `<a class="btn btn-sm btn-sub" href="#/admin/prep/${m.id}">面談モード</a>`)), '予定はありません', '<a class="dash-more" href="#/admin/meetings">面談管理 ›</a>', 'info'),
     ...(unpaid.length ? [section('面談：都度払いの未払い', '¥', unpaid.map((m) => row(memberLink(m.member_id, m.profiles?.name), `${fmtShort(m.scheduled_at)} の面談`,
       `<button type="button" class="btn btn-sm" data-action="meeting-paid" data-id="${m.id}">支払い済みにする</button>`)), '')] : []),
     section('今月まだ面談の予定がない会員', '◎', needMeeting.map((m) => row(memberLink(m.id, m.name), `${esc(planLabel(m.plan))}（面談の権利つき）`,
@@ -2889,14 +2891,14 @@ async function viewMeetings() {
     day = d;
     const t = new Date(m.scheduled_at).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
     const actions = m.status === 'scheduled'
-      ? `<a class="btn btn-sm btn-gold" href="#/admin/prep/${m.id}">準備メモ</a>
+      ? `<a class="btn btn-sm btn-gold" href="#/admin/prep/${m.id}">面談モード</a>
          <button type="button" class="btn btn-sm" data-action="meeting-done" data-id="${m.id}">結果を入力</button>
          <button type="button" class="btn btn-sm btn-sub" data-action="meeting-move" data-id="${m.id}" data-at="${m.scheduled_at}" data-min="${m.duration_min}" data-staff="${esc(m.staff_id || '')}">${m.join_url ? '🔗 ' : ''}日時・リンク</button>
          <button type="button" class="btn btn-sm btn-sub" data-action="meeting-status" data-id="${m.id}" data-status="canceled">キャンセル</button>`
       : `<button type="button" class="btn btn-sm btn-sub" data-action="meeting-done" data-id="${m.id}">まとめを編集</button>`;
     return `${head}<div class="card meeting-row">
       <div class="mt-time"><b>${t}</b><small>${m.duration_min}分</small></div>
-      <div class="grow"><div>${memberLink(m.member_id, m.profiles?.name)} ${meetingPill(m)}${staffOn ? ` <span class="claim ${m.staff_id ? (m.staff_id === state.profile.id ? 'mine' : 'other') : 'none'}">${m.staff_id ? `対応：${m.staff_id === state.profile.id ? 'あなた' : esc(staffName(staff, m.staff_id))}` : '対応者未定'}</span>` : ''}</div>
+      <div class="grow"><div>${memberLink(m.member_id, m.profiles?.name)} ${meetingPill(m)}${m.status === 'scheduled' && 'pre_at' in m ? (m.pre_at ? ' <span class="pill ok">事前アンケート✓</span>' : ' <span class="pill mute">事前アンケート未</span>') : ''}${staffOn ? ` <span class="claim ${m.staff_id ? (m.staff_id === state.profile.id ? 'mine' : 'other') : 'none'}">${m.staff_id ? `対応：${m.staff_id === state.profile.id ? 'あなた' : esc(staffName(staff, m.staff_id))}` : '対応者未定'}</span>` : ''}</div>
         ${m.summary ? `<p class="mt-sum">${esc(m.summary)}</p>` : ''}
         <div class="mt-actions">${actions}</div></div>
     </div>`;
@@ -3326,7 +3328,7 @@ async function viewMemberDetail(id, tab) {
   const paneMeeting = `<div class="section-title" style="margin-top:0"><h2>面談</h2><button type="button" class="btn btn-sm" data-action="meeting-add" data-member="${m.id}">＋ 予約</button></div>
     <div class="card">
       ${nextMt ? `<div class="next-meeting"><span>次回</span><b>${fmtShort(nextMt.scheduled_at)}</b><small>${nextMt.duration_min}分</small>
-          <a class="btn btn-sm btn-gold" href="#/admin/prep/${nextMt.id}">準備メモ</a>
+          <a class="btn btn-sm btn-gold" href="#/admin/prep/${nextMt.id}">面談モード</a>
           <button type="button" class="btn btn-sm btn-sub" data-action="meeting-move" data-id="${nextMt.id}" data-at="${nextMt.scheduled_at}" data-min="${nextMt.duration_min}" data-staff="${esc(nextMt.staff_id || '')}">${nextMt.join_url ? '🔗 ' : ''}日時・リンク</button></div>`
         : '<p class="muted small" style="margin:0">次回の面談は入っていません。LINEで日程が決まったら「＋ 予約」から登録します。</p>'}
       ${nextMt ? `<p class="small" style="margin:6px 0 0">支払い：${payPill(nextMt) || '—'}${nextMt.pay_type === 'unpaid' ? ` <button type="button" class="link inline" data-action="meeting-paid" data-id="${nextMt.id}">支払い済みにする</button>` : ''}</p>` : ''}
@@ -3633,6 +3635,40 @@ function karteForm(memberId, k, more = false) {
 }
 
 // 面談の準備メモ：前回の面談から今日までの動きを1画面にまとめる
+// ---------- 面談の事前アンケート（会員）----------
+const PRE_QS = [
+  ['pre_done', '今月できたこと・よくなったこと', '例：ドリルを週3回続けられた。7番アイアンの当たりが安定してきた'],
+  ['pre_trouble', '困っていること・うまくいかないこと', '例：ドライバーが右に出る。練習場ではいいのにコースで崩れる'],
+  ['pre_ask', '面談で聞きたいこと（1〜2個）', '例：右に出る原因と、家でできる練習を知りたい'],
+];
+async function viewMeetingPre(id) {
+  const p = state.profile;
+  const mt = await sb.from('meetings').select('*').eq('id', id).eq('member_id', p.id).maybeSingle().then((r) => (r.error ? null : r.data), () => null);
+  if (!mt || !('pre_at' in mt)) return header('事前アンケート', 'home') + '<div class="content"><div class="empty">このアンケートは開けません</div></div>' + memberNav('home');
+  if (mt.status !== 'scheduled') return header('事前アンケート', 'home') + '<div class="content"><div class="empty">この面談は終わっています</div></div>' + memberNav('home');
+  return header('面談の事前アンケート', 'home') + `<div class="content">
+    <div class="card"><b>${fmtShort(mt.scheduled_at)} のオンライン面談</b>
+      <p class="small" style="margin:6px 0 0">面談の前日までにお答えください。プロが事前に読んで準備するので、当日は短い時間でも、あなたに合ったアドバイスができます。</p></div>
+    <form class="form card" data-form="meeting-pre" data-id="${mt.id}">
+      ${PRE_QS.map(([n, label, ph]) => `<label for="${n}">${label}</label><textarea id="${n}" name="${n}" rows="3" maxlength="600" placeholder="${ph}">${esc(mt[n] || '')}</textarea>`).join('')}
+      <p class="small pre-video">📹 最新のスイング動画もお送りいただくと、面談で動画を見ながらお話しできます。<a href="#/submit">動画を送る ›</a></p>
+      <button class="btn-block" type="submit">${mt.pre_at ? '直して送る' : '送る'}</button>
+    </form>
+  </div>` + memberNav('home');
+}
+
+// ---------- 面談モード（スタッフ：準備と記録を1つの画面で）----------
+// 会員へのまとめを、記録の欄から自動で作る
+function mtgSummary(f) {
+  const v = (n) => (f[n]?.value || '').trim();
+  const parts = [];
+  if (v('issues')) parts.push(`【今日のポイント】\n${v('issues')}`);
+  if (v('changes')) parts.push(`【よくなった点】\n${v('changes')}`);
+  if (v('drills')) parts.push(`【次の練習】\n${v('drills')}`);
+  if (v('next_action') && v('next_action') !== 'なし') parts.push(`【次回までに】\n${v('next_action')}`);
+  return parts.join('\n\n');
+}
+const preText = (mt) => (mt.pre_at ? PRE_QS.filter(([n]) => mt[n]).map(([n, label]) => `${label.split('・')[0].replace('（1〜2個）', '')}：${mt[n]}`).join('\n') : '');
 async function viewMeetingPrep(id) {
   const mt = await must(sb.from('meetings').select('*').eq('id', id).maybeSingle());
   if (!mt) return header('面談の準備メモ', 'admin/meetings') + '<div class="content"><div class="empty">面談が見つかりません</div></div>' + adminNav('admin/meetings');
@@ -3646,6 +3682,7 @@ async function viewMeetingPrep(id) {
     must(sb.from('roadmap_items').select('id, publish_on, theme, hidden, drills(title)').eq('member_id', mid).order('publish_on')),
     must(sb.from('tasks').select('title, detail, done').eq('member_id', mid).order('sort_order')),
   ]);
+  const allDrills = await sb.from('drills').select('id, title').order('title').then((r) => r.data || [], () => []);
   const prev = prevList[0];
   const since = prev ? prev.scheduled_at : isoDaysFrom(-30);
   const sinceYmd = new Date(since).toLocaleDateString('sv-SE');
@@ -3687,20 +3724,52 @@ async function viewMeetingPrep(id) {
   if (prev?.summary) hints.push(['', '前回のまとめの内容ができているか確認する']);
 
   const stat = (label, val, sub = '') => `<div class="prep-stat"><span>${label}</span><b>${val}</b>${sub ? `<small>${sub}</small>` : ''}</div>`;
-  return header('面談の準備メモ', 'admin/meetings') + `<div class="content wide">
+  const modeOn = 'prep_memo' in mt;
+  const recDrills = await (lessons.length ? sb.from('lesson_drills').select('drills(title)').in('lesson_id', lessons.map((l) => l.id)).then((r) => (r.data || []).map((x) => x.drills?.title).filter(Boolean), () => []) : []);
+  const drillCands = [...new Set([nowItem?.drills?.title, nextItem?.drills?.title, ...recDrills].filter(Boolean))];
+  const done = mt.status !== 'scheduled';
+  const recordForm = `<section class="card mtg-rec"><div class="between"><b>📝 面談の記録</b><span class="muted small">面談中は単語だけでOK。終わってから整えて保存</span></div>
+      <form class="form" data-form="mtg-record" data-id="${mt.id}" data-member="${mid}">
+        <div class="seg-radio">${[['done', '完了'], ['no_show', '欠席'], ['canceled', 'キャンセル']].map(([k, l]) => `<label><input type="radio" name="mstatus" value="${k}"${(done ? mt.status : 'done') === k ? ' checked' : ''}><span>${l}</span></label>`).join('')}</div>
+        <label>① 前回の課題・事前アンケートの確認</label><textarea name="content" rows="3" maxlength="2000">${esc(done ? '' : preText(mt))}</textarea>
+        <label>② よくなった点</label><textarea name="changes" rows="2" maxlength="1000" placeholder="例：トップで右ひじが浮かなくなった"></textarea>
+        <label>③ 今日のアドバイス <span class="muted">（課題は1つに絞る）</span></label><textarea name="issues" rows="2" maxlength="1000" placeholder="例：切り返しで上体が先に回るので、下半身から動かす"></textarea>
+        <label>④ 次の練習（ドリル）</label>
+        ${drillCands.length ? `<div class="mtg-chips">${drillCands.map((t) => `<button type="button" class="btn btn-sm btn-sub" data-action="mtg-drill" data-title="${esc(t)}">＋ ${esc(t)}</button>`).join('')}</div>` : ''}
+        ${allDrills.length ? `<select data-action="mtg-drill-pick" aria-label="ドリル集から選ぶ"><option value="">ドリル集から選ぶ…</option>${allDrills.map((d) => `<option>${esc(d.title)}</option>`).join('')}</select>` : ''}
+        <textarea name="drills" rows="2" maxlength="1000" placeholder="例：トップで止める素振り 10回×毎日"></textarea>
+        <label>⑤ 次回までに・次回確認すること <span class="muted">（会員にも伝わる書き方で）</span></label><textarea name="next_action" rows="2" maxlength="1000" placeholder="例：次の動画で、切り返しで下半身から動けているか確認します"></textarea>
+        <label>スタッフだけのメモ <span class="muted">（会員には見えません・任意）</span></label><textarea name="memo" rows="2" maxlength="1000" placeholder="例：腰に少し違和感あり。次回も確認"></textarea>
+        <div class="between"><label style="margin:0">会員へのまとめ <span class="muted">（①〜⑤から自動で作ります。直してもOK）</span></label><button type="button" class="link inline" data-action="mtg-resum">作り直す</button></div>
+        <textarea name="summary" rows="6" maxlength="2000" data-auto="${mt.summary ? '0' : '1'}">${esc(mt.summary || '')}</textarea>
+        <label class="chk-line"><input type="checkbox" name="notify" checked> コンシェルジュサポートで「まとめを載せました」と知らせる</label>
+        <button class="btn-block" type="submit">記録を保存する</button>
+      </form></section>`;
+  const preCard = modeOn ? `<section class="card mtg-pre"><div class="between"><b>📋 事前アンケート</b>${mt.pre_at ? `<span class="pill ok">回答 ${fmtShort(mt.pre_at)}</span>` : '<span class="pill warn">まだ回答がありません</span>'}</div>
+      ${mt.pre_at ? PRE_QS.map(([n, label]) => (mt[n] ? `<div class="karte-row"><span>${label}</span><p class="pre">${esc(mt[n])}</p></div>` : '')).join('')
+    : `<p class="small" style="margin:6px 0">${mt.pre_reminded_at ? `${fmtShort(mt.pre_reminded_at)} にお願いを送りました。` : '前日の10時に、コンシェルジュサポートで自動でお願いが届きます。'}</p>
+        ${done ? '' : '<button type="button" class="btn btn-sm btn-sub" data-action="mtg-pre-ask" data-id="' + mt.id + '" data-member="' + mid + '">今すぐお願いを送る</button>'}`}</section>
+    <section class="card"><b>🗒 話すこと（準備メモ・3つまで）</b>
+      <form class="form" data-form="mtg-prep" data-id="${mt.id}"><textarea name="prep_memo" rows="3" maxlength="1000" placeholder="1. 右に出る原因（切り返し）&#10;2. 前回のドリルの確認&#10;3. 次のドリルの予告">${esc(mt.prep_memo || '')}</textarea>
+        <button type="submit" class="btn btn-sm">メモを保存</button></form></section>` : '';
+  return header('面談モード', 'admin/meetings') + `<div class="content wide">
     <div class="card prep-head">
       <div class="grow"><div class="muted small">${fmtShort(mt.scheduled_at)}・${mt.duration_min}分 ${meetingPill(mt)}</div>
         <h2>${memberLink(mid, m?.name)} さん</h2>
         ${'staff_id' in mt ? `<div class="small">対応：<b>${mt.staff_id ? esc(staffName(await staffList(), mt.staff_id)) : '未定'}</b></div>` : ''}
         <div class="muted small">${esc(planLabel(m?.plan))}${prev ? `・前回の面談 ${fmtShort(prev.scheduled_at)}（${days}日前）` : '・前回の面談の記録なし（直近30日を表示）'}</div></div>
       <div class="prep-actions">
-        <button type="button" class="btn btn-sm" data-action="meeting-done" data-id="${mt.id}">${mt.status === 'scheduled' ? '結果を入力' : 'まとめを編集'}</button>
+        ${mt.join_url ? `<a class="btn btn-sm btn-gold" href="${esc(mt.join_url)}" target="_blank" rel="noopener">▶ Zoomを開く</a>` : ''}
+        ${'join_url' in mt ? `<button type="button" class="btn btn-sm btn-sub" data-action="meeting-move" data-id="${mt.id}" data-at="${mt.scheduled_at}" data-min="${mt.duration_min}" data-staff="${esc(mt.staff_id || '')}">${mt.join_url ? '🔗 ' : ''}日時・リンク</button>` : ''}
+        ${modeOn ? '' : `<button type="button" class="btn btn-sm" data-action="meeting-done" data-id="${mt.id}">${mt.status === 'scheduled' ? '結果を入力' : 'まとめを編集'}</button>`}
         <button type="button" class="btn btn-sm btn-sub" data-action="print">印刷</button>
       </div>
     </div>
     <div class="cols"><div class="col-main">
       <section class="card"><b>話すことのヒント</b>
         ${hints.length ? `<ul class="prep-hints">${hints.map(([k, t]) => `<li class="${k}">${esc(t)}</li>`).join('')}</ul>` : '<p class="muted small">特にありません</p>'}</section>
+      ${preCard}
+      ${modeOn ? recordForm : ''}
 
       <div class="section-title"><h2>この期間の動き</h2><span class="muted small">${fmtDate(sinceYmd)} 〜 今日（${days}日間）</span></div>
       <div class="prep-stats">
@@ -4719,6 +4788,7 @@ async function render() {
     state.drillUnread = unreadDrills.count || 0;
     if (r[0] === 'menu') return paint(viewMenu());
     if (r[0] === 'concierge') return paint(await viewConcierge());
+    if (r[0] === 'meeting-pre' && r[1]) return paint(await viewMeetingPre(r[1]));
     if (r[0] === 'celebrations') return paint(await viewCelebrations());
     if (r[0] === 'badges') return paint(await viewBadges());
     if (r[0] === 'submit') {
@@ -5061,6 +5131,20 @@ const actions = {
     if (!(await confirmDialog({ title: `「${el.dataset.text}」と送りますか？`, body: '<p>コンシェルジュサポートに送ります。</p>', ok: '送る' }))) return;
     await must(sb.from('concierge_messages').insert({ member_id: state.profile.id, category: 'quick', body: el.dataset.text }));
     toast('送りました'); render();
+  },
+  'mtg-drill': (el) => {
+    const ta = el.closest('form')?.drills; if (!ta) return;
+    ta.value = ta.value.trim() ? `${ta.value.trim()}\n・${el.dataset.title}` : `・${el.dataset.title}`;
+    ta.dispatchEvent(new Event('input', { bubbles: true }));
+  },
+  'mtg-resum': (el) => {
+    const f = el.closest('form'); f.summary.value = mtgSummary(f); f.summary.dataset.auto = '1';
+  },
+  'mtg-pre-ask': async (el) => {
+    const r = await sb.from('concierge_messages').insert({ member_id: el.dataset.member, from_staff: true, body: 'オンライン面談の前に、事前アンケートへのご回答をお願いします。\nホームの「次回の面談」から3分ほどで答えられます。最新のスイング動画もお送りいただくと、面談でより詳しくお話しできます。' });
+    if (r.error) throw new Error('送れませんでした（コンシェルジュサポートのデータベースの設定を確認してください）');
+    await sb.from('meetings').update({ pre_reminded_at: new Date().toISOString() }).eq('id', el.dataset.id).then(() => {}, () => {});
+    toast('事前アンケートのお願いを送りました'); render();
   },
   'cc-tpl': (el) => {
     const ta = document.getElementById('cc-reply'); const t = CC_TEMPLATES[Number(el.dataset.i)]?.[1] || '';
@@ -5638,6 +5722,37 @@ const forms = {
     toast('送りました'); render();
   },
   'cc-open': async (f) => { if (f.member_id.value) go(`admin/concierge/${f.member_id.value}`); },
+  'meeting-pre': async (f) => {
+    await must(sb.rpc('submit_meeting_pre', { p_meeting: f.dataset.id, p_done: f.pre_done.value.trim(), p_trouble: f.pre_trouble.value.trim(), p_ask: f.pre_ask.value.trim() }));
+    toast('事前アンケートを送りました。面談でお待ちしています'); go('home');
+  },
+  'mtg-prep': async (f) => {
+    await must(sb.from('meetings').update({ prep_memo: f.prep_memo.value.trim() }).eq('id', f.dataset.id));
+    toast('準備メモを保存しました');
+  },
+  'mtg-record': async (f) => {
+    const v = (n) => (f[n]?.value || '').trim();
+    const status = f.querySelector('input[name="mstatus"]:checked')?.value || 'done';
+    const member = f.dataset.member;
+    const mt = await must(sb.from('meetings').select('scheduled_at').eq('id', f.dataset.id).single());
+    if (status !== 'done') {
+      await must(sb.from('meetings').update({ status }).eq('id', f.dataset.id));
+      if (v('memo')) await must(sb.from('staff_notes').insert({ member_id: member, body: `【面談 ${fmtShort(mt.scheduled_at)}】${v('memo')}` }));
+      toast(status === 'no_show' ? '欠席として保存しました' : 'キャンセルとして保存しました'); render(); return;
+    }
+    if (!v('summary')) throw new Error('会員へのまとめを入れてください（①〜⑤を書くと自動で作られます）');
+    await must(sb.from('meetings').update({ status: 'done', summary: v('summary') }).eq('id', f.dataset.id));
+    // 電子カルテに残す（設定前なら担当者メモに残す）
+    const base = { member_id: member, entry_date: today(), kind: 'meeting', content: v('content') || '面談', issues: v('issues'), drills: v('drills'), next_action: v('next_action') || 'なし' };
+    let r = await sb.from('chart_entries').insert({ ...base, changes: v('changes'), pending: v('memo') });
+    if (r.error) r = await sb.from('chart_entries').insert({ ...base, content: [base.content, v('changes') && `よくなった点：${v('changes')}`, v('memo') && `メモ：${v('memo')}`].filter(Boolean).join('\n') });
+    if (r.error) {
+      const txt = [v('content'), v('changes') && `よくなった点：${v('changes')}`, v('issues') && `アドバイス：${v('issues')}`, v('drills') && `ドリル：${v('drills')}`, v('next_action') && `次回：${v('next_action')}`, v('memo') && `メモ：${v('memo')}`].filter(Boolean).join('\n');
+      if (txt) await must(sb.from('staff_notes').insert({ member_id: member, body: `【面談 ${fmtShort(mt.scheduled_at)}】${txt}`.slice(0, 2000) }));
+    }
+    if (f.notify?.checked) await sb.from('concierge_messages').insert({ member_id: member, from_staff: true, body: '本日はオンライン面談ありがとうございました。\nホームの「前回の面談のまとめ」に、今日のポイントと次の練習を載せました。次の動画もお待ちしています。' }).then(() => {}, () => {});
+    toast('面談の記録を保存しました'); render();
+  },
   login: async (f) => {
     unlockAudio();
     // ログインしたら、そのあと必ずオープニング動画を流す（同じ画面で一度ログアウトしてから入り直した場合も）。
@@ -6089,7 +6204,18 @@ document.addEventListener('pointerdown', (ev) => {
 document.addEventListener('contextmenu', (ev) => { if (ev.target.closest(HOLD_STEP.map((a) => `[data-action="${a}"]`).join(','))) ev.preventDefault(); });
 
 let courseTimer;
+document.addEventListener('change', (ev) => {
+  if (ev.target.dataset?.action !== 'mtg-drill-pick' || !ev.target.value) return;
+  const ta = ev.target.form?.drills; if (!ta) return;
+  ta.value = ta.value.trim() ? `${ta.value.trim()}\n・${ev.target.value}` : `・${ev.target.value}`;
+  ev.target.value = ''; ta.dispatchEvent(new Event('input', { bubbles: true }));
+});
 document.addEventListener('input', (ev) => {
+  const mf = ev.target.closest?.('form[data-form="mtg-record"]');
+  if (mf) {
+    if (ev.target.name === 'summary') { mf.summary.dataset.auto = '0'; return; }
+    if (mf.summary.dataset.auto === '1') mf.summary.value = mtgSummary(mf);
+  }
   if (ev.target.dataset.action === 'rm-dates') {
     const p = document.getElementById('rm-dates-preview');
     if (p && ev.target.value) p.textContent = rmDatesText(ev.target.value, Number(ev.target.form?.months?.value) || 12);
