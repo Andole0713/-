@@ -2537,6 +2537,7 @@ function meetLinkRow(v) {
 const joinBox = (m) => `<div class="join-box"><div class="join-h">${icon('video')}<b>${fmtShort(m.scheduled_at)} の面談</b><small>${m.duration_min || 25}分</small></div>
   ${m.join_url ? `<a class="btn btn-gold btn-block join-go" href="${esc(m.join_url)}" target="_blank" rel="noopener">▶ 面談に参加する</a>` : ''}
   ${m.join_info ? `<p class="pre small join-info">${esc(m.join_info)}</p>` : ''}
+  ${m.join_url ? '<p class="join-note">面談の内容は、記録のため Zoom の要約機能を使います（ご希望でなければ面談の始めにお伝えください）。</p>' : ''}
   ${'pre_at' in m ? (m.pre_at ? `<a class="join-pre done" href="#/meeting-pre/${m.id}">✓ 事前アンケートに回答済み（直す）</a>`
     : new Date(m.scheduled_at).getTime() - Date.now() < 8 * DAY ? `<a class="btn btn-sub btn-block join-pre" href="#/meeting-pre/${m.id}">📝 事前アンケートに答える（3分・前日までに）</a>` : '') : ''}</div>`;
 
@@ -3740,6 +3741,9 @@ async function viewMeetingPrep(id) {
         <textarea name="drills" rows="2" maxlength="1000" placeholder="例：トップで止める素振り 10回×毎日"></textarea>
         <label>⑤ 次回までに・次回確認すること <span class="muted">（会員にも伝わる書き方で）</span></label><textarea name="next_action" rows="2" maxlength="1000" placeholder="例：次の動画で、切り返しで下半身から動けているか確認します"></textarea>
         <label>スタッフだけのメモ <span class="muted">（会員には見えません・任意）</span></label><textarea name="memo" rows="2" maxlength="1000" placeholder="例：腰に少し違和感あり。次回も確認"></textarea>
+        <details class="mtg-ai"><summary>Zoomの要約を貼り付ける（任意）</summary>
+          <p class="muted small" style="margin:4px 0">面談のあとに届くZoomの要約（AI Companion）を貼り付けると、カルテに一緒に残ります（会員には見えません）。①〜⑤を書くときの見返しにも使えます。</p>
+          <textarea name="ai" rows="5" maxlength="4000" placeholder="Zoomの要約をここに貼り付け"></textarea></details>
         <div class="between"><label style="margin:0">会員へのまとめ <span class="muted">（①〜⑤から自動で作ります。直してもOK）</span></label><button type="button" class="link inline" data-action="mtg-resum">作り直す</button></div>
         <textarea name="summary" rows="6" maxlength="2000" data-auto="${mt.summary ? '0' : '1'}">${esc(mt.summary || '')}</textarea>
         <label class="chk-line"><input type="checkbox" name="notify" checked> コンシェルジュサポートで「まとめを載せました」と知らせる</label>
@@ -5743,11 +5747,12 @@ const forms = {
     if (!v('summary')) throw new Error('会員へのまとめを入れてください（①〜⑤を書くと自動で作られます）');
     await must(sb.from('meetings').update({ status: 'done', summary: v('summary') }).eq('id', f.dataset.id));
     // 電子カルテに残す（設定前なら担当者メモに残す）
-    const base = { member_id: member, entry_date: today(), kind: 'meeting', content: v('content') || '面談', issues: v('issues'), drills: v('drills'), next_action: v('next_action') || 'なし' };
+    const ai = v('ai');
+    const base = { member_id: member, entry_date: today(), kind: 'meeting', content: `${v('content') || '面談'}${ai ? `\n\n【Zoomの要約】\n${ai}` : ''}`.slice(0, 2000), issues: v('issues'), drills: v('drills'), next_action: v('next_action') || 'なし' };
     let r = await sb.from('chart_entries').insert({ ...base, changes: v('changes'), pending: v('memo') });
     if (r.error) r = await sb.from('chart_entries').insert({ ...base, content: [base.content, v('changes') && `よくなった点：${v('changes')}`, v('memo') && `メモ：${v('memo')}`].filter(Boolean).join('\n') });
     if (r.error) {
-      const txt = [v('content'), v('changes') && `よくなった点：${v('changes')}`, v('issues') && `アドバイス：${v('issues')}`, v('drills') && `ドリル：${v('drills')}`, v('next_action') && `次回：${v('next_action')}`, v('memo') && `メモ：${v('memo')}`].filter(Boolean).join('\n');
+      const txt = [v('content'), ai && `Zoomの要約：${ai}`, v('changes') && `よくなった点：${v('changes')}`, v('issues') && `アドバイス：${v('issues')}`, v('drills') && `ドリル：${v('drills')}`, v('next_action') && `次回：${v('next_action')}`, v('memo') && `メモ：${v('memo')}`].filter(Boolean).join('\n');
       if (txt) await must(sb.from('staff_notes').insert({ member_id: member, body: `【面談 ${fmtShort(mt.scheduled_at)}】${txt}`.slice(0, 2000) }));
     }
     if (f.notify?.checked) await sb.from('concierge_messages').insert({ member_id: member, from_staff: true, body: '本日はオンライン面談ありがとうございました。\nホームの「前回の面談のまとめ」に、今日のポイントと次の練習を載せました。次の動画もお待ちしています。' }).then(() => {}, () => {});

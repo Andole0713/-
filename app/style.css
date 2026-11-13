@@ -2212,3 +2212,6 @@ body.rec-open{overflow:hidden}
 .mtg-pre .karte-row{margin-top:8px}
 .chk-line{display:flex;align-items:center;gap:8px;font-weight:400;font-size:13.5px;margin:10px 0}
 .chk-line input{width:auto;margin:0}
+.join-note{margin:8px 0 0;font-size:11px;color:#b9c2b6;line-height:1.5}
+.mtg-ai{margin:8px 0 4px;border:1px dashed var(--line);border-radius:10px;padding:6px 10px}
+.mtg-ai summary{cursor:pointer;font-weight:700;font-size:13.5px}
