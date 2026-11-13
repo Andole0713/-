@@ -622,7 +622,7 @@ function themeOfMonth(p, rmNow) {
   return manual ? p.theme : (rmNow?.theme || '');
 }
 // ---------- 権利（動画・面談の回数）----------
-// 毎月プランごとの回数が付与され、付与された月から半年後の月末まで使える。使うときは期限が近いものから
+// 毎月プランごとの回数が付与され、付与された月の翌月末まで使える（1か月だけ持ち越し）。使うときは期限が近いものから
 const planCredits = (planId) => (planOf(planId)?.credits ? (state.quotas?.[planId] || planOf(planId).credits) : null);
 const hasMeetingPlan = (planId) => (planCredits(planId)?.meeting || 0) > 0;
 // 権利の一覧を読み込む（自分の分は、今月の分をまだ受け取っていなければ先に受け取る）。設定前（表がない）なら null
@@ -1108,7 +1108,7 @@ async function viewMemberHome() {
       <details class="support-more"><summary>回数・有効期限・予約のしかた</summary>
         ${cr && cr.live.length ? `<p class="small credit-exp">有効期限：${expiryText(cr.live)}（期限が近いものから使われます）</p>` : ''}
         ${exemptN ? `<p class="small quota-free-note">回数外の動画 ${exemptN}本（コーチ側で戻した分）は数えていません。</p>` : ''}
-        ${plan?.credits ? `<p class="muted small">毎月1日に、動画${plan.credits.video}回${plan.credits.meeting ? `・オンライン面談${plan.credits.meeting}回` : ''}の権利が付与されます（付与された月から半年後の月末まで有効）。</p>` : ''}
+        ${plan?.credits ? `<p class="muted small">毎月1日に、動画${plan.credits.video}回${plan.credits.meeting ? `・オンライン面談${plan.credits.meeting}回` : ''}の権利が付与されます。使わなかった分は翌月まで持ち越せます（付与された月の翌月末まで有効）${p.plan === 'YOUCAN' ? '。12か月目の分は13か月目の月末まで使えます' : ''}。</p>` : ''}
         <p class="muted small">面談のご予約はLINEで承ります。日時が決まると「次回の面談」に表示されます。</p>
       </details>
     </div>
@@ -3307,7 +3307,7 @@ async function viewMemberDetail(id, tab) {
       <input id="theme" name="theme" value="${esc(shown)}" maxlength="100" placeholder="例：アドレスと前傾角度を安定させる">
       <p class="muted small" style="margin:2px 0 0">${!rmCur ? 'ロードマップがないため、ここに書いたテーマがホームに出ます。' : 'ロードマップのテーマから書き換えた場合は、その月だけホームに出ます。月が変わると、自動でロードマップのテーマに戻ります。'}</p>`;
       })()}
-      <label for="access_until">利用期限 <span class="muted">（LINE・電話で申し込んだ会員用。カード決済の会員は空欄）</span></label>
+      <label for="access_until">利用期限 <span class="muted">（LINE・電話で申し込んだ会員用。カード決済の会員は空欄。12か月上達プログラムは13か月目の月末に）</span></label>
       <input id="access_until" name="access_until" type="date" value="${esc(m.access_until || '')}">
       ${self ? '' : `<label for="role">権限</label><select id="role" name="role">
         <option value="member" ${m.role === 'member' ? 'selected' : ''}>会員</option>
@@ -5178,7 +5178,7 @@ const actions = {
     toast('支払い済みにしました'); render();
   },
   'credit-grant-month': async (el) => {
-    if (!(await confirmDialog({ title: '今月分の権利を付与しますか？', body: '<p>プランで決まった回数（動画・面談）を今月分として付与します。有効期限は半年後の月末です。</p>', ok: '付与する' }))) return;
+    if (!(await confirmDialog({ title: '今月分の権利を付与しますか？', body: '<p>プランで決まった回数（動画・面談）を今月分として付与します。有効期限は翌月末です。</p>', ok: '付与する' }))) return;
     await must(sb.rpc('admin_grant_month', { p_member: el.dataset.member }));
     toast('今月分の権利を付与しました'); render();
   },
@@ -5186,7 +5186,7 @@ const actions = {
     const label = el.dataset.kind === 'video' ? '動画' : '面談';
     const v = await confirmDialog({
       title: `${label}の権利を1回追加`,
-      body: `<p>都度購入などで追加する分です。有効期限は今月から半年後の月末です。</p>
+      body: `<p>都度購入などで追加する分です。有効期限は翌月末です。</p>
         <div class="form modal-form"><label>メモ <span class="muted">（任意）</span></label><input name="note" maxlength="100" placeholder="例：10/12 LINEで追加購入・振込確認済み"></div>`,
       ok: '追加する',
     });
@@ -5198,7 +5198,7 @@ const actions = {
   'credit-gift': async (el) => {
     const v = await confirmDialog({
       title: '動画1回を無料で付与',
-      body: `<p><b>${esc(el.dataset.name)}</b>さんに、動画を送る権利を1回、無料で付与します。有効期限は今月から半年後の月末です。</p>
+      body: `<p><b>${esc(el.dataset.name)}</b>さんに、動画を送る権利を1回、無料で付与します。有効期限は翌月末です。</p>
         <div class="form modal-form"><label>理由</label>
           <select name="reason">${GIFT_REASONS.map(([l]) => `<option>${esc(l)}</option>`).join('')}</select>
           <label>くわしく <span class="muted">（任意・会員の権利の明細にも表示されます）</span></label>
