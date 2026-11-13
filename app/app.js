@@ -2543,7 +2543,13 @@ const joinBox = (m) => `<div class="join-box"><div class="join-h">${icon('video'
 // ---------- コンシェルジュサポート（会員とスタッフの連絡）----------
 // スイングの質問は受けない（動画の質問欄・面談へ案内する）。会員は用件を選んでから送る
 const CC_CATS = [['meeting', '面談・日程のこと'], ['payment', 'お支払い・手続き'], ['app', 'アプリの使い方'], ['other', 'その他']];
-const CC_QUICK = ['確認しました', '面談に参加できなくなりました', '面談の日程を変更したいです'];
+// 用件ごとの入力例
+const CC_PLACEHOLDER = {
+  meeting: '例：来週の面談の時間を18時に変更できますか？',
+  payment: '例：支払いのカードを変更したいです',
+  app: '例：動画を送るボタンが見つかりません',
+  other: 'ご用件をお書きください',
+};
 const CC_HOURS = '受付時間 11:00〜20:00　1〜2営業日以内にお返事します';
 const CC_TEMPLATES = [
   ['スイングの質問への返信', 'ご質問ありがとうございます。\nスイングや練習のご相談は、次に動画を送るときの「質問」欄に書いていただくと、動画を見ながら詳しくお答えできます。オンライン面談でもお受けしていますので、ぜひご活用ください。'],
@@ -2585,11 +2591,12 @@ async function viewConcierge() {
       <p class="muted small" style="margin:6px 0 0">${CC_HOURS}</p>
     </div>
     <div class="cc-thread">${list.length ? ccThread(list, false) : '<p class="muted small cc-empty">まだやりとりはありません。面談の案内なども、ここに届きます。</p>'}</div>
-    <div class="cc-quick"><span class="muted small">ボタンで返す：</span>${CC_QUICK.map((q) => `<button type="button" class="btn btn-sm btn-sub" data-action="cc-quick" data-text="${esc(q)}">${esc(q)}</button>`).join('')}</div>
     <form class="form card cc-form" data-form="concierge">
-      <fieldset class="cc-cats"><legend>ご用件を選んでください</legend>${CC_CATS.map(([k, l]) => `<label class="chip"><input type="radio" name="category" value="${k}" required><span>${l}</span></label>`).join('')}</fieldset>
-      <label for="cc-body">内容</label><textarea id="cc-body" name="body" rows="4" maxlength="1000" required placeholder="例：来週の面談の時間を18時に変更できますか？"></textarea>
-      <button class="btn-block" type="submit">送る</button>
+      <fieldset class="cc-cats"><legend>ご用件を選んでください</legend>${CC_CATS.map(([k, l]) => `<label class="chip"><input type="radio" name="category" value="${k}" required data-cc-cat><span>${l}</span></label>`).join('')}</fieldset>
+      <div class="cc-compose hidden">
+        <label for="cc-body">内容</label><textarea id="cc-body" name="body" rows="4" maxlength="1000" required></textarea>
+        <button class="btn-block" type="submit">送る</button>
+      </div>
     </form>
   </div>` + memberNav('menu');
 }
@@ -5131,32 +5138,6 @@ const actions = {
     toast('SwingFrame の動画を取り消しました'); render();
   },
   'meeting-tab': (el) => { state.meetingTab = el.dataset.tab; render(); },
-  'cc-quick': async (el) => {
-    if (!(await confirmDialog({ title: `「${el.dataset.text}」と送りますか？`, body: '<p>コンシェルジュサポートに送ります。</p>', ok: '送る' }))) return;
-    await must(sb.from('concierge_messages').insert({ member_id: state.profile.id, category: 'quick', body: el.dataset.text }));
-    toast('送りました'); render();
-  },
-  'mtg-drill': (el) => {
-    const ta = el.closest('form')?.drills; if (!ta) return;
-    ta.value = ta.value.trim() ? `${ta.value.trim()}\n・${el.dataset.title}` : `・${el.dataset.title}`;
-    ta.dispatchEvent(new Event('input', { bubbles: true }));
-  },
-  'mtg-ai-sum': (el) => {
-    const f = el.closest('form'); const ai = f.ai.value.trim();
-    if (!ai) { toast('先に Zoom の要約を貼り付けてください', true); return; }
-    if (f.summary.value.trim() && !confirm('会員へのまとめを、Zoom の要約で置き換えますか？')) return;
-    f.summary.value = ai; f.summary.dataset.auto = '0'; f.summary.focus();
-    toast('まとめの欄に入れました。会員向けに直してから保存してください');
-  },
-  'mtg-resum': (el) => {
-    const f = el.closest('form'); f.summary.value = mtgSummary(f); f.summary.dataset.auto = '1';
-  },
-  'mtg-pre-ask': async (el) => {
-    const r = await sb.from('concierge_messages').insert({ member_id: el.dataset.member, from_staff: true, body: 'オンライン面談の前に、事前アンケートへのご回答をお願いします。\nホームの「次回の面談」から3分ほどで答えられます。最新のスイング動画もお送りいただくと、面談でより詳しくお話しできます。' });
-    if (r.error) throw new Error('送れませんでした（コンシェルジュサポートのデータベースの設定を確認してください）');
-    await sb.from('meetings').update({ pre_reminded_at: new Date().toISOString() }).eq('id', el.dataset.id).then(() => {}, () => {});
-    toast('事前アンケートのお願いを送りました'); render();
-  },
   'cc-tpl': (el) => {
     const ta = document.getElementById('cc-reply'); const t = CC_TEMPLATES[Number(el.dataset.i)]?.[1] || '';
     if (!ta) return; ta.value = ta.value.trim() ? `${ta.value.trim()}\n\n${t}` : t; ta.focus();
@@ -6217,6 +6198,14 @@ document.addEventListener('contextmenu', (ev) => { if (ev.target.closest(HOLD_ST
 
 let courseTimer;
 document.addEventListener('change', (ev) => {
+  // コンシェルジュサポート：用件を選んだら、内容を書く欄を出す
+  if (ev.target.matches?.('[data-cc-cat]')) {
+    const f = ev.target.form; const box = f?.querySelector('.cc-compose'); if (!box) return;
+    const wasHidden = box.classList.contains('hidden');
+    box.classList.remove('hidden'); f.body.placeholder = CC_PLACEHOLDER[ev.target.value] || '';
+    if (wasHidden) setTimeout(() => { f.body.focus(); box.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }, 30);
+    return;
+  }
   if (ev.target.dataset?.action !== 'mtg-drill-pick' || !ev.target.value) return;
   const ta = ev.target.form?.drills; if (!ta) return;
   ta.value = ta.value.trim() ? `${ta.value.trim()}\n・${ev.target.value}` : `・${ev.target.value}`;
