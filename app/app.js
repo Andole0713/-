@@ -450,6 +450,8 @@ function drillFields(prefix, info = false) {
   return `<label for="${prefix}title">ドリル名</label><input id="${prefix}title" name="${prefix}title" maxlength="100" placeholder="例：左足踏み込みドリル">
     <label for="${prefix}desc">説明（任意）</label><textarea id="${prefix}desc" name="${prefix}desc" rows="3" maxlength="1000" placeholder="例：トップで一瞬止めてから、左足を踏み込んで切り返します。10回×2セット"></textarea>
     <label for="${prefix}file">動画ファイル</label><input id="${prefix}file" name="${prefix}file" type="file" accept="video/*">
+    <div class="ed-entry"><button type="button" class="btn-sm btn-sub" data-action="ed-open" data-prefix="${prefix}">🎬 動画を編集して作る</button><span class="muted small">撮った動画にテロップ・線・ナレーション・BGM を入れて、ここに付けます（パソコン向け）</span></div>
+    <p class="ed-status small hidden" id="${prefix}edstatus" aria-live="polite"></p>
     <label for="${prefix}url">または YouTube のリンク</label><input id="${prefix}url" name="${prefix}url" type="url" placeholder="https://youtu.be/...">
     <fieldset class="tag-field"><legend>区分（複数選べます・任意）</legend>${tagChecks(`${prefix}tag`)}</fieldset>
     ${info ? drillInfoInputs(prefix) : ''}
@@ -4715,6 +4717,20 @@ const actions = {
       el.textContent = '🎙 解説動画を作り直す';
     } catch (e) { status.textContent = ''; toast(e.message || '解説動画を保存できませんでした', true); }
     el.disabled = false;
+  },
+  // ドリルの動画を編集して作る（パソコン向けの編集画面）
+  'ed-open': async (el) => {
+    const f = el.closest('form'); const prefix = el.dataset.prefix;
+    let ed;
+    try { ed = await import('./editor.js'); } catch { toast('編集画面を読み込めませんでした。通信を確かめて、もう一度お試しください。', true); return; }
+    if (!ed.canEdit()) { toast('このブラウザでは動画の編集ができません。パソコンの Chrome（最新）でお試しください。', true); return; }
+    const file = await ed.openEditor({ title: f?.[`${prefix}title`]?.value.trim() || '' });
+    if (!file || !f) return;
+    const input = f[`${prefix}file`];
+    try { const dt = new DataTransfer(); dt.items.add(file); input.files = dt.files; } catch { toast('動画を付けられませんでした。編集画面の「パソコンに保存」で保存してから、ファイルを選んでください。', true); return; }
+    if (f[`${prefix}url`]) f[`${prefix}url`].value = '';
+    const st = document.getElementById(`${prefix}edstatus`);
+    if (st) { st.textContent = `✓ 編集した動画（${Math.round(file.size / 1048576 * 10) / 10}MB）を付けました。ドリル名などを入れて保存すると登録されます。`; st.classList.remove('hidden'); }
   },
   'rec-remove': (el) => {
     const box = el.closest('.coach-vid');
