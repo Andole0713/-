@@ -3891,8 +3891,8 @@ const DIAG_TAGS = ['スライス', 'フック', 'プッシュ', '引っかけ', 
   'アプローチ', 'バンカー', 'パター', 'コースマネジメント'];
 const RATINGS = [[3, '👍', '役に立った'], [2, '🙂', 'まあまあ'], [1, '🤔', 'わかりにくい']];
 // 月の料金。売上の見込みの計算だけに使う（面談1回6,000円・添削1本5,500円で計算）。
-// 12か月上達プログラム（YOUCAN）は年66,000円を12か月で割った額
-const PLAN_MONTHLY_YEN = { UME: 11500, TAKE: 17000, MATSU: 23000, KIWAMI: 26000, SUBSCRIPTION: 23000, YOUCAN: 5500 };
+// 12か月上達プログラム（YOUCAN）は年69,800円を12か月で割った額
+const PLAN_MONTHLY_YEN = { UME: 11500, TAKE: 17000, MATSU: 23000, KIWAMI: 26000, SUBSCRIPTION: 23000, YOUCAN: 5817 };
 const optLabel = (key, v) => SURVEY_OPTS[key]?.find(([k]) => k === v)?.[1] || '';
 const monthKey = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
 
