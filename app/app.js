@@ -532,11 +532,13 @@ function fmtShort(iso) {
   const d = new Date(iso);
   return `${d.getMonth() + 1}/${d.getDate()}（${WEEK[d.getDay()]}）${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
-function meetingWhen(iso) {
+function meetingWhen(iso, min = 20) {
   const d = new Date(iso);
-  const hm = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-  return `<b class="when">${d.getMonth() + 1}/${d.getDate()}<small>（${WEEK[d.getDay()]}）</small><em>${hm}</em></b>`;
+  return `<b class="when">${d.getMonth() + 1}/${d.getDate()}<small>（${WEEK[d.getDay()]}）</small><em>${hhmm(d)}〜${hhmm(d.getTime() + min * 60000)}</em></b>`;
 }
+// 時刻（19:00）と、面談の時間帯（11/27（金）19:00〜19:20）。お客様が終わりの時刻も分かるように、面談は必ず「〜終わり」まで出す
+const hhmm = (t) => { const d = new Date(t); return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
+const meetRange = (m) => `${fmtShort(m.scheduled_at)}〜${hhmm(new Date(m.scheduled_at).getTime() + (m.duration_min || 20) * 60000)}`;
 const monthStart = () => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1).toISOString(); };
 // 今月の1日（YYYY-MM-01）。追加本数が有効な月の判定に使う
 // 日付（YYYY-MM-DD）に月を足す。日は28日までにそろえる（どの月にもある日）
@@ -1008,7 +1010,7 @@ function nextAction({ latest, rmNow, practicedToday, cr, pending, tasks, done, n
       ? card('⏳', `期限が近い回数があります（${kinds}）`, `${expiryText(soon)}。期限を過ぎると使えなくなります`, SWINGFRAME_URL, '撮影する', 'video')
       : card('⏳', `期限が近い回数があります（${kinds}）`, `${expiryText(soon)}。期限を過ぎると使えなくなります`, BOOKING_URL, '面談を予約する', 'meeting', true);
   }
-  if (preTodo && new Date(nextMeet.scheduled_at).getTime() - Date.now() < 8 * DAY) return card('📝', `${esc(fmtShort(nextMeet.scheduled_at))} の面談の事前アンケート`, '3分ほどで終わります。前日までにお答えください', `#/meeting-pre/${nextMeet.id}`, '答える', 'meeting');
+  if (preTodo && new Date(nextMeet.scheduled_at).getTime() - Date.now() < 8 * DAY) return card('📝', `${esc(meetRange(nextMeet))} の面談の事前アンケート`, '3分ほどで終わります。前日までにお答えください', `#/meeting-pre/${nextMeet.id}`, '答える', 'meeting');
   if (cr && left > 0 && !pending.length) return card('●', `動画をあと ${left} 回 送れます`, rmNow ? 'ドリルに取り組んだスイングを撮って、コーチに見てもらいましょう' : '撮影して、そのままコーチに送れます', SWINGFRAME_URL, '撮影する', 'video');
   if (rmNow && !practicedToday) return card('✓', '今日の練習を記録しましょう', `今月のドリル：${esc(rmNow.drills?.title || rmNow.theme || '')}`, '#/drills', '記録する', 'drill');
   if (tasks.length && done < tasks.length) return card('☐', `コーチからの課題があと ${tasks.length - done} 件あります`, '下の「今月の練習」で、終わったらタップしてチェック', '', '', 'lesson');
@@ -1190,7 +1192,7 @@ async function viewMemberHome() {
         ${cr && cr.live.length ? `<p class="small credit-exp">有効期限：${expiryText(cr.live)}（期限が近いものから使われます）</p>` : ''}
         ${exemptN ? `<p class="small quota-free-note">回数外の動画 ${exemptN}本（コーチ側で戻した分）は数えていません。</p>` : ''}
         ${plan?.credits ? `<p class="muted small">毎月1日に、動画${plan.credits.video}回${plan.credits.meeting ? `・オンライン面談${plan.credits.meeting}回` : ''}の回数が付与されます。使わなかった分は翌月まで持ち越せます（付与された月の翌月末まで有効）${p.plan === 'YOUCAN' ? '。12か月目の分は13か月目の月末まで使えます' : ''}。</p>` : ''}
-        <p class="muted small">面談のご予約は、上の「面談を予約する」から（LINEの予約と同じhacomonoの画面です）。オンライン面談はZoomで20分、開始は55分です（例：18:55〜19:15）。日時が決まると「次回の面談」に表示されます。</p>
+        <p class="muted small">面談のご予約は、上の「面談を予約する」から（LINEの予約と同じhacomonoの画面です）。オンライン面談はZoomで20分、毎時00分に始まります（例：19:00〜19:20）。終わりの時刻もご確認ください。日時が決まると「次回の面談」に表示されます。</p>
         <p class="muted small">回数を使い切ったときは追加できます（面談1回6,000円・動画添削1回5,500円）。ご希望は<a href="#/concierge">コンシェルジュサポート</a>へ。</p>
         <p class="small">${zoomHelpLink()}</p>
       </details>
@@ -2393,7 +2395,7 @@ function viewGuide() {
       <h2>オンライン面談で相談する <small>Zoom（ビデオ通話アプリ）で、コーチと20分直接話せます</small></h2>
       <ol>
         <li>下のボタンか、マイページの「<b>面談を予約する</b>」から予約します（LINEの予約と同じhacomonoの画面が開きます）</li>
-        <li>面談は55分に始まります（例：18:55〜19:15）。日時が決まると、マイページの「次回の面談」に表示されます</li>
+        <li>面談は毎時00分に始まり、20分で終わります（例：19:00〜19:20）。日時が決まると、マイページの「次回の面談」に、終わりの時刻まで表示されます</li>
         <li>面談の10分前になると、マイページのいちばん上に「<b>▶ 面談に参加する</b>」が出ます</li>
         <li>面談のまとめは、メニューの「面談のまとめ」で見返せます</li>
       </ol>
@@ -2562,19 +2564,19 @@ const daysAgo = (iso) => Math.floor((Date.now() - new Date(iso).getTime()) / DAY
 const isoDaysFrom = (n) => new Date(Date.now() + n * DAY).toISOString();
 const monthStartIso = () => monthStart();
 const MEETING_STATUS = { scheduled: ['予定', ''], done: ['完了', 'ok'], no_show: ['欠席', 'warn'], canceled: ['キャンセル', 'mute'] };
-// オンライン面談：1回20分、:55 に始める（例：18:55〜19:15。:50〜:55 は前の記録の時間）。1人のプロ・コーチは1時間に1件まで
+// オンライン面談：1回20分、毎時00分に始める（例：19:00〜19:20）。1人のプロ・コーチは1時間の枠に1件まで（もう1枠は店舗のレッスン）
 const MEETING_MIN = 20;
 // 結果の入力待ち：始まる時刻＋面談の長さを過ぎても「予定」のまま（ダッシュボード・面談・メニューの件数で同じ決まり）
 const isLateMeeting = (m, now = Date.now()) => m.status === 'scheduled' && new Date(m.scheduled_at).getTime() + (m.duration_min || MEETING_MIN) * 60000 < now;
-// 次の「:55」の枠。日付と時刻（端末の時刻）を返す
+// 次の「:00」の枠。日付と時刻（端末の時刻）を返す
 function nextMeetingSlot(from = Date.now()) {
   const d = new Date(from + 5 * 60000);
   d.setSeconds(0, 0);
-  if (d.getMinutes() > 55) d.setHours(d.getHours() + 1);
-  d.setMinutes(55);
+  if (d.getMinutes() > 0) d.setHours(d.getHours() + 1);
+  d.setMinutes(0);
   return splitLocal(d.toISOString());
 }
-// 同じプロ・コーチの、同じ1時間の枠（:50〜次の:50）にある面談
+// 同じプロ・コーチの、同じ1時間の枠（:00〜次の:00）にある面談。以前の :55 開始の面談は、次の時間の枠として数える
 const meetingHourKey = (iso) => { const d = new Date(new Date(iso).getTime() + 10 * 60000); return `${d.toDateString()} ${d.getHours()}`; };
 async function meetingClash(staffId, iso, exceptId = null) {
   if (!staffId) return [];
@@ -2592,7 +2594,7 @@ async function confirmClash(staffId, iso, exceptId, staff) {
   return confirmDialog({
     title: '同じ時間に別の面談があります',
     body: `<p><b>${esc(staffName(staff, staffId))}</b>さんは、同じ1時間の枠に別の面談が入っています。オンライン面談は、1人のプロ・コーチにつき1時間に1件までです。</p>
-      <ul class="small">${clash.map((m) => `<li>${fmtShort(m.scheduled_at)}〜（${m.duration_min || MEETING_MIN}分）${esc(m.profiles?.name || '')}さん</li>`).join('')}</ul>
+      <ul class="small">${clash.map((m) => `<li>${meetRange(m)}（${m.duration_min || MEETING_MIN}分）${esc(m.profiles?.name || '')}さん</li>`).join('')}</ul>
       <p class="small">このまま登録しますか？（2人で対応するときなど）</p>`,
     ok: '登録する',
   });
@@ -2704,13 +2706,13 @@ const joinNow = (m) => {
   const url = joinUrl(m);
   const started = Date.now() >= new Date(m.scheduled_at).getTime();
   return `<div class="next-action join-now cat-meeting"><span class="na-ico" aria-hidden="true">${icon('video')}</span>
-    <span class="na-body"><span class="na-eyebrow">${started ? '面談の時間です' : 'まもなく面談です'}</span><b>${fmtShort(m.scheduled_at)} からのオンライン面談（${m.duration_min || MEET_MIN}分）</b>
+    <span class="na-body"><span class="na-eyebrow">${started ? '面談の時間です' : 'まもなく面談です'}</span><b>${meetRange(m)} のオンライン面談（${m.duration_min || MEET_MIN}分）</b>
       ${url ? '' : `<small>参加のリンクがまだ表示されていません。お手数ですが、<a href="#/concierge">コンシェルジュサポート</a>かお電話（<a href="tel:${esc(CONTACT.tel)}">${esc(CONTACT.telDisplay)}</a>）でお知らせください。</small>`}</span>
     ${url ? `<a class="btn btn-gold btn-block join-go join-big" href="${esc(url)}" target="_blank" rel="noopener">▶ 面談に参加する</a>` : ''}
     ${m.join_info ? `<p class="pre small join-info">${esc(m.join_info)}</p>` : ''}
     ${zoomHelpLink()}</div>`;
 };
-const joinBox = (m) => `<div class="join-box"><div class="join-h">${icon('video')}<b>${fmtShort(m.scheduled_at)} の面談</b><small>${m.duration_min || MEET_MIN}分</small></div>
+const joinBox = (m) => `<div class="join-box"><div class="join-h">${icon('video')}<b>${meetRange(m)} の面談</b><small>${m.duration_min || MEET_MIN}分</small></div>
   ${joinUrl(m) ? `<a class="btn btn-gold btn-block join-go" href="${esc(joinUrl(m))}" target="_blank" rel="noopener">▶ 面談に参加する</a>` : ''}
   ${m.join_info ? `<p class="pre small join-info">${esc(m.join_info)}</p>` : ''}
   ${'pre_at' in m ? (m.pre_at ? `<a class="join-pre done" href="#/meeting-pre/${m.id}">✓ 事前アンケートに回答済み（直す）</a>`
@@ -3106,7 +3108,7 @@ async function viewDashboard() {
       claimBadge(x, staff), claimButton(x))), '', '', 'watch')] : []),
     section('面談：結果の入力待ち', '!', lateMeetings.map((m) => row(`${memberLink(m.member_id, m.profiles?.name)}`, `${fmtShort(m.scheduled_at)} の面談`,
       `<a class="btn btn-sm" href="#/admin/prep/${m.id}">結果を入力</a>`)), '入力待ちの面談はありません'),
-    section(mine ? '自分が対応する面談（7日）' : '今後7日の面談', '◷', upcoming.map((m) => row(`<b>${fmtShort(m.scheduled_at)}</b>　${memberLink(m.member_id, m.profiles?.name)}`, `${m.duration_min}分${todayMeetings.includes(m) ? '・<b class="today">今日</b>' : ''}${'staff_id' in m ? `・${m.staff_id ? `対応：${esc(staffName(staff, m.staff_id))}` : '<b class="late">対応者未定</b>'}` : ''}`,
+    section(mine ? '自分が対応する面談（7日）' : '今後7日の面談', '◷', upcoming.map((m) => row(`<b>${meetRange(m)}</b>　${memberLink(m.member_id, m.profiles?.name)}`, `${m.duration_min}分${todayMeetings.includes(m) ? '・<b class="today">今日</b>' : ''}${'staff_id' in m ? `・${m.staff_id ? `対応：${esc(staffName(staff, m.staff_id))}` : '<b class="late">対応者未定</b>'}` : ''}`,
       `<a class="btn btn-sm btn-sub" href="#/admin/prep/${m.id}">面談モード</a>`)), '予定はありません', '<a class="dash-more" href="#/admin/meetings">面談管理 ›</a>', 'info'),
     ...(unpaid.length ? [section('面談：都度払いの未払い', '¥', unpaid.map((m) => row(memberLink(m.member_id, m.profiles?.name), `${fmtShort(m.scheduled_at)} の面談`,
       `<button type="button" class="btn btn-sm" data-action="meeting-paid" data-id="${m.id}">支払い済みにする</button>`)), '')] : []),
@@ -3222,7 +3224,7 @@ async function viewMeetings() {
          <button type="button" class="btn btn-sm btn-sub" data-action="meeting-status" data-id="${m.id}" data-status="canceled">キャンセル</button>`
       : `<a class="btn btn-sm btn-sub" href="#/admin/prep/${m.id}/rec">記録を見る・直す</a>`;
     return `${head}<div class="card meeting-row">
-      <div class="mt-time"><b>${t}</b><small>${m.duration_min}分</small></div>
+      <div class="mt-time"><b>${t}</b><small>〜${hhmm(new Date(m.scheduled_at).getTime() + (m.duration_min || MEETING_MIN) * 60000)}（${m.duration_min}分）</small></div>
       <div class="grow"><div>${memberLink(m.member_id, m.profiles?.name)} ${meetingPill(m)}${m.status === 'scheduled' && 'pre_at' in m ? (m.pre_at ? ' <span class="pill ok">事前アンケート✓</span>' : ' <span class="pill mute">事前アンケート未</span>') : ''}${staffOn ? ` <span class="claim ${m.staff_id ? (m.staff_id === state.profile.id ? 'mine' : 'other') : 'none'}">${m.staff_id ? `対応：${m.staff_id === state.profile.id ? 'あなた' : esc(staffName(staff, m.staff_id))}` : '対応者未定'}</span>` : ''}</div>
         ${m.summary ? `<p class="mt-sum">${esc(m.summary)}</p>` : ''}
         <div class="mt-actions">${actions}</div></div>
@@ -3234,7 +3236,7 @@ async function viewMeetings() {
       <div class="filter-chips" role="group" aria-label="表示する面談">${tabBtn('upcoming', 'これから', upcoming.length)}${tabBtn('late', '結果入力待ち', late.length)}${tabBtn('past', '過去', 0)}</div>
       <span class="row" style="gap:8px">${staffOn || mineOnly() ? mineToggle() : ''}<a class="btn btn-sm btn-sub" href="#/admin/member/${state.profile.id}/info">⚙ 自分のZoom</a><button type="button" class="btn btn-gold btn-sm" data-action="meeting-add">＋ hacomonoの予約を登録</button></span>
     </div>
-    <p class="muted small">面談の予約は、会員がhacomono（LINE）から入れます。hacomonoに入った予約を、ここに登録してください。登録すると会員の「次回の面談」に表示され、前日にお知らせメールが届きます（メール設定後）。オンライン面談は1回20分・:55開始（例：18:55〜19:15）で、1人のプロ・コーチにつき1時間に1件までです。</p>
+    <p class="muted small">面談の予約は、会員がhacomono（LINE）から入れます。hacomonoに入った予約を、ここに登録してください。登録すると会員の「次回の面談」に表示され、前日にお知らせメールが届きます（メール設定後）。オンライン面談は1回20分・毎時00分開始（例：19:00〜19:20）で、1人のプロ・コーチにつき1時間の枠に1件までです（もう1枠は店舗のレッスン）。終わりの時刻を守れるよう、時間に気をつけてください。</p>
     ${rows ? `<div class="meeting-list">${rows}</div>` : `<div class="empty">${tab === 'late' ? '結果の入力待ちはありません 🎉' : tab === 'past' ? '過去の面談はまだありません' : 'これからの面談はありません'}</div>`}
   </div>` + adminNav('admin/meetings');
 }
@@ -3720,7 +3722,7 @@ async function viewMemberDetail(id, tab) {
   const recentMt = mMeetings.filter((x) => x !== nextMt).slice(0, 10);
   const paneMeeting = `<div class="section-title" style="margin-top:0"><h2>面談</h2><button type="button" class="btn btn-sm" data-action="meeting-add" data-member="${m.id}">＋ hacomonoの予約を登録</button></div>
     <div class="card">
-      ${nextMt ? `<div class="next-meeting"><span>次回</span><b>${fmtShort(nextMt.scheduled_at)}</b><small>${nextMt.duration_min}分</small>
+      ${nextMt ? `<div class="next-meeting"><span>次回</span><b>${meetRange(nextMt)}</b><small>${nextMt.duration_min}分</small>
           <a class="btn btn-sm btn-gold" href="#/admin/prep/${nextMt.id}">面談モード</a>
           <button type="button" class="btn btn-sm btn-sub" data-action="meeting-move" data-id="${nextMt.id}" data-at="${nextMt.scheduled_at}" data-min="${nextMt.duration_min}" data-staff="${esc(nextMt.staff_id || '')}">${nextMt.join_url ? '🔗 ' : ''}日時・リンク</button></div>`
         : '<p class="muted small" style="margin:0">次回の面談は入っていません。会員がhacomono（LINE）で予約したら、「＋ hacomonoの予約を登録」から登録します。</p>'}
@@ -4061,7 +4063,7 @@ async function viewMeetingHistory() {
     ${list.length > 1 ? `<div class="mh-tabs" role="tablist" aria-label="面談の日付">${list.map((m, i) => `<button type="button" role="tab" class="mh-tab${i === 0 ? ' on' : ''}" aria-selected="${i === 0}" data-action="mh-go" data-i="${i}">${short(m.scheduled_at)}${i === 0 ? '<small>最新</small>' : ''}</button>`).join('')}</div>` : ''}
     ${list.map((m, i) => `<article class="card mh-panel" data-i="${i}"${i === 0 ? '' : ' hidden'}>
       <div class="mh-head"><span class="pill ok">完了</span><span class="muted small">${i + 1} / ${list.length}</span></div>
-      <h2 class="mh-date">${day(m.scheduled_at)}<small>${hm(m.scheduled_at)}〜（${m.duration_min || MEET_MIN}分）</small></h2>
+      <h2 class="mh-date">${day(m.scheduled_at)}<small>${hm(m.scheduled_at)}〜${hhmm(new Date(m.scheduled_at).getTime() + (m.duration_min || MEET_MIN) * 60000)}（${m.duration_min || MEET_MIN}分）</small></h2>
       ${names.get(m.staff_id) ? `<p class="small mh-coach">担当：${esc(names.get(m.staff_id))}</p>` : ''}
       <div class="mh-sum"><b>面談のまとめ</b><p class="pre">${esc(m.summary)}</p></div>
       ${list.length > 1 ? `<div class="mh-pager">
@@ -4080,7 +4082,7 @@ async function viewMeetingPre(id) {
   if (!mt || !('pre_at' in mt)) return header('事前アンケート', 'home') + '<div class="content"><div class="empty">このアンケートは開けません</div></div>' + memberNav('home');
   if (mt.status !== 'scheduled') return header('事前アンケート', 'home') + '<div class="content"><div class="empty">この面談は終わっています</div></div>' + memberNav('home');
   return header('面談の事前アンケート', 'home') + `<div class="content">
-    <div class="card"><b>${fmtShort(mt.scheduled_at)} のオンライン面談</b>
+    <div class="card"><b>${meetRange(mt)} のオンライン面談</b>
       <p class="small" style="margin:6px 0 0">面談の前日までにお答えください。プロが事前に読んで準備するので、当日は短い時間でも、あなたに合ったアドバイスができます。</p></div>
     <form class="form card" data-form="meeting-pre" data-id="${mt.id}">
       ${PRE_QS.map(([n, label, ph]) => `<label for="${n}">${label}</label><textarea id="${n}" name="${n}" rows="3" maxlength="600" placeholder="${ph}">${esc(mt[n] || '')}</textarea>`).join('')}
@@ -4202,7 +4204,7 @@ async function viewMeetingPrep(id) {
         <button type="submit" class="btn btn-sm">メモを保存</button></form></section>` : '';
   return header('面談モード', 'admin/meetings') + `<div class="content wide">
     <div class="card prep-head">
-      <div class="grow"><div class="muted small">${fmtShort(mt.scheduled_at)}・${mt.duration_min}分 ${meetingPill(mt)}</div>
+      <div class="grow"><div class="muted small">${meetRange(mt)}・${mt.duration_min}分（終わりの時刻を守ってください） ${meetingPill(mt)}</div>
         <h2>${memberLink(mid, m?.name)} さん</h2>
         ${'staff_id' in mt ? `<div class="small">対応：<b>${mt.staff_id ? esc(staffName(await staffList(), mt.staff_id)) : '未定'}</b></div>` : ''}
         <div class="muted small">${esc(planLabel(m?.plan))}${prev ? `・前回の面談 ${fmtShort(prev.scheduled_at)}（${days}日前）` : '・前回の面談の記録なし（直近30日を表示）'}</div></div>
@@ -5728,7 +5730,7 @@ const actions = {
     if (!ta) return; ta.value = ta.value.trim() ? `${ta.value.trim()}\n\n${t}` : t; ta.focus();
   },
   'meeting-add': async (el) => {
-    // 初期値：次の「:55」の枠・20分（hacomono の予約に合わせて直す）
+    // 初期値：次の「:00」の枠・20分（hacomono の予約に合わせて直す）
     const [d, t] = nextMeetingSlot();
     const [staffOn, staff, linkOn, zoom] = await Promise.all([meetingStaffOn(), staffList(), meetingLinkOn(), staffZoom()]);
     const myZoom = zoom.get(state.profile.id);
@@ -5739,7 +5741,7 @@ const actions = {
         <input type="search" class="member-search" data-member-search placeholder="名前・メールで検索" aria-label="会員を名前・メールで検索" autocomplete="off">
         <select name="member_id" required>${await meetingMemberOptions(el.dataset.member)}</select>
         <div class="grid"><div><label>日付</label><input name="date" type="date" value="${d}" required></div>
-          <div><label>開始時刻 <span class="muted">（:55 開始）</span></label><input name="time" type="time" value="${t}" step="300" required></div></div>
+          <div><label>開始時刻 <span class="muted">（:00 開始・20分）</span></label><input name="time" type="time" value="${t}" step="300" required></div></div>
         <label>時間（分）</label><input name="duration_min" type="number" min="5" max="180" value="${MEETING_MIN}" required>
         ${staffOn ? `<label>対応するプロ・コーチ</label><select name="staff_id" data-zoom-staff>${staffOptions(staff, state.profile.id)}</select>` : ''}
         <label>支払い方法</label>
