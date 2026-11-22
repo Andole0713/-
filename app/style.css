@@ -2218,3 +2218,61 @@ body.rec-open{overflow:hidden}
 .mtg-rec .mtg-ai{margin:10px 0 6px;border:1px solid color-mix(in srgb,#2d8cff 35%,#fff);background:color-mix(in srgb,#2d8cff 5%,#fff);border-radius:10px;padding:8px 10px}
 .mtg-ai textarea{margin:0}
 .mtg-ai-btns{margin-top:6px}.mtg-ai-btns .btn{margin:0}
+
+/* ===== 会員：面談の予約（hacomono）・参加・まとめ ===== */
+.book-box{margin:0}
+.book-go{display:flex;align-items:center;justify-content:center;gap:8px;margin-top:0}
+.book-go svg{width:20px;height:20px;flex:none}
+.book-note{margin:6px 0 0;line-height:1.55}
+.meeting-book .book-box{margin:0}
+.cc-guide .book-box{margin:8px 0 0}
+.guide-step .book-box{margin-top:10px}
+/* 面談の10分前〜終わるまで：ホームのいちばん上に大きく出す */
+.next-action.join-now{flex-wrap:wrap;border-width:2px;border-left-width:6px}
+.next-action.join-now .na-body small{white-space:normal}
+.next-action.join-now .join-big{flex:1 0 100%;margin:4px 0 0;min-height:56px;font-size:17px;display:flex;align-items:center;justify-content:center}
+.next-action.join-now .join-info{flex:1 0 100%;margin:0;color:var(--text);background:var(--paper-2)}
+.next-action.join-now .zoom-help{flex:1 0 100%;color:var(--muted)}
+.zoom-help{display:inline-flex;align-items:center;min-height:44px;font-size:13px}
+.join-box .zoom-help{color:#e2cc9a;justify-content:center;width:100%}
+.lm-all{display:inline-flex;align-items:center;min-height:44px;font-size:13px;font-weight:700;text-decoration:none}
+.support > .sup-opt{grid-column:span 2}
+.support > .sup-opt b.none{font-size:15px;line-height:1.4}
+.sup-opt-note{margin:10px 0 0;color:var(--muted)}
+.mh-tabs{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 12px}
+.mh-tab{min-height:44px;padding:6px 14px;border-radius:999px;background:var(--paper-2);color:var(--text);font-weight:700;box-shadow:inset 0 0 0 1px var(--line)}
+.mh-tab small{display:block;font-size:10.5px;font-weight:700;color:var(--muted);letter-spacing:0;line-height:1.1}
+.mh-tab.on{background:var(--ink);color:var(--gold-2)}
+.mh-tab.on small{color:var(--gold-2)}
+.mh-head{display:flex;justify-content:space-between;align-items:center}
+.mh-date{margin:8px 0 2px;font-size:18px;line-height:1.4}
+.mh-date small{display:block;font-size:13px;color:var(--muted);font-weight:400}
+.mh-coach{margin:0 0 6px;color:var(--muted)}
+.mh-sum{margin-top:10px;background:var(--paper);border-radius:12px;padding:10px 12px}
+.mh-sum p{margin:6px 0 0;font-size:14.5px;line-height:1.75;word-break:break-word}
+.mh-pager{display:flex;justify-content:space-between;gap:8px;margin-top:12px}
+.mh-pager .btn{margin:0;min-height:44px;flex:1}
+.mh-book b{display:block;margin-bottom:8px}
+/* コンシェルジュ：用件を選ぶ前のひとこと */
+.cc-hint{margin:0 0 8px;font-size:13.5px;font-weight:700;color:var(--c-meeting)}
+/* 送れる回数がないとき・送信の失敗 */
+.limit-price{font-size:16px;font-weight:800;color:var(--ink)}
+#upload-error{margin:10px 0 0;line-height:1.6}
+/* ヘルプ：問い合わせ先の目安 */
+.help-ask-list{list-style:none;margin:8px 0 0;padding:0}
+.help-ask-list li{padding:6px 0;border-top:1px solid var(--line);font-size:13.5px;line-height:1.6}
+.help-ask-list li b{display:block}
+.help-ask-list li a{display:inline-flex;align-items:center;min-height:44px}
+.help-ask-list li span{color:var(--muted)}
+.menu-rule{margin:18px 0 0;line-height:1.7}
+.zoom-note .btn{margin-top:10px}
+/* はじめの一歩：まだ開いていない人は、ホームの上のほうに */
+.fs-top .first-steps{margin-top:0}
+
+/* ===== 会員：小さなリンク・ボタンも押しやすく（見た目はほぼそのまま、押せる範囲を44px前後に広げる） ===== */
+.top .back{display:inline-flex;align-items:center;justify-content:center;min-width:44px;min-height:44px;margin-left:-8px}
+.fs-close{width:44px;height:44px;top:4px;right:4px}
+.hh-badge,.home-memo .between a,.mp-h a,.wd-more,.section-title > a:not(.btn),.cc-note a{position:relative}
+.hh-badge::after,.home-memo .between a::after,.mp-h a::after,.wd-more::after,.section-title > a:not(.btn)::after,.cc-note a::after{content:"";position:absolute;left:-6px;right:-6px;top:50%;height:44px;transform:translateY(-50%)}
+.legal-links.in-app{gap:0 12px}
+.legal-links.in-app a{display:inline-flex;align-items:center;min-height:44px;padding:0 2px}
