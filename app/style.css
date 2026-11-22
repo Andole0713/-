@@ -2303,3 +2303,6 @@ body.rec-open{overflow:hidden}
 .partner-tbl td { vertical-align: middle; }
 .partner-tbl .st-link { word-break: break-all; font-size: 12px; }
 .row-form { display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); align-items: end; }
+
+/* コンシェルジュ：会員の検索 */
+.cc-pick .member-search { margin-bottom: 8px; width: 100%; }
