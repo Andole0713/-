@@ -59,7 +59,7 @@ Deno.serve(async (req) => {
         subject: "明日はオンライン面談の日です",
         lines: [
           "明日はオンライン面談の日です。",
-          `日時：${jstWhen(m.scheduled_at)}〜（${m.duration_min || 20}分）`,
+          `日時：${jstWhen(m.scheduled_at)}〜${new Intl.DateTimeFormat("ja-JP", { timeZone: "Asia/Tokyo", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(new Date(m.scheduled_at).getTime() + (m.duration_min || 20) * 60000))}（${m.duration_min || 20}分）`,
           ...(m.join_url ? [`参加リンク（Zoom）：${m.join_url}`] : []),
           ...info,
           ...(m.join_url ? ["開始5分前から入室できます。"] : ["参加の方法は、会員ページの「次回の面談」をご確認ください。"]),
