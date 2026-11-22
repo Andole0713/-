@@ -37,6 +37,28 @@ Deno.serve(async (req) => {
     }
 
     const customer = await ensureStripeCustomer(user);
+
+    // 二重の契約を防ぐ：Stripe 上に終わっていない契約（支払い未完了・一時停止なども含む）があれば作らない
+    const subs = await stripe.subscriptions.list({ customer, status: "all", limit: 100 });
+    const open = subs.data.filter((s) => !["canceled", "incomplete_expired"].includes(s.status));
+    if (open.length) {
+      const pending = open.every((s) => s.status === "incomplete");
+      return json(req, {
+        error: pending
+          ? "前回のお申し込みのお支払いが完了していません。しばらくしてから、もう一度お試しください"
+          : "すでに契約中です。プラン変更は「契約・お支払い」から行ってください",
+      }, 409);
+    }
+    // 開いたままの決済ページ（別のタブ・前回の操作）は無効にしてから作り直す（両方で支払われないように）
+    const sessions = await stripe.checkout.sessions.list({ customer, status: "open", limit: 100 });
+    for (const s of sessions.data) {
+      try {
+        await stripe.checkout.sessions.expire(s.id);
+      } catch (e) {
+        console.warn("決済ページを無効にできませんでした", s.id, e);
+      }
+    }
+
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
       customer,

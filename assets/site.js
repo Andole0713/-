@@ -52,6 +52,8 @@ onScroll();
   const from = (new URLSearchParams(location.search).get('from') || '').toLowerCase().replace(/[^a-z0-9_-]/g, '').slice(0, 40);
   // はじめて来たときのきっかけを残す（会員登録したときに、アプリがこれを記録する）
   if (from && !safe(() => localStorage.getItem('atg-from'))) safe(() => localStorage.setItem('atg-from', JSON.stringify({ source: from, ts: Date.now() })));
+  // 文武遊ちゃんねるの演者の専用リンク（?from=bunbu-コード）：アンケートでその演者を最初から選んだ状態にするため、最後に来たリンクを残す
+  if (from.startsWith('bunbu-') && from.length > 6) safe(() => localStorage.setItem('atg-partner', JSON.stringify({ code: from.slice(6), ts: Date.now() })));
   const source = from || safe(() => JSON.parse(localStorage.getItem('atg-from') || 'null')?.source) || '';
   let cfg = null;
   const send = async (kind) => {
