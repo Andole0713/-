@@ -65,7 +65,7 @@ function toast(msg, bad = false) {
 }
 
 // 確認画面（「変更する」を押すと true、「キャンセル」・背景・Esc で false）
-function confirmDialog({ title, body, ok = '変更する', onOpen }) {
+function confirmDialog({ title, body, ok = '変更する', cancel = 'キャンセル', onOpen }) {
   return new Promise((resolve) => {
     const prev = document.activeElement;
     const wrap = document.createElement('div');
@@ -74,7 +74,7 @@ function confirmDialog({ title, body, ok = '変更する', onOpen }) {
       <h2 id="modal-title">${esc(title)}</h2>
       <div class="modal-body">${body}</div>
       <div class="modal-actions">
-        <button type="button" class="btn-sub" data-modal="cancel">キャンセル</button>
+        <button type="button" class="btn-sub" data-modal="cancel">${esc(cancel)}</button>
         <button type="button" class="btn-gold" data-modal="ok">${esc(ok)}</button>
       </div></div>`;
     const close = (result) => {
@@ -740,12 +740,24 @@ const memberNav = (active) => nav([['home', 'home', 'ホーム', 0, 'home'], ['s
 // 契約前の会員（プランを選ぶ前）のメニュー
 const guestNav = (active) => nav([['plans', 'card', 'プラン', 0, 'menu'], ['help', 'help', 'はじめての方へ', 0, 'help'], ['account', 'user', 'アカウント', 0, 'menu']], active);
 const newBadge = (l) => (l.read_at ? '' : '<span class="new-badge">NEW</span>');
-const adminNav = (active) => nav([['admin/dashboard', 'gauge', 'やること', state.adminTodo, 'home'], ['admin/inbox', 'inbox', '提出動画', state.adminPending, 'video'], ['admin/meetings', 'calendar', '面談', state.adminMeetingTodo, 'meeting'], ['admin/members', 'users', '会員一覧', 0, 'member'], ['admin/drills', 'target', 'ドリル集', 0, 'drill'], ['admin/stats', 'chart', '統計', 0, 'score'], ['account', 'user', 'アカウント', 0, 'menu']], active);
+const adminNav = (active) => nav([['admin/dashboard', 'gauge', 'やること', state.adminTodo, 'home'], ['admin/inbox', 'inbox', '提出動画', state.adminPending, 'video'], ['admin/meetings', 'calendar', '面談', state.adminMeetingTodo, 'meeting'], ['admin/concierge', 'chat', 'コンシェルジュ', state.adminCcWait, 'meeting'], ['admin/members', 'users', '会員一覧', 0, 'member'], ['admin/drills', 'target', 'ドリル集', 0, 'drill'], ['admin/stats', 'chart', '統計', 0, 'score'], ['account', 'user', 'アカウント', 0, 'menu']], active);
 
 async function must(promise) {
   const { data, error } = await promise;
   if (error) throw error;
   return data;
+}
+// Supabase は1回に1000件までしか返さないため、1000件ずつ続けて取る（make は毎回新しい問い合わせを作る関数）
+// 返り値は { data, error } なので、must() や .then((r) => …) にそのまま渡せる
+async function fetchAll(make, { page = 1000, max = 200000 } = {}) {
+  const out = [];
+  for (let from = 0; from < max; from += page) {
+    const { data, error } = await make().range(from, from + page - 1);
+    if (error) return { data: null, error };
+    out.push(...(data || []));
+    if (!data || data.length < page) break;
+  }
+  return { data: out, error: null };
 }
 
 async function loadProfile() {
@@ -2550,8 +2562,43 @@ const daysAgo = (iso) => Math.floor((Date.now() - new Date(iso).getTime()) / DAY
 const isoDaysFrom = (n) => new Date(Date.now() + n * DAY).toISOString();
 const monthStartIso = () => monthStart();
 const MEETING_STATUS = { scheduled: ['予定', ''], done: ['完了', 'ok'], no_show: ['欠席', 'warn'], canceled: ['キャンセル', 'mute'] };
+// オンライン面談：1回20分、:55 に始める（例：18:55〜19:15。:50〜:55 は前の記録の時間）。1人のプロ・コーチは1時間に1件まで
+const MEETING_MIN = 20;
+// 結果の入力待ち：始まる時刻＋面談の長さを過ぎても「予定」のまま（ダッシュボード・面談・メニューの件数で同じ決まり）
+const isLateMeeting = (m, now = Date.now()) => m.status === 'scheduled' && new Date(m.scheduled_at).getTime() + (m.duration_min || MEETING_MIN) * 60000 < now;
+// 次の「:55」の枠。日付と時刻（端末の時刻）を返す
+function nextMeetingSlot(from = Date.now()) {
+  const d = new Date(from + 5 * 60000);
+  d.setSeconds(0, 0);
+  if (d.getMinutes() > 55) d.setHours(d.getHours() + 1);
+  d.setMinutes(55);
+  return splitLocal(d.toISOString());
+}
+// 同じプロ・コーチの、同じ1時間の枠（:50〜次の:50）にある面談
+const meetingHourKey = (iso) => { const d = new Date(new Date(iso).getTime() + 10 * 60000); return `${d.toDateString()} ${d.getHours()}`; };
+async function meetingClash(staffId, iso, exceptId = null) {
+  if (!staffId) return [];
+  const t = new Date(iso).getTime();
+  const list = await sb.from('meetings').select('id, scheduled_at, duration_min, status, profiles!member_id(name)').eq('staff_id', staffId).neq('status', 'canceled')
+    .gte('scheduled_at', new Date(t - 3 * 3600000).toISOString()).lte('scheduled_at', new Date(t + 3 * 3600000).toISOString())
+    .then((r) => (r.error ? [] : r.data || []), () => []);
+  return list.filter((m) => m.id !== exceptId && (meetingHourKey(m.scheduled_at) === meetingHourKey(iso)
+    || Math.abs(new Date(m.scheduled_at).getTime() - t) < (m.duration_min || MEETING_MIN) * 60000));
+}
+// 二重予約の確認（同じプロ・コーチが同じ1時間に別の面談を持っているとき）。続けるなら true
+async function confirmClash(staffId, iso, exceptId, staff) {
+  const clash = await meetingClash(staffId, iso, exceptId);
+  if (!clash.length) return true;
+  return confirmDialog({
+    title: '同じ時間に別の面談があります',
+    body: `<p><b>${esc(staffName(staff, staffId))}</b>さんは、同じ1時間の枠に別の面談が入っています。オンライン面談は、1人のプロ・コーチにつき1時間に1件までです。</p>
+      <ul class="small">${clash.map((m) => `<li>${fmtShort(m.scheduled_at)}〜（${m.duration_min || MEETING_MIN}分）${esc(m.profiles?.name || '')}さん</li>`).join('')}</ul>
+      <p class="small">このまま登録しますか？（2人で対応するときなど）</p>`,
+    ok: '登録する',
+  });
+}
 const meetingPill = (m) => {
-  const late = m.status === 'scheduled' && new Date(m.scheduled_at).getTime() + (m.duration_min || 25) * 60000 < Date.now();
+  const late = isLateMeeting(m);
   const [label, cls] = late ? ['結果未入力', 'warn'] : MEETING_STATUS[m.status] || ['—', ''];
   return `<span class="pill ${cls}">${label}</span>`;
 };
@@ -2610,12 +2657,33 @@ const staffOptions = (list, sel) => `<option value="">（未定）</option>${lis
 const meetingStaffOn = () => sb.from('meetings').select('staff_id').limit(1).then((r) => !r.error, () => false);
 // 面談の参加リンク・案内（20261115000000_concierge.sql を実行すると使える）
 const meetingLinkOn = () => sb.from('meetings').select('join_url').limit(1).then((r) => !r.error, () => false);
-const MEET_URL_KEY = 'atg-meet-url'; // 前に使った参加リンク（毎回同じZoomの部屋を使うときに、入力を省く）
+const MEET_URL_KEY = 'atg-meet-url'; // 前に使った参加リンク（プロ・コーチのZoomが未登録のときだけ、入力を省くのに使う）
+// プロ・コーチごとのZoomの部屋（20261123100000_staff_tools.sql を実行すると使える。スタッフだけが見られる）
+let staffZoomCache = null;
+async function staffZoom() {
+  if (!staffZoomCache) staffZoomCache = await sb.from('staff_settings').select('staff_id, zoom_url, zoom_note').then((r) => (r.error ? null : new Map((r.data || []).map((x) => [x.staff_id, x]))), () => null);
+  return staffZoomCache || new Map();
+}
+// 面談の登録・変更の画面で、プロ・コーチを選んだら、その人のZoomを参加リンクに入れる
+function fillZoomFromStaff(wrap, zoom, force = false) {
+  const sel = wrap.querySelector('select[name="staff_id"]'); const url = wrap.querySelector('[name="join_url"]'); const info = wrap.querySelector('[name="join_info"]');
+  if (!sel || !url) return;
+  const z = zoom.get(sel.value);
+  const hint = wrap.querySelector('[data-zoom-hint]');
+  if (z?.zoom_url) {
+    if (force || !url.value.trim() || url.dataset.auto === '1') { url.value = z.zoom_url; url.dataset.auto = '1'; if (info && (force || !info.value.trim() || info.dataset.auto === '1')) { info.value = z.zoom_note || ''; info.dataset.auto = '1'; } }
+    if (hint) hint.textContent = 'このプロ・コーチのZoomを入れました。';
+  } else {
+    // 前のプロ・コーチのZoomを自動で入れていたら、消しておく（別の人の部屋に案内しないように）
+    if (url.dataset.auto === '1') { url.value = ''; delete url.dataset.auto; if (info?.dataset.auto === '1') { info.value = ''; delete info.dataset.auto; } }
+    if (hint) hint.textContent = sel.value ? 'このプロ・コーチのZoomは未登録です（スタッフの「基本情報」で登録できます）。' : '';
+  }
+}
 const meetLinkFields = (url = '', info = '') => `<label>参加リンク <span class="muted">（Zoom・Google Meet などのURL。任意）</span></label>
   <input name="join_url" type="url" maxlength="500" inputmode="url" placeholder="https://zoom.us/j/..." value="${esc(url)}">
   <label>案内 <span class="muted">（ミーティングID・パスコード・ひとこと。任意）</span></label>
   <textarea name="join_info" rows="3" maxlength="1000" placeholder="ミーティングID：123 456 7890&#10;パスコード：abc123&#10;開始5分前から入れます">${esc(info)}</textarea>
-  <p class="muted small" style="margin:4px 0 0">会員のホームの「次回の面談」に「面談に参加する」ボタンと案内が出ます。</p>`;
+  <p class="muted small" style="margin:4px 0 0">会員のホームの「次回の面談」に「面談に参加する」ボタンと案内が出ます。<span data-zoom-hint></span></p>`;
 function meetLinkRow(v) {
   let url = String(v.join_url || '').trim();
   if (url && !/^https?:\/\//i.test(url) && /^[\w-]+(\.[\w-]+)+(\/\S*)?$/.test(url)) url = `https://${url}`; // 「zoom.us/j/…」のように https:// を省いたとき
@@ -2713,40 +2781,86 @@ async function viewConcierge() {
     </form>
   </div>` + memberNav('menu');
 }
-// スタッフ：お返事待ち（最後の連絡が会員からのもの）を探す
-function ccPending(msgs) {
-  const last = new Map(); msgs.forEach((m) => last.set(m.member_id, m));
-  return [...last.values()].filter((m) => !m.from_staff);
+// スタッフ：お返事待ちを探す。会員の最後の連絡が、スタッフの最後の返信と「対応不要」にした日時より新しいもの
+// 自動で送った連絡（事前アンケートのお願い・面談のお礼など。is_auto）は、返信として数えない
+// done：会員ID → 「対応不要」にした日時
+const tms = (iso) => (iso ? new Date(iso).getTime() : 0);
+function ccPending(msgs, done = new Map()) {
+  const lastMember = new Map(); const lastStaff = new Map();
+  msgs.forEach((m) => { if (!m.is_auto) (m.from_staff ? lastStaff : lastMember).set(m.member_id, m); });
+  return [...lastMember.values()].filter((m) => tms(m.created_at) > Math.max(tms(lastStaff.get(m.member_id)?.created_at), tms(done.get(m.member_id))));
+}
+// コンシェルジュサポートの連絡と「対応不要」を読み込む（設定前は null）
+async function loadConcierge(days = 60) {
+  const [r, t] = await Promise.all([
+    fetchAll(() => sb.from('concierge_messages').select('*').gte('created_at', isoDaysFrom(-days)).order('created_at')).catch((e) => ({ error: e })),
+    sb.from('concierge_threads').select('member_id, done_at').then((x) => (x.error ? [] : x.data || []), () => []),
+  ]);
+  if (r.error) return null;
+  const done = new Map(t.filter((x) => x.done_at).map((x) => [x.member_id, x.done_at]));
+  return { msgs: r.data || [], done, pending: ccPending(r.data || [], done) };
+}
+// ダッシュボードから「声をかける」：定型文を入れた状態で、その会員との連絡を開く
+const HACOMONO_URL = 'https://alltimegolf.hacomono.jp';
+const ccNudgeBtn = (memberId, text, label = '声をかける') => `<button type="button" class="btn btn-sm btn-sub" data-action="cc-nudge" data-member="${memberId}" data-text="${esc(text)}">${label}</button>`;
+// 面談の案内（次回の面談の日時・参加リンクを入れる）
+function ccMeetingGuide(mt) {
+  if (!mt) return CC_TEMPLATES[1][1];
+  const end = new Date(new Date(mt.scheduled_at).getTime() + (mt.duration_min || MEETING_MIN) * 60000);
+  const hm = (d) => `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  return ['次回のオンライン面談のご案内です。',
+    `日時：${fmtShort(mt.scheduled_at)}〜${hm(end)}（${mt.duration_min || MEETING_MIN}分）`,
+    mt.join_url ? `参加リンク（Zoom）：${mt.join_url}` : '',
+    (mt.join_info || '').trim(),
+    'ホームの「次回の面談」にある「▶ 面談に参加する」からも入れます。開始5分前から入室できます。当日はよろしくお願いいたします。'].filter(Boolean).join('\n');
 }
 async function viewConciergeAdmin(memberId) {
   const staff = await staffList();
   const nameOf = (id) => staff.find((x) => x.id === id)?.name || '';
   if (!memberId) {
-    const [r, people] = await Promise.all([
-      sb.from('concierge_messages').select('member_id, from_staff, body, category, created_at, read_at').gte('created_at', isoDaysFrom(-180)).order('created_at').then((x) => x, (e) => ({ error: e })),
-      must(sb.from('profiles').select('id, name, role').order('name')),
+    const [cc, people] = await Promise.all([
+      loadConcierge(180),
+      must(fetchAll(() => sb.from('profiles').select('id, name, role').order('name'))),
     ]);
-    if (r.error) return header('コンシェルジュサポート', 'admin/dashboard') + '<div class="content"><div class="error">データベースの設定（20261115000000_concierge.sql）がまだのため使えません。</div></div>' + adminNav('admin/dashboard');
+    if (!cc) return header('コンシェルジュサポート', 'admin/dashboard') + '<div class="content"><div class="error">データベースの設定（20261115000000_concierge.sql）がまだのため使えません。</div></div>' + adminNav('admin/concierge');
     const members = people.filter((m) => m.role !== 'admin'); const nm = new Map(members.map((m) => [m.id, m.name || '（名前未設定）']));
-    const last = new Map(); r.data.forEach((m) => last.set(m.member_id, m));
-    const threads = [...last.values()].sort((a, b) => (Number(!a.from_staff) - Number(!b.from_staff)) * -1 || (a.created_at < b.created_at ? 1 : -1));
+    const waiting = new Map(cc.pending.map((m) => [m.member_id, m]));
+    const last = new Map(); cc.msgs.forEach((m) => last.set(m.member_id, m));
+    // お返事待ちを上に（お返事待ちは、会員からの連絡を表示する）
+    const threads = [...last.values()].map((m) => waiting.get(m.member_id) || m)
+      .sort((a, b) => Number(waiting.has(b.member_id)) - Number(waiting.has(a.member_id)) || (a.created_at < b.created_at ? 1 : -1));
+    const stateOf = (m) => {
+      if (waiting.has(m.member_id)) return `<span class="pill warn">お返事待ち</span>${ccCat(m.category) ? ` <span class="cc-tag">${ccCat(m.category)}</span>` : ''}`;
+      if (!m.from_staff && tms(cc.done.get(m.member_id)) >= tms(m.created_at)) return '<span class="pill mute">対応不要</span>';
+      if (m.is_auto) return '<span class="pill mute">自動の連絡</span>';
+      return '<span class="pill">返信済み</span>';
+    };
     return header('コンシェルジュサポート', 'admin/dashboard') + `<div class="content">
-      <p class="page-lead">会員とのご連絡です。<b>お返事待ち</b>は、会員から届いてまだ返していないものです。</p>
+      <p class="page-lead">会員とのご連絡です。<b>お返事待ち</b>は、会員から届いてまだ返していないものです（自動で送った連絡は、返信に数えません）。返信がいらない連絡は、開いて「対応不要」にできます。</p>
       <form class="form card cc-new" data-form="cc-open"><label>会員に新しく送る</label><div class="row-inline"><select name="member_id" required><option value="">会員を選ぶ</option>${members.map((m) => `<option value="${m.id}">${esc(m.name || '（名前未設定）')}</option>`).join('')}</select><button type="submit" class="btn btn-sm">開く</button></div></form>
-      ${threads.length ? threads.map((m) => `<a class="card cc-row${m.from_staff ? '' : ' wait'}" href="#/admin/concierge/${m.member_id}">
+      ${threads.length ? threads.map((m) => `<a class="card cc-row${waiting.has(m.member_id) ? ' wait' : ''}" href="#/admin/concierge/${m.member_id}">
         <div class="between"><b>${esc(nm.get(m.member_id) || '（削除された会員）')}</b><span class="muted small">${fmtShort(m.created_at)}</span></div>
-        <div class="small">${m.from_staff ? '<span class="pill">返信済み</span>' : `<span class="pill warn">お返事待ち</span>${ccCat(m.category) ? ` <span class="cc-tag">${ccCat(m.category)}</span>` : ''}`} ${esc(m.body.slice(0, 60))}</div></a>`).join('') : emptyBox('💬', 'まだやりとりはありません')}
-    </div>` + adminNav('admin/dashboard');
+        <div class="small">${stateOf(m)} ${esc(m.body.slice(0, 60))}</div></a>`).join('') : emptyBox('💬', 'まだやりとりはありません')}
+    </div>` + adminNav('admin/concierge');
   }
-  const [r, m, nextMt] = await Promise.all([
+  const [r, m, nextMt, thread] = await Promise.all([
     sb.from('concierge_messages').select('*').eq('member_id', memberId).order('created_at').limit(500).then((x) => x, (e) => ({ error: e })),
     must(sb.from('profiles').select('id, name, email, plan').eq('id', memberId).maybeSingle()),
-    sb.from('meetings').select('id, scheduled_at, duration_min, staff_id, join_url').eq('member_id', memberId).eq('status', 'scheduled').gte('scheduled_at', new Date(Date.now() - 2 * 3600000).toISOString()).order('scheduled_at').limit(1)
+    sb.from('meetings').select('*').eq('member_id', memberId).eq('status', 'scheduled').gte('scheduled_at', new Date(Date.now() - 2 * 3600000).toISOString()).order('scheduled_at').limit(1)
       .then((x) => (x.error ? null : x.data?.[0] || null), () => null),
+    sb.from('concierge_threads').select('done_at').eq('member_id', memberId).maybeSingle().then((x) => (x.error ? undefined : x.data), () => undefined),
   ]);
-  if (r.error) return header('コンシェルジュサポート', 'admin/concierge') + '<div class="content"><div class="error">データベースの設定（20261115000000_concierge.sql）がまだのため使えません。</div></div>' + adminNav('admin/dashboard');
-  if (!m) return header('コンシェルジュサポート', 'admin/concierge') + '<div class="content"><div class="empty">会員が見つかりません</div></div>' + adminNav('admin/dashboard');
+  if (r.error) return header('コンシェルジュサポート', 'admin/concierge') + '<div class="content"><div class="error">データベースの設定（20261115000000_concierge.sql）がまだのため使えません。</div></div>' + adminNav('admin/concierge');
+  if (!m) return header('コンシェルジュサポート', 'admin/concierge') + '<div class="content"><div class="empty">会員が見つかりません</div></div>' + adminNav('admin/concierge');
   const list = r.data || [];
+  const doneAt = thread?.done_at || null;
+  const waiting = ccPending(list, new Map(doneAt ? [[memberId, doneAt]] : [])).length > 0;
+  const lastMember = list.filter((x) => !x.from_staff).at(-1);
+  // 定型文（面談の案内は、次回の面談の日時と参加リンクを入れる）
+  state.ccTpls = CC_TEMPLATES.map(([l, t]) => [l, l === '面談の案内' ? ccMeetingGuide(nextMt) : t]);
+  // ダッシュボードの「声をかける」から来たときは、その文を入れておく
+  const draft = state.ccDraft?.member === memberId ? state.ccDraft.text : '';
+  state.ccDraft = null;
   if (list.some((x) => !x.from_staff && !x.read_at)) sb.rpc('concierge_mark_read', { p_member: memberId }).then(() => {}, () => {});
   if (list.length) ccScroll();
   return header(`${m.name || '会員'}さんとの連絡`, 'admin/concierge') + `<div class="content cc-page">
@@ -2754,12 +2868,16 @@ async function viewConciergeAdmin(memberId) {
       ${nextMt ? `<span class="small">次回の面談 <b>${fmtShort(nextMt.scheduled_at)}</b>　参加リンク：${nextMt.join_url ? '<span class="pill ok">あり</span>' : `<span class="pill warn">なし</span>`}
         <button type="button" class="btn btn-sm btn-sub" data-action="meeting-move" data-id="${nextMt.id}" data-at="${nextMt.scheduled_at}" data-min="${nextMt.duration_min}" data-staff="${esc(nextMt.staff_id || '')}">リンク・日時</button></span>` : '<span class="muted small">次回の面談は未定</span>'}</div></div>
     <div class="cc-thread">${list.length ? ccThread(list, true, nameOf) : '<p class="muted small cc-empty">まだやりとりはありません。</p>'}</div>
+    ${waiting ? `<div class="card cc-wait-bar"><span class="pill warn">お返事待ち</span><span class="small grow">返信がいらない連絡（「ありがとうございました」など）は、「対応不要」にするとお返事待ちから外れます。</span>
+        <button type="button" class="btn btn-sm btn-sub" data-action="cc-done" data-member="${m.id}">対応不要にする</button></div>`
+      : doneAt && lastMember && tms(doneAt) >= tms(lastMember.created_at) ? `<p class="muted small cc-done-note">${fmtShort(doneAt)} に「対応不要」にしました。会員から新しい連絡が届くと、またお返事待ちになります。</p>` : ''}
     <form class="form card cc-form" data-form="cc-reply"><input type="hidden" name="member_id" value="${m.id}">
-      <div class="cc-tpls"><span class="muted small">定型文：</span>${CC_TEMPLATES.map(([l], i) => `<button type="button" class="btn btn-sm btn-sub" data-action="cc-tpl" data-i="${i}">${esc(l)}</button>`).join('')}</div>
-      <label for="cc-reply">返信</label><textarea id="cc-reply" name="body" rows="5" maxlength="1000" required></textarea>
+      <div class="cc-tpls"><span class="muted small">定型文：</span>${state.ccTpls.map(([l], i) => `<button type="button" class="btn btn-sm btn-sub" data-action="cc-tpl" data-i="${i}">${esc(l)}</button>`).join('')}</div>
+      <label for="cc-reply">返信</label><textarea id="cc-reply" name="body" rows="5" maxlength="1000" required>${esc(draft)}</textarea>
+      <label class="chk-line"><input type="checkbox" name="email" checked> 会員にメールでも知らせる <span class="muted small">（お知らせメールを止めている会員と、1時間以内にメールを送った会員には送りません）</span></label>
       <button class="btn-block" type="submit">送る</button>
     </form>
-  </div>` + adminNav('admin/dashboard');
+  </div>` + adminNav('admin/concierge');
 }
 
 // ベスト更新・ベストタイ・平均より大きく良いスコアを探す（18ホールのみ）
@@ -2819,15 +2937,70 @@ const subCancelButtons = (x) => `<button type="button" class="btn btn-sm btn-dan
   <button type="button" class="btn btn-sm btn-sub" data-action="sub-cancel-reject" data-id="${x.id}">削除しない</button>`;
 const memberLink = (id, name) => `<a href="#/admin/member/${id}">${esc(name || '（名前未設定）')}</a>`;
 
-// メニューの件数（確認待ちの動画・結果未入力の面談）
-async function loadAdminBadges() {
-  const [pend, late] = await Promise.all([
-    sb.from('submissions').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
-    sb.from('meetings').select('id', { count: 'exact', head: true }).eq('status', 'scheduled').lt('scheduled_at', new Date(Date.now() - 30 * 60000).toISOString()),
-  ]);
-  state.adminPending = pend.count || 0;
-  state.adminMeetingTodo = late.count || 0;
+// 日本時間の日付（YYYY-MM-DD）と、今月の1日・月末
+const JST_MS = 9 * 3600000;
+const jstYmd = (d = new Date()) => new Date(new Date(d).getTime() + JST_MS).toISOString().slice(0, 10);
+const jstMonthFirst = () => `${jstYmd().slice(0, 7)}-01`;
+const jstMonthEnd = () => { const [y, m] = jstYmd().split('-').map(Number); return new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10); };
+const jstMonthStartIso = () => new Date(`${jstMonthFirst()}T00:00:00+09:00`).toISOString();
+
+// 「対応が必要」の数え方（ダッシュボードとメニューの件数で同じ決まりを使う）
+function adminTodoParts({ pending, meetings, allMeetings, people, notices, ccWait, rmSoon }) {
+  const active = people.filter(isActive);
+  const now = Date.now();
+  const lateMeetings = meetings.filter((m) => isLateMeeting(m, now));
+  const monthFrom = new Date(monthStartIso()).getTime();
+  const metThisMonth = new Set(allMeetings.filter((m) => ['scheduled', 'done'].includes(m.status) && new Date(m.scheduled_at).getTime() >= monthFrom).map((m) => m.member_id));
+  const needMeeting = active.filter((m) => hasMeetingPlan(m.plan) && !metThisMonth.has(m.id));
+  const unpaid = allMeetings.filter((m) => m.pay_type === 'unpaid' && m.status !== 'canceled');
+  const soonExpire = people.filter((m) => m.access_until && m.access_until >= today() && m.access_until <= isoDaysFrom(14).slice(0, 10));
+  const pastDue = people.filter((m) => m.subscription_status === 'past_due');
+  const cancelReq = pending.filter((x) => x.cancel_requested_at);
+  const todo = ccWait + notices + cancelReq.length + pending.length + lateMeetings.length + needMeeting.length + unpaid.length + rmSoon + pastDue.length + soonExpire.length;
+  return { active, lateMeetings, needMeeting, unpaid, soonExpire, pastDue, cancelReq, todo };
 }
+
+// メニューの件数（やること・確認待ちの動画・結果未入力の面談・コンシェルジュのお返事待ち）
+// 画面を開くたびに読み直すと重いので、20秒以内は前の数を使う（操作したあと・1分ごとの更新では読み直す）
+let badgeAt = 0;
+async function loadAdminBadges(force = false) {
+  if (!force && Date.now() - badgeAt < 20000) return;
+  badgeAt = Date.now();
+  const soft = (q, empty = []) => q.then((r) => (r.error ? empty : r.data ?? empty), () => empty);
+  const [pendAll, meetingsAll, people, rmSoon, notices, cc] = await Promise.all([
+    soft(sb.from('submissions').select('*').eq('status', 'pending')),
+    soft(sb.from('meetings').select('*').gte('scheduled_at', isoDaysFrom(-45))),
+    soft(fetchAll(() => sb.from('profiles').select('id, role, plan, subscription_status, access_until').neq('role', 'admin'))),
+    sb.from('roadmap_items').select('id', { count: 'exact', head: true }).is('drill_id', null).eq('hidden', false).gte('publish_on', today()).lte('publish_on', isoDaysFrom(14).slice(0, 10)).then((r) => r.count || 0, () => 0),
+    sb.from('member_notices').select('id', { count: 'exact', head: true }).is('acked_at', null).then((r) => Math.min(50, r.count || 0), () => 0),
+    loadConcierge(60).catch(() => null),
+  ]);
+  const me = state.profile.id;
+  const mine = mineOnly();
+  const pending = mine ? pendAll.filter((x) => x.claimed_by === me) : pendAll;
+  const meetings = mine ? meetingsAll.filter((m) => m.staff_id === me) : meetingsAll;
+  const parts = adminTodoParts({ pending, meetings, allMeetings: meetingsAll, people, notices, ccWait: cc?.pending.length || 0, rmSoon });
+  state.adminPending = pendAll.length;
+  state.adminMeetingTodo = parts.lateMeetings.length;
+  state.adminCcWait = cc?.pending.length || 0;
+  state.adminTodo = parts.todo;
+}
+// メニューの件数だけを書き換える（入力中の画面を作り直さないように）
+function paintNavBadges() {
+  const counts = { 'admin/dashboard': state.adminTodo, 'admin/inbox': state.adminPending, 'admin/meetings': state.adminMeetingTodo, 'admin/concierge': state.adminCcWait };
+  Object.entries(counts).forEach(([path, n]) => {
+    const a = document.querySelector(`.nav a[href="#/${path}"]`); if (!a) return;
+    let em = a.querySelector('.nav-badge');
+    if (!n) { em?.remove(); return; }
+    if (!em) { em = document.createElement('em'); em.className = 'nav-badge'; a.appendChild(em); }
+    em.textContent = n; em.setAttribute('aria-label', `未読${n}件`);
+  });
+}
+// スタッフの画面を開いている間は、1分ごとに件数を読み直す
+setInterval(() => {
+  if (document.visibilityState !== 'visible' || !state.session || state.profile?.role !== 'admin' || getRoute()[0] !== 'admin') return;
+  loadAdminBadges(true).then(paintNavBadges, () => {});
+}, 60000);
 
 // ダッシュボード：対応が必要なことを1画面にまとめる
 async function viewDashboard() {
@@ -2835,26 +3008,33 @@ async function viewDashboard() {
   if (!state.creditsGranted) { state.creditsGranted = true; await sb.rpc('grant_monthly_credits').then(() => {}, () => {}); }
   const today0 = new Date(); today0.setHours(0, 0, 0, 0);
   let [members, pending, meetings, rmSoon, rmAll, subs30, practice30, rounds30, refs7, rounds18, acks, notices, unread] = await Promise.all([
-    must(sb.from('profiles').select('id, name, email, role, plan, subscription_status, access_until, current_period_end, created_at, best_score, avg_score').order('created_at', { ascending: false })),
+    must(fetchAll(() => sb.from('profiles').select('id, name, email, role, plan, subscription_status, access_until, current_period_end, created_at, best_score, avg_score').order('created_at', { ascending: false }))),
     must(sb.from('submissions').select('*, profiles!member_id(name)').eq('status', 'pending').order('created_at')),
     must(sb.from('meetings').select('*, profiles!member_id(name)').gte('scheduled_at', isoDaysFrom(-45)).order('scheduled_at')),
     must(sb.from('roadmap_items').select('id, member_id, publish_on, theme, profiles(name)').is('drill_id', null).eq('hidden', false).gte('publish_on', today()).lte('publish_on', isoDaysFrom(14).slice(0, 10)).order('publish_on')),
-    must(sb.from('roadmap_items').select('member_id, publish_on, theme, drill_id, hidden, published_at')),
+    must(fetchAll(() => sb.from('roadmap_items').select('member_id, publish_on, theme, drill_id, hidden, published_at'))),
     must(sb.from('submissions').select('member_id, created_at').gte('created_at', isoDaysFrom(-30))),
     must(sb.from('roadmap_practice').select('member_id, practiced_on').gte('practiced_on', isoDaysFrom(-30).slice(0, 10))),
     must(sb.from('rounds').select('member_id, played_on, created_at, score, course_name, profiles(name)').gte('created_at', isoDaysFrom(-30)).order('created_at', { ascending: false })),
     must(sb.from('roadmap_reflections').select('member_id, body, updated_at, profiles(name)').gte('updated_at', isoDaysFrom(-7)).order('updated_at', { ascending: false })),
-    must(sb.from('rounds').select('id, member_id, played_on, created_at, score, holes, course_name').eq('holes', 18)),
+    must(fetchAll(() => sb.from('rounds').select('id, member_id, played_on, created_at, score, holes, course_name').eq('holes', 18))),
     sb.from('admin_acks').select('ref_id').eq('kind', 'celebration').then((r) => r.data || []), // 設定前でも動くように
     sb.from('member_notices').select('*').is('acked_at', null).order('created_at', { ascending: false }).limit(50).then((r) => r.data || []),
     must(sb.from('lessons').select('id, member_id, title, created_at, profiles!member_id(name)').is('read_at', null).lte('created_at', isoDaysFrom(-UNREAD_DAYS)).gte('created_at', isoDaysFrom(-60)).order('created_at')),
   ]);
-  const ccMsgs = await sb.from('concierge_messages').select('member_id, from_staff, body, category, created_at').gte('created_at', isoDaysFrom(-60)).order('created_at')
-    .then((x) => (x.error ? [] : x.data || []), () => []);
-  const ccWait = ccPending(ccMsgs);
+  const soft = (q) => q.then((r) => (r.error ? null : r.data || []), () => null);
+  // コンシェルジュのお返事待ち・権利（今月末の期限・動画の残り）・今月の提出・毎月の付与・自動処理の失敗（どれも設定前でも動くように）
+  const [cc, liveCredits, subsMonth, lastGrant, monthGrant, jobFails] = await Promise.all([
+    loadConcierge(60).catch(() => null),
+    soft(fetchAll(() => sb.from('credits').select('member_id, kind, expires_on').is('used_at', null).gte('expires_on', today()))),
+    soft(fetchAll(() => sb.from('submissions').select('member_id').gte('created_at', jstMonthStartIso()))),
+    soft(sb.from('credit_grants').select('granted_at').order('granted_at', { ascending: false }).limit(1)),
+    soft(sb.from('credit_grants').select('member_id').eq('period', jstMonthFirst()).limit(1)),
+    soft(sb.from('job_runs').select('*').eq('ok', false).gte('ran_at', isoDaysFrom(-14)).order('ran_at', { ascending: false }).limit(20)),
+  ]);
+  const ccWait = cc?.pending || [];
   const people = members.filter((m) => m.role !== 'admin');
   const staff = members.filter((m) => m.role === 'admin');
-  const active = people.filter(isActive);
   const nameOf = (id) => people.find((m) => m.id === id)?.name || '（名前未設定）';
   const now = Date.now();
   // 自分の担当だけ：自分が対応中の動画・自分が対応する面談に絞る
@@ -2868,26 +3048,35 @@ async function viewDashboard() {
   }
   const idleSubs = allPending.filter(claimIdle);
   const staleSubs = allPending.filter(claimStale);
-  const lateMeetings = meetings.filter((m) => m.status === 'scheduled' && new Date(m.scheduled_at).getTime() + (m.duration_min || 25) * 60000 < now);
+  const { active, lateMeetings, needMeeting, unpaid, soonExpire, pastDue, cancelReq, todo } = adminTodoParts({ pending, meetings, allMeetings, people, notices: notices.length, ccWait: ccWait.length, rmSoon: rmSoon.length });
   const upcoming = meetings.filter((m) => m.status === 'scheduled' && new Date(m.scheduled_at).getTime() >= now - 30 * 60000 && new Date(m.scheduled_at).getTime() < now + 7 * DAY);
   const todayMeetings = upcoming.filter((m) => new Date(m.scheduled_at).toDateString() === new Date().toDateString());
-  const monthFrom = new Date(monthStartIso()).getTime();
-  const metThisMonth = new Set(allMeetings.filter((m) => ['scheduled', 'done'].includes(m.status) && new Date(m.scheduled_at).getTime() >= monthFrom).map((m) => m.member_id));
-  const needMeeting = active.filter((m) => hasMeetingPlan(m.plan) && !metThisMonth.has(m.id));
-  const unpaid = allMeetings.filter((m) => m.pay_type === 'unpaid' && m.status !== 'canceled');
   const withRoadmap = new Set(rmAll.map((r) => r.member_id));
   const noRoadmap = active.filter((m) => !withRoadmap.has(m.id));
-  const soonExpire = people.filter((m) => m.access_until && m.access_until >= today() && m.access_until <= isoDaysFrom(14).slice(0, 10));
-  const pastDue = people.filter((m) => m.subscription_status === 'past_due');
   const newcomers = people.filter((m) => !isActive(m) && daysAgo(m.created_at) <= 30);
+  // 今月末で切れる回数がある会員（日本時間の月末までに期限が来る、まだ使っていない権利）
+  const monthEndYmd = jstMonthEnd();
+  const creditBy = (rows, fn) => (rows || []).filter(fn).reduce((a, c) => { const x = a.get(c.member_id) || { video: 0, meeting: 0 }; x[c.kind] = (x[c.kind] || 0) + 1; return a.set(c.member_id, x); }, new Map());
+  const expiring = creditBy(liveCredits, (c) => c.expires_on <= monthEndYmd);
+  const expiringList = active.filter((m) => expiring.has(m.id));
+  const videoLeft = creditBy(liveCredits, (c) => c.kind === 'video');
+  const sentThisMonth = new Set((subsMonth || []).map((x) => x.member_id));
+  const noVideo = liveCredits && subsMonth ? active.filter((m) => !sentThisMonth.has(m.id) && videoLeft.get(m.id)?.video > 0) : [];
+  const mdEnd = fmtMD(monthEndYmd);
+  const expText = (x) => [x.video && `動画${x.video}回`, x.meeting && `面談${x.meeting}回`].filter(Boolean).join('・');
+  const nudgeMeeting = `今月のオンライン面談のご予約がまだのようです。\nhacomono（${HACOMONO_URL}）から、ご都合のよい日時をご予約ください（1回20分・Zoom）。\nご不明な点があれば、こちらにご連絡ください。`;
+  const nudgeExpire = (x) => `今月末（${mdEnd}）で、${expText(x)}の権利の期限が切れます。期限までにぜひご利用ください。\n${x.video ? '動画は、アプリの「撮影・提出」から送れます。\n' : ''}${x.meeting ? `面談は、hacomono（${HACOMONO_URL}）からご予約ください。\n` : ''}ご不明な点があれば、こちらにご連絡ください。`;
+  const nudgeVideo = (n) => `今月はまだスイング動画が届いていないようです。動画を送れる回数が、あと${n}回あります。\nアプリの「撮影・提出」から送っていただくと、コーチが解説をお返しします。お待ちしています。`;
+  // 毎月の付与：最後に付与した日と、今月分が付与されていないときの注意（1日の 1:00 を過ぎても今月分がないとき）
+  const grantLate = monthGrant && !monthGrant.length && Date.now() > new Date(`${jstMonthFirst()}T01:00:00+09:00`).getTime() && active.some((m) => planCredits(m.plan));
   const moved = new Set([...subs30.map((x) => x.member_id), ...practice30.map((x) => x.member_id), ...rounds30.map((x) => x.member_id)]);
   const quiet = active.filter((m) => !moved.has(m.id) && daysAgo(m.created_at) > 14);
   const oldestWait = pending.length ? daysAgo(pending[0].created_at) : 0;
   const overdue = pending.filter((x) => replyDue(x.created_at).over);
   const celebrations = findCelebrations(rounds18, people, new Set(acks.map((a) => a.ref_id)));
-  const cancelReq = pending.filter((x) => x.cancel_requested_at);
-  const todo = ccWait.length + notices.length + cancelReq.length + pending.length + lateMeetings.length + needMeeting.length + unpaid.length + rmSoon.length + pastDue.length + soonExpire.length;
   state.adminTodo = todo;
+  state.adminMeetingTodo = lateMeetings.length;
+  state.adminCcWait = ccWait.length;
 
   // kind: todo=対応が必要（赤・「対応が必要」の数に含む） / watch=様子を見る（黄） / info=お知らせ（青）
   const section = (title, icon, list, empty, more = '', kind = 'todo') => `<section class="card dash-sec ${kind}${list.length ? ' has' : ''}">
@@ -2898,7 +3087,7 @@ async function viewDashboard() {
   const left = [
     ...(ccWait.length ? [section('コンシェルジュサポート：お返事待ち', '✉', ccWait.map((x) => row(`${memberLink(x.member_id, nameOf(x.member_id))}${ccCat(x.category) ? `　<span class="cc-tag">${ccCat(x.category)}</span>` : ''}`,
       `${esc(x.body.slice(0, 50))}${x.body.length > 50 ? '…' : ''}<br>${fmtShort(x.created_at)}`,
-      `<a class="btn btn-sm" href="#/admin/concierge/${x.member_id}">返信する</a>`)), '', '<a class="dash-more" href="#/admin/concierge">すべての連絡 ›</a>')] : []),
+      `<span class="dash-btns"><button type="button" class="btn btn-sm btn-sub" data-action="cc-done" data-member="${x.member_id}">対応不要</button><a class="btn btn-sm" href="#/admin/concierge/${x.member_id}">返信する</a></span>`)), '', '<a class="dash-more" href="#/admin/concierge">すべての連絡 ›</a>')] : []),
     ...(notices.length ? [section('解約・退会のお知らせ', '!', notices.map((n) => row(`${n.member_id ? memberLink(n.member_id, n.member_name) : esc(n.member_name || '（削除済みの会員）')}　<span class="pill ${NOTICE_KIND[n.kind]?.[1] || ''}">${NOTICE_KIND[n.kind]?.[0] || ''}</span>`,
       `${esc(n.detail)}<br>${fmtShort(n.created_at)}`,
       `<button type="button" class="btn btn-sm btn-sub" data-action="notice-ack" data-id="${n.id}">確認済み</button>`)), '')] : []),
@@ -2913,14 +3102,26 @@ async function viewDashboard() {
     ...(staleSubs.length ? [section(`「対応中」のまま止まっている動画（${CLAIM_STALE_H}時間以上）`, '…', staleSubs.map((x) => row(`${memberLink(x.member_id, x.profiles?.name)}　${esc(x.club)} / ${esc(x.angle)}`,
       claimBadge(x, staff), claimButton(x))), '', '', 'watch')] : []),
     section('面談：結果の入力待ち', '!', lateMeetings.map((m) => row(`${memberLink(m.member_id, m.profiles?.name)}`, `${fmtShort(m.scheduled_at)} の面談`,
-      `<button type="button" class="btn btn-sm" data-action="meeting-done" data-id="${m.id}">結果を入力</button>`)), '入力待ちの面談はありません'),
+      `<a class="btn btn-sm" href="#/admin/prep/${m.id}">結果を入力</a>`)), '入力待ちの面談はありません'),
     section(mine ? '自分が対応する面談（7日）' : '今後7日の面談', '◷', upcoming.map((m) => row(`<b>${fmtShort(m.scheduled_at)}</b>　${memberLink(m.member_id, m.profiles?.name)}`, `${m.duration_min}分${todayMeetings.includes(m) ? '・<b class="today">今日</b>' : ''}${'staff_id' in m ? `・${m.staff_id ? `対応：${esc(staffName(staff, m.staff_id))}` : '<b class="late">対応者未定</b>'}` : ''}`,
       `<a class="btn btn-sm btn-sub" href="#/admin/prep/${m.id}">面談モード</a>`)), '予定はありません', '<a class="dash-more" href="#/admin/meetings">面談管理 ›</a>', 'info'),
     ...(unpaid.length ? [section('面談：都度払いの未払い', '¥', unpaid.map((m) => row(memberLink(m.member_id, m.profiles?.name), `${fmtShort(m.scheduled_at)} の面談`,
       `<button type="button" class="btn btn-sm" data-action="meeting-paid" data-id="${m.id}">支払い済みにする</button>`)), '')] : []),
-    section('今月まだ面談の予定がない会員', '◎', needMeeting.map((m) => row(memberLink(m.id, m.name), `${esc(planLabel(m.plan))}（面談の権利つき）`,
-      `<button type="button" class="btn btn-sm btn-sub" data-action="meeting-add" data-member="${m.id}">予約を入れる</button>`)), '全員、今月の面談が入っています'),
+    section('今月まだ面談の予約がない会員（hacomonoで未予約）', '◎', needMeeting.map((m) => row(memberLink(m.id, m.name), `${esc(planLabel(m.plan))}（面談の権利つき）`,
+      ccNudgeBtn(m.id, nudgeMeeting, '予約をお願いする'))), '全員、今月の面談の予約が入っています'),
+    ...(liveCredits ? [section(`今月末（${mdEnd}）で切れる回数がある会員`, '⌛', expiringList.map((m) => row(memberLink(m.id, m.name), `${expText(expiring.get(m.id))} が今月末で期限切れ`,
+      ccNudgeBtn(m.id, nudgeExpire(expiring.get(m.id))))), '今月末で切れる回数がある会員はいません', '', 'watch')] : []),
+    ...(liveCredits && subsMonth ? [section('今月まだ動画を送っていない会員', '▶', noVideo.map((m) => row(memberLink(m.id, m.name), `動画の残り ${videoLeft.get(m.id).video}回`,
+      ccNudgeBtn(m.id, nudgeVideo(videoLeft.get(m.id).video)))), '動画の回数が残っている会員は、全員今月送っています', '', 'watch')] : []),
   ];
+  // 自動の処理の状態（毎月の付与・自動処理の失敗。データベースの設定前は出さない）
+  const sysLines = [
+    ...(lastGrant ? [`<div class="dash-row"><div class="grow">最終付与：<b>${lastGrant[0] ? jstYmd(lastGrant[0].granted_at).replaceAll('-', '/') : 'まだありません'}</b><small>毎月1日に、プランの回数（動画・面談）を自動で付与します</small></div></div>`] : []),
+    ...(grantLate ? [`<div class="dash-row"><div class="grow"><b class="late">今月分の付与がまだ行われていません</b><small>自動の付与が止まっている可能性があります。会員の「プラン・権利」から「今月分を付与」できます。続くときは管理者に連絡してください</small></div></div>`] : []),
+    ...(jobFails || []).map((j) => `<div class="dash-row"><div class="grow"><b class="late">自動の処理に失敗：${esc(j.job)}</b><small>${fmtShort(j.ran_at)}${j.detail ? `・${esc(String(j.detail).slice(0, 120))}` : ''}</small></div></div>`),
+  ];
+  const sysSec = lastGrant || jobFails ? `<section class="card dash-sec sys-sec ${grantLate || jobFails?.length ? 'todo has' : 'info'}"><div class="dash-h"><span class="dash-i" aria-hidden="true">⚙</span><b>自動の処理</b>${grantLate || jobFails?.length ? `<span class="dash-n">${(grantLate ? 1 : 0) + (jobFails?.length || 0)}</span>` : ''}</div>
+      <div class="dash-list">${sysLines.join('') || '<p class="dash-ok">✓ 問題はありません</p>'}</div></section>` : '';
   const right = [
     section('ロードマップ：ドリル未定（2週間以内に公開）', '◎', rmSoon.map((r) => row(memberLink(r.member_id, r.profiles?.name), `${fmtDate(r.publish_on)} 公開・${esc(r.theme || 'テーマ未定')}`,
       `<a class="btn btn-sm btn-sub" href="#/admin/roadmap/${r.member_id}">編集</a>`)), 'ドリル未定の月はありません'),
@@ -2978,7 +3179,7 @@ async function viewDashboard() {
       <span class="dash-links"><a class="btn btn-sm btn-sub" href="#/admin/templates">✎ テンプレート</a><a class="btn btn-sm btn-sub" href="#/admin/quotas">⚙ プランの回数</a><a class="btn btn-sm btn-sub" href="#/admin/announce">📣 お知らせを送る</a><a class="btn btn-sm ${fbOpen ? 'btn-alert' : 'btn-sub'}" href="#/admin/feedback">🛠 不具合・要望${fbOpen ? ` <em>${fbOpen}件</em>` : ''}</a></span></div>
     <div class="cols">
       <div class="col-main">${left.map((h, i) => `<div class="blk" style="--o:${i}">${h}</div>`).join('')}</div>
-      <div class="col-side">${right.map((h, i) => `<div class="blk" style="--o:${10 + i}">${h}</div>`).join('')}
+      <div class="col-side">${sysSec ? `<div class="blk" style="--o:9">${sysSec}</div>` : ''}${right.map((h, i) => `<div class="blk" style="--o:${10 + i}">${h}</div>`).join('')}
         <div class="blk" style="--o:20"><section class="card dash-sec"><div class="dash-h"><span class="dash-i" aria-hidden="true">↻</span><b>最近の動き（7日）</b></div>
           ${feed.length ? `<div class="dash-list">${feed.map((f) => `<div class="dash-row feed"><div class="grow">${f.html}</div><span class="muted small">${fmtShort(f.t)}</span></div>`).join('')}</div>` : '<p class="dash-ok">まだ動きはありません</p>'}</section></div>
         <div class="blk" style="--o:30">${celebrateSec}</div>
@@ -2999,7 +3200,7 @@ async function viewMeetings() {
   const staffOn = list.some((m) => 'staff_id' in m);
   if (mineOnly()) list = list.filter((m) => m.staff_id === state.profile.id);
   const now = Date.now();
-  const late = list.filter((m) => m.status === 'scheduled' && new Date(m.scheduled_at).getTime() + (m.duration_min || 25) * 60000 < now);
+  const late = list.filter((m) => isLateMeeting(m, now));
   const upcoming = list.filter((m) => m.status === 'scheduled' && !late.includes(m));
   const past = list.filter((m) => m.status !== 'scheduled').reverse();
   const shown = { upcoming, late, past }[tab] || upcoming;
@@ -3012,10 +3213,11 @@ async function viewMeetings() {
     const t = new Date(m.scheduled_at).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
     const actions = m.status === 'scheduled'
       ? `<a class="btn btn-sm btn-gold" href="#/admin/prep/${m.id}">面談モード</a>
-         <button type="button" class="btn btn-sm" data-action="meeting-done" data-id="${m.id}">結果を入力</button>
+         <a class="btn btn-sm" href="#/admin/prep/${m.id}/rec">結果を入力</a>
          <button type="button" class="btn btn-sm btn-sub" data-action="meeting-move" data-id="${m.id}" data-at="${m.scheduled_at}" data-min="${m.duration_min}" data-staff="${esc(m.staff_id || '')}">${m.join_url ? '🔗 ' : ''}日時・リンク</button>
+         ${late.includes(m) ? `<button type="button" class="btn btn-sm btn-sub" data-action="meeting-status" data-id="${m.id}" data-status="no_show">欠席</button>` : ''}
          <button type="button" class="btn btn-sm btn-sub" data-action="meeting-status" data-id="${m.id}" data-status="canceled">キャンセル</button>`
-      : `<button type="button" class="btn btn-sm btn-sub" data-action="meeting-done" data-id="${m.id}">まとめを編集</button>`;
+      : `<a class="btn btn-sm btn-sub" href="#/admin/prep/${m.id}/rec">記録を見る・直す</a>`;
     return `${head}<div class="card meeting-row">
       <div class="mt-time"><b>${t}</b><small>${m.duration_min}分</small></div>
       <div class="grow"><div>${memberLink(m.member_id, m.profiles?.name)} ${meetingPill(m)}${m.status === 'scheduled' && 'pre_at' in m ? (m.pre_at ? ' <span class="pill ok">事前アンケート✓</span>' : ' <span class="pill mute">事前アンケート未</span>') : ''}${staffOn ? ` <span class="claim ${m.staff_id ? (m.staff_id === state.profile.id ? 'mine' : 'other') : 'none'}">${m.staff_id ? `対応：${m.staff_id === state.profile.id ? 'あなた' : esc(staffName(staff, m.staff_id))}` : '対応者未定'}</span>` : ''}</div>
@@ -3027,9 +3229,9 @@ async function viewMeetings() {
   return header('面談') + `<div class="content wide">
     <div class="between" style="flex-wrap:wrap;gap:10px">
       <div class="filter-chips" role="group" aria-label="表示する面談">${tabBtn('upcoming', 'これから', upcoming.length)}${tabBtn('late', '結果入力待ち', late.length)}${tabBtn('past', '過去', 0)}</div>
-      <span class="row" style="gap:8px">${staffOn || mineOnly() ? mineToggle() : ''}<button type="button" class="btn btn-gold btn-sm" data-action="meeting-add">＋ 面談を予約</button></span>
+      <span class="row" style="gap:8px">${staffOn || mineOnly() ? mineToggle() : ''}<a class="btn btn-sm btn-sub" href="#/admin/member/${state.profile.id}/info">⚙ 自分のZoom</a><button type="button" class="btn btn-gold btn-sm" data-action="meeting-add">＋ hacomonoの予約を登録</button></span>
     </div>
-    <p class="muted small">面談の予約はLINEで日程を決めてから、ここに登録します。登録すると会員の「次回の面談」に表示され、前日にお知らせメールが届きます（メール設定後）。</p>
+    <p class="muted small">面談の予約は、会員がhacomono（LINE）から入れます。hacomonoに入った予約を、ここに登録してください。登録すると会員の「次回の面談」に表示され、前日にお知らせメールが届きます（メール設定後）。オンライン面談は1回20分・:55開始（例：18:55〜19:15）で、1人のプロ・コーチにつき1時間に1件までです。</p>
     ${rows ? `<div class="meeting-list">${rows}</div>` : `<div class="empty">${tab === 'late' ? '結果の入力待ちはありません 🎉' : tab === 'past' ? '過去の面談はまだありません' : 'これからの面談はありません'}</div>`}
   </div>` + adminNav('admin/meetings');
 }
@@ -3241,14 +3443,30 @@ async function viewDrillDetail(id) {
   </div></div></div>` + adminNav('admin/drills');
 }
 
+// 提出動画の絞り込み（超過・未着手・自分の担当）
+const INBOX_FILTERS = [['all', 'すべて'], ['over', `超過（${REPLY_TARGET_H}時間を過ぎた）`], ['unclaimed', '未着手（担当なし）'], ['mine', '自分の担当']];
+const INBOX_TEST = {
+  all: () => true,
+  over: (s) => replyDue(s.created_at).over,
+  unclaimed: (s) => claimOn(s) && !s.claimed_by,
+  mine: (s) => s.claimed_by === state.profile.id,
+};
 async function viewInbox() {
-  let subs = await must(sb.from('submissions').select('*, profiles!member_id(name, plan)').eq('status', 'pending').order('created_at'));
+  const all = await must(sb.from('submissions').select('*, profiles!member_id(name, plan)').eq('status', 'pending').order('created_at'));
   const staff = await staffList();
-  const on = subs.some(claimOn);
-  if (mineOnly()) subs = subs.filter((s) => s.claimed_by === state.profile.id);
+  const on = all.some(claimOn);
+  const saved = local.get('atg-inbox-filter');
+  let k = INBOX_TEST[saved] ? saved : mineOnly() ? 'mine' : 'all';
+  if (!on && (k === 'unclaimed' || k === 'mine')) k = 'all';
+  const subs = all.filter(INBOX_TEST[k]);
+  // レッスンを保存したあとの「次の動画へ」で使う（いまの絞り込みの順番）
+  state.inboxOrder = subs.map((s) => s.id);
   const urls = await signedVideoUrls(subs);
+  const chips = INBOX_FILTERS.filter(([x]) => on || x === 'all' || x === 'over').map(([x, label]) => `<button type="button" data-action="inbox-filter" data-filter="${x}" class="${k === x ? 'on' : ''}" aria-pressed="${k === x}">${label}<em>${all.filter(INBOX_TEST[x]).length}</em></button>`).join('');
+  const emptyText = { all: '確認待ちの動画はありません 🎉', over: `${REPLY_TARGET_H}時間を過ぎた動画はありません`, unclaimed: '担当が決まっていない動画はありません', mine: '自分が対応中の動画はありません' }[k];
   return header('提出動画（確認待ち）') + `<div class="content wide">
-    ${on || mineOnly() ? `<div class="mine-bar">${mineToggle()}<span class="muted small">「私が対応する」を押すと、ほかのスタッフに対応中と表示されます。</span></div>` : ''}
+    <div class="filter-chips inbox-chips" role="group" aria-label="提出動画の絞り込み">${chips}</div>
+    ${on ? '<p class="muted small">「私が対応する」を押すと、ほかのスタッフに対応中と表示されます。</p>' : ''}
     ${subs.length ? `<div class="inbox-list">` + subs.map((s) => `<div class="card${s.claimed_by && s.claimed_by !== state.profile.id ? ' claimed-other' : ''}">
         <div class="between"><div><b>${esc(s.profiles?.name || '（名前未設定）')}</b> <span class="pill">${esc(planLabel(s.profiles?.plan))}</span></div>
           <span class="muted">${fmtDate(s.created_at)}</span></div>
@@ -3263,29 +3481,57 @@ async function viewInbox() {
           <button class="btn-sub" data-action="mark-reviewed" data-id="${s.id}">対応済みにする</button>
         </div>
         <a class="muted small" href="#/admin/member/${s.member_id}">会員ページを見る</a>
-      </div>`).join('') + '</div>' : `<div class="empty">${mineOnly() ? '自分が対応中の動画はありません' : '確認待ちの動画はありません 🎉'}</div>`}
+      </div>`).join('') + '</div>' : `<div class="empty">${emptyText}</div>`}
   </div>` + adminNav('admin/inbox');
 }
 
 // 会員一覧の絞り込み（検索の文字＋「契約中」などのボタン）
+// 並べ替え：最後の利用日（新しい順）・残り回数（多い順）・プラン・名前・登録日（新しい順）
+const MEMBER_SORTS = [['created', '登録が新しい順'], ['seen', '最後の利用日（新しい順）'], ['left', '残り回数（多い順）'], ['plan', 'プラン'], ['name', '名前']];
+const MEMBER_FLAG_FILTERS = ['cancel', 'pastdue', 'expiring', 'noroadmap'];
 function applyMemberFilter() {
   const q = (document.getElementById('member-search')?.value || '').trim().toLowerCase();
   const k = state.memberFilter;
+  const list = document.getElementById('member-list');
+  if (!list) return;
+  const sort = MEMBER_SORTS.some(([x]) => x === state.memberSort) ? state.memberSort : 'created';
+  const cards = [...list.querySelectorAll('[data-search]')];
+  const num = (a, n) => Number(a.dataset[n] || 0);
+  const cmp = {
+    created: (a, b) => num(a, 'i') - num(b, 'i'),
+    seen: (a, b) => num(b, 'seen') - num(a, 'seen') || num(a, 'i') - num(b, 'i'),
+    left: (a, b) => num(b, 'left') - num(a, 'left') || num(a, 'i') - num(b, 'i'),
+    plan: (a, b) => num(a, 'plan') - num(b, 'plan') || a.dataset.name.localeCompare(b.dataset.name, 'ja'),
+    name: (a, b) => a.dataset.name.localeCompare(b.dataset.name, 'ja'),
+  }[sort];
+  cards.sort(cmp).forEach((a) => list.appendChild(a));
   let n = 0;
-  document.querySelectorAll('#member-list [data-search]').forEach((a) => {
-    const show = (!q || a.dataset.search.includes(q)) && (k === 'all' || (k === 'todo' ? a.dataset.todo === '1' : a.dataset.kind === k));
+  cards.forEach((a) => {
+    const byKind = k === 'all' || (k === 'todo' ? a.dataset.todo === '1' : MEMBER_FLAG_FILTERS.includes(k) ? (a.dataset.flags || '').split(' ').includes(k) : a.dataset.kind === k);
+    const show = (!q || a.dataset.search.includes(q)) && byKind;
     a.classList.toggle('hidden', !show); if (show) n++;
   });
   const c = document.getElementById('member-count'); if (c) c.textContent = `${n} 名を表示中`;
 }
 
 async function viewMembers() {
-  const [members, pend, mtgs, rms] = await Promise.all([
-    must(sb.from('profiles').select('*').order('created_at', { ascending: false })),
-    must(sb.from('submissions').select('member_id').eq('status', 'pending')),
-    must(sb.from('meetings').select('member_id, status').gte('scheduled_at', monthStart()).in('status', ['scheduled', 'done'])),
-    sb.from('roadmap_items').select('member_id, publish_on, theme, drill_id, hidden, published_at').then((r) => r.data || []),
+  const [members, pend, mtgs, rms, liveCredits] = await Promise.all([
+    must(fetchAll(() => sb.from('profiles').select('*').order('created_at', { ascending: false }))),
+    must(fetchAll(() => sb.from('submissions').select('member_id').eq('status', 'pending'))),
+    must(fetchAll(() => sb.from('meetings').select('member_id, status').gte('scheduled_at', monthStart()).in('status', ['scheduled', 'done']))),
+    fetchAll(() => sb.from('roadmap_items').select('member_id, publish_on, theme, drill_id, hidden, published_at')).then((r) => r.data || []),
+    // まだ使っていない権利（残り回数の並べ替え・期限が近い会員の絞り込み。設定前は空）
+    fetchAll(() => sb.from('credits').select('member_id, expires_on').is('used_at', null).gte('expires_on', today())).then((r) => r.data || [], () => []),
   ]);
+  const leftBy = liveCredits.reduce((a, c) => a.set(c.member_id, (a.get(c.member_id) || 0) + 1), new Map());
+  const monthEndYmd = jstMonthEnd();
+  const expiringIds = new Set(liveCredits.filter((c) => c.expires_on <= monthEndYmd).map((c) => c.member_id));
+  const planIdx = (id) => { const i = PLANS.findIndex((pl) => pl.id === id); return i < 0 ? 99 : i; };
+  const flagKeys = (m) => {
+    if (m.role === 'admin') return '';
+    return [(m.cancel_at || m.deletion_requested_at) && 'cancel', m.subscription_status === 'past_due' && 'pastdue',
+      expiringIds.has(m.id) && 'expiring', isActive(m) && !rmBy.has(m.id) && 'noroadmap'].filter(Boolean).join(' ');
+  };
   const rmBy = rms.reduce((a, r) => a.set(r.member_id, [...(a.get(r.member_id) || []), r]), new Map());
   const pendBy = pend.reduce((a, x) => a.set(x.member_id, (a.get(x.member_id) || 0) + 1), new Map());
   const metBy = new Set(mtgs.map((x) => x.member_id));
@@ -3312,15 +3558,21 @@ async function viewMembers() {
   const needs = (m) => /flag (red|yellow)/.test(flags(m));
   const people = members.filter((m) => m.role !== 'admin');
   const counts = { all: members.length, active: people.filter(isActive).length, inactive: people.filter((m) => !isActive(m)).length, todo: people.filter(needs).length };
+  MEMBER_FLAG_FILTERS.forEach((k) => { counts[k] = people.filter((m) => flagKeys(m).split(' ').includes(k)).length; });
   const chip = (k, label) => `<button type="button" data-action="member-filter" data-filter="${k}" class="${state.memberFilter === k ? 'on' : ''}" aria-pressed="${state.memberFilter === k}">${label}<em>${counts[k]}</em></button>`;
+  const sort = state.memberSort || 'created';
   return header('会員一覧') + `<div class="content wide">
-    <div class="form"><input type="search" id="member-search" placeholder="名前・メールで検索" data-action="filter-members"></div>
+    <div class="form member-tools"><input type="search" id="member-search" placeholder="名前・メールで検索" data-action="filter-members">
+      <label class="member-sort"><span>並べ替え</span><select data-member-sort aria-label="並べ替え">${MEMBER_SORTS.map(([k, l]) => `<option value="${k}"${sort === k ? ' selected' : ''}>${l}</option>`).join('')}</select></label></div>
     <div class="filter-chips member-chips" role="group" aria-label="会員の絞り込み">${chip('all', '全員')}${chip('active', '契約中')}${chip('inactive', '未契約')}${chip('todo', '対応が必要')}</div>
+    <div class="filter-chips member-chips sub" role="group" aria-label="会員の絞り込み（くわしく）">${chip('cancel', '解約予定')}${chip('pastdue', '支払い遅延')}${chip('expiring', '回数の期限が近い（今月末）')}${chip('noroadmap', 'ロードマップ未設定')}</div>
     <p class="muted" id="member-count"></p>
-    <div id="member-list">${members.map((m) => `<a class="card link" href="#/admin/member/${m.id}" data-search="${esc(`${m.name} ${m.email}`.toLowerCase())}" data-kind="${m.role === 'admin' ? 'admin' : isActive(m) ? 'active' : 'inactive'}" data-todo="${m.role !== 'admin' && needs(m) ? 1 : 0}">
+    <div id="member-list">${members.map((m, i) => `<a class="card link" href="#/admin/member/${m.id}" data-search="${esc(`${m.name} ${m.email}`.toLowerCase())}" data-kind="${m.role === 'admin' ? 'admin' : isActive(m) ? 'active' : 'inactive'}" data-todo="${m.role !== 'admin' && needs(m) ? 1 : 0}"
+        data-i="${i}" data-name="${esc(m.name || '')}" data-seen="${m.last_seen_at ? new Date(m.last_seen_at).getTime() : 0}" data-left="${leftBy.get(m.id) || 0}" data-plan="${m.role === 'admin' ? 100 : planIdx(m.plan)}" data-flags="${flagKeys(m)}">
         <div class="between"><div><b>${esc(m.name || '（名前未設定）')}</b>${m.role === 'admin' ? ' <span class="pill">ADMIN</span>' : ''}
           <div class="muted">${esc(m.email)}</div></div>
-          <div style="text-align:right">${m.role === 'admin' ? '' : memberPill(m)}<div class="muted">${esc(planLabel(m.plan))}</div></div></div>
+          <div style="text-align:right">${m.role === 'admin' ? '' : memberPill(m)}<div class="muted">${esc(planLabel(m.plan))}</div>
+            ${m.role === 'admin' ? '' : `<div class="muted small">${m.last_seen_at ? `最後の利用 ${fmtDate(jstYmd(m.last_seen_at))}` : '利用の記録なし'}・残り${leftBy.get(m.id) || 0}回</div>`}</div></div>
         ${flags(m)}
       </a>`).join('')}</div>
   </div>` + adminNav('admin/members');
@@ -3383,6 +3635,8 @@ async function viewMemberDetail(id, tab) {
   ]);
   const mst = scoreStats(mRounds, m || {});
   if (!m) return header('会員詳細', 'admin/members') + '<div class="content"><div class="empty">会員が見つかりません</div></div>';
+  // スタッフのZoomの部屋（設定前は undefined）
+  const zoomRow = m.role === 'admin' ? await sb.from('staff_settings').select('zoom_url, zoom_note').eq('staff_id', m.id).maybeSingle().then((r) => (r.error ? undefined : r.data), () => undefined) : null;
   const self = m.id === state.profile.id;
   const staff = m.role === 'admin';
   const rmCur = roadmap.filter(rmOpen).at(-1);
@@ -3397,7 +3651,7 @@ async function viewMemberDetail(id, tab) {
   const showExit = mExits && (mExits.length || m.cancel_at || !isActive(m));
 
   // ---- タブ：基本情報 ----
-  const paneInfo = `<form class="card form" data-form="admin-profile" data-id="${m.id}">
+  const paneInfo = `<form class="card form" data-form="admin-profile" data-id="${m.id}" data-role="${esc(m.role)}">
       <b>会員情報</b>
       <label for="name">会員名</label><input id="name" name="name" value="${esc(m.name)}" maxlength="50">
       <label for="plan">プラン <span class="muted">（通常は Stripe から自動で反映）</span></label>
@@ -3427,6 +3681,16 @@ async function viewMemberDetail(id, tab) {
         <option value="admin" ${m.role === 'admin' ? 'selected' : ''}>管理者（コーチ）</option></select>`}
       <button class="btn-block" type="submit">保存する</button>
     </form>
+    ${staff ? (zoomRow === undefined ? '<div class="card"><b>オンライン面談のZoom</b><p class="muted small">データベースの更新（20261123100000_staff_tools.sql）を実行すると、プロ・コーチごとのZoomを登録できます。</p></div>'
+      : `<form class="card form staff-zoom" data-form="staff-zoom" data-id="${m.id}">
+      <b>オンライン面談のZoom${self ? '（自分）' : ''}</b>
+      <p class="muted small" style="margin:4px 0 0">面談を登録するとき、このプロ・コーチを選ぶと、参加リンクと案内に自動で入ります。会員には、面談の参加リンクとしてだけ表示されます。</p>
+      <label for="zoom_url">Zoomのリンク <span class="muted">（いつも使う個人の部屋）</span></label>
+      <input id="zoom_url" name="zoom_url" type="text" maxlength="500" inputmode="url" autocomplete="off" placeholder="https://zoom.us/j/..." value="${esc(zoomRow?.zoom_url || '')}">
+      <label for="zoom_note">案内 <span class="muted">（ミーティングID・パスコードなど）</span></label>
+      <textarea id="zoom_note" name="zoom_note" rows="3" maxlength="1000" placeholder="ミーティングID：123 456 7890&#10;パスコード：abc123">${esc(zoomRow?.zoom_note || '')}</textarea>
+      <button class="btn-block btn-sub" type="submit">Zoomを保存する</button>
+    </form>`) : ''}
     ${showExit ? exitCard(m, mExits) : ''}`;
 
   // ---- タブ：プラン・権利 ----
@@ -3445,15 +3709,15 @@ async function viewMemberDetail(id, tab) {
 
   // ---- タブ：面談 ----
   const recentMt = mMeetings.filter((x) => x !== nextMt).slice(0, 10);
-  const paneMeeting = `<div class="section-title" style="margin-top:0"><h2>面談</h2><button type="button" class="btn btn-sm" data-action="meeting-add" data-member="${m.id}">＋ 予約</button></div>
+  const paneMeeting = `<div class="section-title" style="margin-top:0"><h2>面談</h2><button type="button" class="btn btn-sm" data-action="meeting-add" data-member="${m.id}">＋ hacomonoの予約を登録</button></div>
     <div class="card">
       ${nextMt ? `<div class="next-meeting"><span>次回</span><b>${fmtShort(nextMt.scheduled_at)}</b><small>${nextMt.duration_min}分</small>
           <a class="btn btn-sm btn-gold" href="#/admin/prep/${nextMt.id}">面談モード</a>
           <button type="button" class="btn btn-sm btn-sub" data-action="meeting-move" data-id="${nextMt.id}" data-at="${nextMt.scheduled_at}" data-min="${nextMt.duration_min}" data-staff="${esc(nextMt.staff_id || '')}">${nextMt.join_url ? '🔗 ' : ''}日時・リンク</button></div>`
-        : '<p class="muted small" style="margin:0">次回の面談は入っていません。LINEで日程が決まったら「＋ 予約」から登録します。</p>'}
+        : '<p class="muted small" style="margin:0">次回の面談は入っていません。会員がhacomono（LINE）で予約したら、「＋ hacomonoの予約を登録」から登録します。</p>'}
       ${nextMt ? `<p class="small" style="margin:6px 0 0">支払い：${payPill(nextMt) || '—'}${nextMt.pay_type === 'unpaid' ? ` <button type="button" class="link inline" data-action="meeting-paid" data-id="${nextMt.id}">支払い済みにする</button>` : ''}</p>` : ''}
       ${recentMt.length ? `<div class="mt-history">${recentMt.map((x) => `<div class="list-item small"><div class="grow">${fmtShort(x.scheduled_at)} ${meetingPill(x)} ${payPill(x)}${x.pay_type === 'unpaid' && x.status !== 'canceled' ? ` <button type="button" class="link inline" data-action="meeting-paid" data-id="${x.id}">支払い済みにする</button>` : ''}${x.summary ? `<div class="muted">${esc(x.summary.slice(0, 60))}</div>` : ''}</div>
-          <button type="button" class="btn btn-sm btn-sub" data-action="meeting-done" data-id="${x.id}">${x.status === 'scheduled' ? '結果' : '編集'}</button></div>`).join('')}</div>` : ''}
+          <a class="btn btn-sm btn-sub" href="#/admin/prep/${x.id}/rec">${x.status === 'scheduled' ? '結果' : '記録'}</a></div>`).join('')}</div>` : ''}
     </div>`;
 
   // ---- タブ：レッスン ----
@@ -3607,6 +3871,12 @@ const CHART_RULES = [
   '体の状態・家庭や仕事の事情などは、指導に必要な範囲だけ書く',
 ];
 const chartOpenNext = (entries) => (entries || []).filter((e) => !e.next_done && e.next_action && e.next_action.trim() !== 'なし');
+// カルテの「やったこと・見たこと」に残せる文字数（20261123100000_staff_tools.sql で 2000 → 10000 文字）
+const CHART_CONTENT_MAX = 10000;
+const CHART_CONTENT_MAX_OLD = 2000;
+// 面談の記録：Zoomの要約は「やったこと・見たこと」のあとに、この見出しを付けて残す
+const ZOOM_MARK = '\n\n【Zoomの要約】\n';
+const splitZoom = (content = '') => { const i = content.indexOf(ZOOM_MARK); return i < 0 ? [content, ''] : [content.slice(0, i), content.slice(i + ZOOM_MARK.length)]; };
 // 追加の項目（20261111000000_chart_drill_details.sql を実行すると使える）
 const CHART_MORE = [
   ['changes', '前回からの変化', '例：前傾は保てるようになった。トップの右ひじはまだ浮く'],
@@ -3621,7 +3891,7 @@ function chartEntryFields(e = {}, pre = 'ce', more = false) {
       <div><label for="${id('kind')}">種類</label><select id="${id('kind')}" name="kind">${CHART_KINDS.map(([v, l]) => `<option value="${v}"${(e.kind || 'meeting') === v ? ' selected' : ''}>${l}</option>`).join('')}</select></div>
     </div>
     <label for="${id('content')}">やったこと・見たこと <span class="muted">（事実）</span></label>
-    <textarea id="${id('content')}" name="content" rows="3" maxlength="2000" placeholder="例：後方からの動画。アドレスで前傾が浅く、トップで右ひじが浮く。ドライバーは右に出る球が多いと本人">${esc(e.content || '')}</textarea>
+    <textarea id="${id('content')}" name="content" rows="3" maxlength="${CHART_CONTENT_MAX}" placeholder="例：後方からの動画。アドレスで前傾が浅く、トップで右ひじが浮く。ドライバーは右に出る球が多いと本人">${esc(e.content || '')}</textarea>
     ${more ? `<label for="${id('changes')}">${CHART_MORE[0][1]}</label><textarea id="${id('changes')}" name="changes" rows="2" maxlength="1000" placeholder="${CHART_MORE[0][2]}">${esc(e.changes || '')}</textarea>` : ''}
     <label for="${id('issues')}">課題・気づき <span class="muted">（判断）</span></label>
     <textarea id="${id('issues')}" name="issues" rows="2" maxlength="1000" placeholder="例：切り返しで上体が先に回るのが根本。まずはアドレスの前傾を安定させる">${esc(e.issues || '')}</textarea>
@@ -3875,37 +4145,48 @@ async function viewMeetingPrep(id) {
   if (prev?.summary) hints.push(['', '前回のまとめの内容ができているか確認する']);
 
   const stat = (label, val, sub = '') => `<div class="prep-stat"><span>${label}</span><b>${val}</b>${sub ? `<small>${sub}</small>` : ''}</div>`;
-  const modeOn = 'prep_memo' in mt;
+  // 面談モード（事前アンケート・記録）は 20261116000000_meeting_mode.sql を実行すると使える
+  const modeOn = 'pre_at' in mt;
   const recDrills = await (lessons.length ? sb.from('lesson_drills').select('drills(title)').in('lesson_id', lessons.map((l) => l.id)).then((r) => (r.data || []).map((x) => x.drills?.title).filter(Boolean), () => []) : []);
   const drillCands = [...new Set([nowItem?.drills?.title, nextItem?.drills?.title, ...recDrills].filter(Boolean))];
   const done = mt.status !== 'scheduled';
+  // 準備メモ（スタッフだけの meeting_prep。まだない環境では、これまでの meetings.prep_memo を使う）
+  const prep = await sb.from('meeting_prep').select('memo').eq('meeting_id', mt.id).maybeSingle().then((r) => (r.error ? null : { memo: r.data?.memo || '' }), () => null);
+  const prepLegacy = !prep && 'prep_memo' in mt;
+  const prepMemo = prep ? prep.memo : prepLegacy ? mt.prep_memo || '' : '';
+  // 記録ずみの面談は、前に保存した記録（カルテ）を入れておく。保存し直すと、同じ記録を書き換える（二重にならない）
+  const entry = done && mt.chart_entry_id ? await sb.from('chart_entries').select('*').eq('id', mt.chart_entry_id).maybeSingle().then((r) => (r.error ? null : r.data), () => null) : null;
+  const [entryContent, entryAi] = splitZoom(entry?.content || '');
+  const ev = (n) => esc(entry?.[n] || '');
+  const contentMax = 'chart_entry_id' in mt ? CHART_CONTENT_MAX : CHART_CONTENT_MAX_OLD;
   const recordForm = `<section class="card mtg-rec"><div class="between"><b>📝 面談の記録</b><span class="muted small">面談中は単語だけでOK。終わってから整えて保存</span></div>
       <form class="form" data-form="mtg-record" data-id="${mt.id}" data-member="${mid}">
         <div class="seg-radio">${[['done', '完了'], ['no_show', '欠席'], ['canceled', 'キャンセル']].map(([k, l]) => `<label><input type="radio" name="mstatus" value="${k}"${(done ? mt.status : 'done') === k ? ' checked' : ''}><span>${l}</span></label>`).join('')}</div>
         <div class="mtg-ai"><b>Zoomの要約</b> <span class="muted small">（任意・会員には見えません）</span>
           <p class="muted small" style="margin:2px 0 6px">面談のあとに届く Zoom の要約を貼り付けて、そのまま直せます。保存するとカルテに残ります。「まとめの下書きにする」で、会員へのまとめの欄に入れて直すこともできます。</p>
-          <textarea name="ai" rows="6" maxlength="4000" placeholder="Zoomの要約をここに貼り付け（貼り付けたあと、自由に直せます）"></textarea>
-          <div class="mtg-ai-btns"><button type="button" class="btn btn-sm btn-sub" data-action="mtg-ai-sum">↓ 会員へのまとめの下書きにする</button></div></div>
-        <label>① 前回の課題・事前アンケートの確認</label><textarea name="content" rows="3" maxlength="2000">${esc(done ? '' : preText(mt))}</textarea>
-        <label>② よくなった点</label><textarea name="changes" rows="2" maxlength="1000" placeholder="例：トップで右ひじが浮かなくなった"></textarea>
-        <label>③ 今日のアドバイス <span class="muted">（課題は1つに絞る）</span></label><textarea name="issues" rows="2" maxlength="1000" placeholder="例：切り返しで上体が先に回るので、下半身から動かす"></textarea>
+          <textarea name="ai" rows="6" maxlength="${contentMax - 2000 - ZOOM_MARK.length}" placeholder="Zoomの要約をここに貼り付け（貼り付けたあと、自由に直せます）">${esc(entryAi)}</textarea>
+          <div class="mtg-ai-btns"><button type="button" class="btn btn-sm btn-sub" data-action="mtg-ai-sum">↓ 会員へのまとめの下書きにする</button><span class="muted small">${(contentMax - 2000 - ZOOM_MARK.length).toLocaleString()}文字まで</span></div></div>
+        ${entry ? `<p class="notice small mtg-resave">この面談の記録は保存ずみです（${fmtShort(entry.updated_at || entry.created_at)}）。直して保存すると、カルテの同じ記録を書き換えます。</p>` : ''}
+        <label>① 前回の課題・事前アンケートの確認</label><textarea name="content" rows="3" maxlength="2000">${esc(done ? entryContent : preText(mt))}</textarea>
+        <label>② よくなった点</label><textarea name="changes" rows="2" maxlength="1000" placeholder="例：トップで右ひじが浮かなくなった">${ev('changes')}</textarea>
+        <label>③ 今日のアドバイス <span class="muted">（課題は1つに絞る）</span></label><textarea name="issues" rows="2" maxlength="1000" placeholder="例：切り返しで上体が先に回るので、下半身から動かす">${ev('issues')}</textarea>
         <label>④ 次の練習（ドリル）</label>
         ${drillCands.length ? `<div class="mtg-chips">${drillCands.map((t) => `<button type="button" class="btn btn-sm btn-sub" data-action="mtg-drill" data-title="${esc(t)}">＋ ${esc(t)}</button>`).join('')}</div>` : ''}
         ${allDrills.length ? `<select data-action="mtg-drill-pick" aria-label="ドリル集から選ぶ"><option value="">ドリル集から選ぶ…</option>${allDrills.map((d) => `<option>${esc(d.title)}</option>`).join('')}</select>` : ''}
-        <textarea name="drills" rows="2" maxlength="1000" placeholder="例：トップで止める素振り 10回×毎日"></textarea>
-        <label>⑤ 次回までに・次回確認すること <span class="muted">（会員にも伝わる書き方で）</span></label><textarea name="next_action" rows="2" maxlength="1000" placeholder="例：次の動画で、切り返しで下半身から動けているか確認します"></textarea>
-        <label>スタッフだけのメモ <span class="muted">（会員には見えません・任意）</span></label><textarea name="memo" rows="2" maxlength="1000" placeholder="例：腰に少し違和感あり。次回も確認"></textarea>
+        <textarea name="drills" rows="2" maxlength="1000" placeholder="例：トップで止める素振り 10回×毎日">${ev('drills')}</textarea>
+        <label>⑤ 次回までに・次回確認すること <span class="muted">（会員にも伝わる書き方で）</span></label><textarea name="next_action" rows="2" maxlength="1000" placeholder="例：次の動画で、切り返しで下半身から動けているか確認します">${entry && entry.next_action !== 'なし' ? ev('next_action') : ''}</textarea>
+        <label>スタッフだけのメモ <span class="muted">（会員には見えません・任意）</span></label><textarea name="memo" rows="2" maxlength="1000" placeholder="例：腰に少し違和感あり。次回も確認">${ev('pending')}</textarea>
         <div class="between"><label style="margin:0">会員へのまとめ <span class="muted">（①〜⑤から自動で作ります。直してもOK）</span></label><button type="button" class="link inline" data-action="mtg-resum">作り直す</button></div>
         <textarea name="summary" rows="6" maxlength="2000" data-auto="${mt.summary ? '0' : '1'}">${esc(mt.summary || '')}</textarea>
-        <label class="chk-line"><input type="checkbox" name="notify" checked> コンシェルジュサポートで「まとめを載せました」と知らせる</label>
+        <label class="chk-line"><input type="checkbox" name="notify"${done ? '' : ' checked'}> コンシェルジュサポートで「まとめを載せました」と知らせる${done ? ' <span class="muted small">（保存し直すときは、もう一度送らないよう外しています）</span>' : ''}</label>
         <button class="btn-block" type="submit">記録を保存する</button>
       </form></section>`;
   const preCard = modeOn ? `<section class="card mtg-pre"><div class="between"><b>📋 事前アンケート</b>${mt.pre_at ? `<span class="pill ok">回答 ${fmtShort(mt.pre_at)}</span>` : '<span class="pill warn">まだ回答がありません</span>'}</div>
       ${mt.pre_at ? PRE_QS.map(([n, label]) => (mt[n] ? `<div class="karte-row"><span>${label}</span><p class="pre">${esc(mt[n])}</p></div>` : '')).join('')
-    : `<p class="small" style="margin:6px 0">${mt.pre_reminded_at ? `${fmtShort(mt.pre_reminded_at)} にお願いを送りました。` : '前日の10時に、コンシェルジュサポートで自動でお願いが届きます。'}</p>
+    : `<p class="small" style="margin:6px 0">${mt.pre_reminded_at ? `${fmtShort(mt.pre_reminded_at)} にお願いを送りました。` : '前日の10時に、コンシェルジュサポートで自動でお願いが届きます（24時間を切ってから登録した面談は、1時間以内に届きます）。'}</p>
         ${done ? '' : '<button type="button" class="btn btn-sm btn-sub" data-action="mtg-pre-ask" data-id="' + mt.id + '" data-member="' + mid + '">今すぐお願いを送る</button>'}`}</section>
     <section class="card"><b>🗒 話すこと（準備メモ・3つまで）</b>
-      <form class="form" data-form="mtg-prep" data-id="${mt.id}"><textarea name="prep_memo" rows="3" maxlength="1000" placeholder="1. 右に出る原因（切り返し）&#10;2. 前回のドリルの確認&#10;3. 次のドリルの予告">${esc(mt.prep_memo || '')}</textarea>
+      <form class="form" data-form="mtg-prep" data-id="${mt.id}"${prepLegacy ? ' data-legacy="1"' : ''}><textarea name="prep_memo" rows="3" maxlength="1000" placeholder="1. 右に出る原因（切り返し）&#10;2. 前回のドリルの確認&#10;3. 次のドリルの予告">${esc(prepMemo)}</textarea>
         <button type="submit" class="btn btn-sm">メモを保存</button></form></section>` : '';
   return header('面談モード', 'admin/meetings') + `<div class="content wide">
     <div class="card prep-head">
@@ -4350,30 +4631,30 @@ async function viewStats() {
   const since = sinceD.toISOString(); const sinceYmd = sinceD.toLocaleDateString('sv-SE');
   const soft = (q) => q.then((r) => (r.error ? null : r.data || []));
   let [people, events, credits, subs, drillLinks, rounds, surveys, ratings, nps, exits, lessons] = await Promise.all([
-    must(sb.from('profiles').select('id, name, plan, goal, created_at, subscription_status, access_until, cancel_at, last_seen_at').neq('role', 'admin')),
-    must(sb.from('membership_events').select('member_id, kind, created_at').order('created_at')),
-    must(sb.from('credits').select('member_id, kind, source, granted_on, expires_on, used_at').gte('granted_on', sinceYmd)),
-    must(sb.from('submissions').select('member_id, club, angle, created_at').gte('created_at', since)),
-    must(sb.from('lesson_drills').select('drills(title, tags), lessons!inner(created_at, member_id)').gte('lessons.created_at', since)),
-    must(sb.from('rounds').select('member_id, played_on, score, holes').eq('holes', 18).order('played_on')),
-    soft(sb.from('member_survey').select('*')),
-    soft(sb.from('lesson_ratings').select('lesson_id, member_id, rating, comment, created_at').gte('created_at', since).order('created_at', { ascending: false })),
-    soft(sb.from('nps_responses').select('member_id, month, score, comment, created_at').gte('month', sinceYmd).order('month', { ascending: false })),
-    soft(sb.from('exit_reasons').select('member_id, reasons, comment, source, created_at').gte('created_at', since).order('created_at', { ascending: false })),
+    must(fetchAll(() => sb.from('profiles').select('id, name, plan, goal, created_at, subscription_status, access_until, cancel_at, last_seen_at').neq('role', 'admin'))),
+    must(fetchAll(() => sb.from('membership_events').select('member_id, kind, created_at').order('created_at'))),
+    must(fetchAll(() => sb.from('credits').select('member_id, kind, source, granted_on, expires_on, used_at').gte('granted_on', sinceYmd))),
+    must(fetchAll(() => sb.from('submissions').select('member_id, club, angle, created_at').gte('created_at', since))),
+    must(fetchAll(() => sb.from('lesson_drills').select('drills(title, tags), lessons!inner(created_at, member_id)').gte('lessons.created_at', since))),
+    must(fetchAll(() => sb.from('rounds').select('member_id, played_on, score, holes').eq('holes', 18).order('played_on'))),
+    soft(fetchAll(() => sb.from('member_survey').select('*'))),
+    soft(fetchAll(() => sb.from('lesson_ratings').select('lesson_id, member_id, rating, comment, created_at').gte('created_at', since).order('created_at', { ascending: false }))),
+    soft(fetchAll(() => sb.from('nps_responses').select('member_id, month, score, comment, created_at').gte('month', sinceYmd).order('month', { ascending: false }))),
+    soft(fetchAll(() => sb.from('exit_reasons').select('member_id, reasons, comment, source, created_at').gte('created_at', since).order('created_at', { ascending: false }))),
     sb.from('lessons').select('id', { count: 'exact', head: true }).gte('created_at', since).then((r) => r.count ?? null),
   ]);
   // その2：時間帯・季節・練習・集客・機能の利用など
   const y1 = new Date(new Date().getFullYear(), new Date().getMonth() - 11, 1);
   let [lessonTimes, diagRows, subMeta, practiceAll, subs12, srcRows, siteEv, adRows, appEv] = await Promise.all([
-    must(sb.from('lessons').select('member_id, created_at, read_at').gte('created_at', since)),
-    soft(sb.from('lessons').select('member_id, diag_tags').gte('created_at', since)),
-    soft(sb.from('submissions').select('member_id, created_at, capture_source, takes, edited, upload_ms, file_mb').gte('created_at', since)),
-    must(sb.from('roadmap_practice').select('member_id, practiced_on').gte('practiced_on', new Date(Math.max(sinceD, Date.now() - 365 * 86400000)).toLocaleDateString('sv-SE'))),
-    must(sb.from('submissions').select('member_id, created_at').gte('created_at', y1.toISOString())),
-    soft(sb.from('signup_sources').select('member_id, source, created_at')),
-    soft(sb.from('site_events').select('kind, source, created_at').gte('created_at', since).limit(50000)),
-    soft(sb.from('ad_spend').select('*').order('month', { ascending: false })),
-    soft(sb.from('app_events').select('member_id, kind, name, created_at').gte('created_at', since).limit(50000)),
+    must(fetchAll(() => sb.from('lessons').select('member_id, created_at, read_at').gte('created_at', since))),
+    soft(fetchAll(() => sb.from('lessons').select('member_id, diag_tags').gte('created_at', since))),
+    soft(fetchAll(() => sb.from('submissions').select('member_id, created_at, capture_source, takes, edited, upload_ms, file_mb').gte('created_at', since))),
+    must(fetchAll(() => sb.from('roadmap_practice').select('member_id, practiced_on').gte('practiced_on', new Date(Math.max(sinceD, Date.now() - 365 * 86400000)).toLocaleDateString('sv-SE')))),
+    must(fetchAll(() => sb.from('submissions').select('member_id, created_at').gte('created_at', y1.toISOString()))),
+    soft(fetchAll(() => sb.from('signup_sources').select('member_id, source, created_at'))),
+    soft(fetchAll(() => sb.from('site_events').select('kind, source, created_at').gte('created_at', since))),
+    soft(fetchAll(() => sb.from('ad_spend').select('*').order('month', { ascending: false }))),
+    soft(fetchAll(() => sb.from('app_events').select('member_id, kind, name, created_at').gte('created_at', since))),
   ]);
   const weather = await nagoyaWeather(range === 'all' || sinceD < new Date(Date.now() - 365 * 86400000) ? new Date(Date.now() - 365 * 86400000) : sinceD);
   const needSql = [surveys, ratings, nps, exits].some((x) => x === null);
@@ -4547,13 +4828,13 @@ async function viewReport(ym) {
   const from = new Date(y, mo - 1, 1); const to = new Date(y, mo, 1); const pFrom = new Date(y, mo - 2, 1);
   const key = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
   let [people, events, subs, lessons, meetings, practice, rounds] = await Promise.all([
-    must(sb.from('profiles').select('id, role, plan, created_at, subscription_status, access_until, best_score, avg_score').neq('role', 'admin')),
-    must(sb.from('membership_events').select('member_id, kind, created_at')),
-    must(sb.from('submissions').select('member_id, created_at, reviewed_at, status').gte('created_at', pFrom.toISOString()).lt('created_at', to.toISOString())),
-    must(sb.from('lessons').select('member_id, created_at, read_at').gte('created_at', pFrom.toISOString()).lt('created_at', to.toISOString())),
-    must(sb.from('meetings').select('member_id, status, scheduled_at').gte('scheduled_at', pFrom.toISOString()).lt('scheduled_at', to.toISOString())),
-    must(sb.from('roadmap_practice').select('member_id, practiced_on').gte('practiced_on', pFrom.toLocaleDateString('sv-SE')).lt('practiced_on', to.toLocaleDateString('sv-SE'))),
-    must(sb.from('rounds').select('id, member_id, played_on, created_at, score, holes')),
+    must(fetchAll(() => sb.from('profiles').select('id, role, plan, created_at, subscription_status, access_until, best_score, avg_score').neq('role', 'admin'))),
+    must(fetchAll(() => sb.from('membership_events').select('member_id, kind, created_at'))),
+    must(fetchAll(() => sb.from('submissions').select('member_id, created_at, reviewed_at, status').gte('created_at', pFrom.toISOString()).lt('created_at', to.toISOString()))),
+    must(fetchAll(() => sb.from('lessons').select('member_id, created_at, read_at').gte('created_at', pFrom.toISOString()).lt('created_at', to.toISOString()))),
+    must(fetchAll(() => sb.from('meetings').select('member_id, status, scheduled_at').gte('scheduled_at', pFrom.toISOString()).lt('scheduled_at', to.toISOString()))),
+    must(fetchAll(() => sb.from('roadmap_practice').select('member_id, practiced_on').gte('practiced_on', pFrom.toLocaleDateString('sv-SE')).lt('practiced_on', to.toLocaleDateString('sv-SE')))),
+    must(fetchAll(() => sb.from('rounds').select('id, member_id, played_on, created_at, score, holes'))),
   ]);
   const allPeople = people;
   const ids = statsPlanIds(people);
@@ -4901,7 +5182,11 @@ async function render() {
       await loadAdminBadges();
       if (r[1] === 'dashboard') return paint(await viewDashboard());
       if (r[1] === 'meetings') return paint(await viewMeetings());
-      if (r[1] === 'prep' && r[2]) return paint(await viewMeetingPrep(r[2]));
+      if (r[1] === 'prep' && r[2]) {
+        paint(await viewMeetingPrep(r[2]));
+        if (r[3] === 'rec') document.querySelector('.mtg-rec')?.scrollIntoView({ block: 'start' });
+        return;
+      }
       if (r[1] === 'report') return paint(await viewReport(r[2]));
       if (r[1] === 'stats') return paint(await viewStats());
       if (r[1] === 'templates') return paint(await viewTemplates());
@@ -5277,56 +5562,104 @@ const actions = {
   },
   'mine-toggle': () => { local.set('atg-mine', mineOnly() ? '0' : '1'); render(); },
   'mark-reviewed': async (el) => {
-    if (!confirm('レッスンを作らずに対応済みにしますか？')) return;
+    if (!(await confirmDialog({ title: 'レッスンを作らずに対応済みにしますか？', body: '<p>確認待ちの一覧から外れます。会員にはレッスンは届きません。</p>', ok: '対応済みにする' }))) return;
     await must(sb.from('submissions').update({ status: 'reviewed' }).eq('id', el.dataset.id));
     toast('対応済みにしました'); render();
   },
   'delete-task': async (el) => {
+    if (!(await confirmDialog({ title: 'この課題を削除しますか？', body: '<p>会員のホームからも消えます。元に戻せません。</p>', ok: '削除する' }))) return;
     await must(sb.from('tasks').delete().eq('id', el.dataset.id));
     render();
   },
   'reset-tasks': async (el) => {
+    if (!(await confirmDialog({ title: '課題の完了をリセットしますか？', body: '<p>この会員の課題が、すべて「まだ」に戻ります。</p>', ok: 'リセットする' }))) return;
     await must(sb.from('tasks').update({ done: false }).eq('member_id', el.dataset.id));
     toast('完了をリセットしました'); render();
   },
+  'inbox-filter': (el) => { local.set('atg-inbox-filter', el.dataset.filter); render(); },
+  // 面談モード：ドリルの候補を「次の練習」に入れる
+  'mtg-drill': (el) => {
+    const ta = el.closest('form')?.drills; if (!ta) return;
+    ta.value = ta.value.trim() ? `${ta.value.trim()}\n・${el.dataset.title}` : `・${el.dataset.title}`;
+    ta.dispatchEvent(new Event('input', { bubbles: true }));
+  },
+  'mtg-ai-sum': async (el) => {
+    const f = el.closest('form'); const ai = f.ai.value.trim();
+    if (!ai) { toast('先に Zoom の要約を貼り付けてください', true); return; }
+    if (f.summary.value.trim() && !(await confirmDialog({ title: '会員へのまとめを置き換えますか？', body: '<p>いま入っている「会員へのまとめ」を、Zoom の要約で置き換えます。</p>', ok: '置き換える' }))) return;
+    f.summary.value = ai.slice(0, Number(f.summary.maxLength) > 0 ? f.summary.maxLength : ai.length); f.summary.dataset.auto = '0'; f.summary.focus();
+    toast(ai.length > f.summary.value.length ? `まとめの欄は${f.summary.maxLength}文字までのため、途中まで入れました。会員向けに短く直してください` : 'まとめの欄に入れました。会員向けに直してから保存してください');
+  },
+  'mtg-resum': (el) => {
+    const f = el.closest('form'); f.summary.value = mtgSummary(f); f.summary.dataset.auto = '1';
+  },
+  'mtg-pre-ask': async (el) => {
+    const msg = { member_id: el.dataset.member, from_staff: true, body: 'オンライン面談の前に、事前アンケートへのご回答をお願いします。\nホームの「次回の面談」から3分ほどで答えられます。最新のスイング動画もお送りいただくと、面談でより詳しくお話しできます。' };
+    let r = await sb.from('concierge_messages').insert({ ...msg, is_auto: true });
+    if (r.error) r = await sb.from('concierge_messages').insert(msg);
+    if (r.error) throw new Error('送れませんでした（コンシェルジュサポートのデータベースの設定を確認してください）');
+    await sb.from('meetings').update({ pre_reminded_at: new Date().toISOString() }).eq('id', el.dataset.id).then(() => {}, () => {});
+    toast('事前アンケートのお願いを送りました'); render();
+  },
+  // コンシェルジュ：返信のいらない連絡を「対応不要」にする（新しい連絡が届くと、またお返事待ちになる）
+  'cc-done': async (el) => {
+    if (!(await confirmDialog({ title: '「対応不要」にしますか？', body: '<p>返信しないで、お返事待ちの一覧から外します。会員から新しい連絡が届くと、またお返事待ちになります。</p>', ok: '対応不要にする' }))) return;
+    const r = await sb.from('concierge_threads').upsert({ member_id: el.dataset.member, done_at: new Date().toISOString(), done_by: state.profile.id }, { onConflict: 'member_id' });
+    if (r.error) throw new Error(/concierge_threads|schema cache|does not exist/i.test(r.error.message || '') ? 'データベースの更新（20261123100000_staff_tools.sql の実行）が必要です' : r.error.message);
+    badgeAt = 0;
+    toast('対応不要にしました'); render();
+  },
+  // ダッシュボードの「声をかける」：定型文を入れて、その会員との連絡を開く
+  'cc-nudge': (el) => { state.ccDraft = { member: el.dataset.member, text: el.dataset.text || '' }; go(`admin/concierge/${el.dataset.member}`); },
   'handoff-clear': async () => {
     await clearHandoff();
     toast('SwingFrame の動画を取り消しました'); render();
   },
   'meeting-tab': (el) => { state.meetingTab = el.dataset.tab; render(); },
   'cc-tpl': (el) => {
-    const ta = document.getElementById('cc-reply'); const t = CC_TEMPLATES[Number(el.dataset.i)]?.[1] || '';
+    const ta = document.getElementById('cc-reply'); const t = (state.ccTpls || CC_TEMPLATES)[Number(el.dataset.i)]?.[1] || '';
     if (!ta) return; ta.value = ta.value.trim() ? `${ta.value.trim()}\n\n${t}` : t; ta.focus();
   },
   'meeting-add': async (el) => {
-    const [d] = splitLocal(new Date(Date.now() + DAY).toISOString());
-    const [staffOn, staff, linkOn] = await Promise.all([meetingStaffOn(), staffList(), meetingLinkOn()]);
+    // 初期値：次の「:55」の枠・20分（hacomono の予約に合わせて直す）
+    const [d, t] = nextMeetingSlot();
+    const [staffOn, staff, linkOn, zoom] = await Promise.all([meetingStaffOn(), staffList(), meetingLinkOn(), staffZoom()]);
+    const myZoom = zoom.get(state.profile.id);
     const v = await confirmDialog({
-      title: '面談を予約',
-      body: `<div class="form modal-form">
+      title: 'hacomonoの予約を登録',
+      body: `<p class="muted small" style="margin:0 0 6px">会員がhacomonoで入れた予約の日時を、そのまま入れてください。</p><div class="form modal-form">
         <label>会員</label>
         <input type="search" class="member-search" data-member-search placeholder="名前・メールで検索" aria-label="会員を名前・メールで検索" autocomplete="off">
         <select name="member_id" required>${await meetingMemberOptions(el.dataset.member)}</select>
         <div class="grid"><div><label>日付</label><input name="date" type="date" value="${d}" required></div>
-          <div><label>時刻</label><input name="time" type="time" value="19:00" step="300" required></div></div>
-        <label>時間（分）</label><input name="duration_min" type="number" min="5" max="180" value="25" required>
-        ${staffOn ? `<label>対応するプロ・コーチ</label><select name="staff_id">${staffOptions(staff, state.profile.id)}</select>` : ''}
+          <div><label>開始時刻 <span class="muted">（:55 開始）</span></label><input name="time" type="time" value="${t}" step="300" required></div></div>
+        <label>時間（分）</label><input name="duration_min" type="number" min="5" max="180" value="${MEETING_MIN}" required>
+        ${staffOn ? `<label>対応するプロ・コーチ</label><select name="staff_id" data-zoom-staff>${staffOptions(staff, state.profile.id)}</select>` : ''}
         <label>支払い方法</label>
         <select name="pay_type" data-pay-type>${payTypeOptions(null)}</select>
         <p class="muted small" data-pay-hint style="margin:4px 0 0"></p>
-        ${linkOn ? meetLinkFields(local.get(MEET_URL_KEY) || '') : ''}
+        ${linkOn ? meetLinkFields(staffOn ? '' : myZoom?.zoom_url || local.get(MEET_URL_KEY) || '', staffOn ? '' : myZoom?.zoom_note || '') : ''}
       </div>`,
-      ok: '予約する',
-      onOpen: (wrap) => refreshPayType(wrap),
+      ok: '登録する',
+      onOpen: (wrap) => {
+        refreshPayType(wrap);
+        if (!linkOn || !staffOn) return;
+        fillZoomFromStaff(wrap, zoom, true);
+        // プロ・コーチのZoomが未登録なら、この端末で前に使ったリンクを入れておく
+        const url = wrap.querySelector('[name="join_url"]');
+        if (url && !url.value) url.value = local.get(MEET_URL_KEY) || '';
+        wrap.querySelector('[data-zoom-staff]')?.addEventListener('change', () => fillZoomFromStaff(wrap, zoom));
+      },
     });
     if (!v) return;
     const at = new Date(`${v.date}T${v.time}`);
-    const row = { member_id: v.member_id, scheduled_at: at.toISOString(), duration_min: Number(v.duration_min) || 25 };
+    if (staffOn && !(await confirmClash(v.staff_id, at.toISOString(), null, staff))) return;
+    const row = { member_id: v.member_id, scheduled_at: at.toISOString(), duration_min: Number(v.duration_min) || MEETING_MIN };
     if (creditsReady) row.pay_type = v.pay_type;
     if (staffOn) row.staff_id = v.staff_id || null;
     if (linkOn) Object.assign(row, meetLinkRow(v));
     await must(sb.from('meetings').insert(row));
-    toast(`${fmtShort(at.toISOString())} に面談を予約しました`); render();
+    toast(`${fmtShort(at.toISOString())} の面談を登録しました`); render();
   },
   'meeting-paid': async (el) => {
     if (!(await confirmDialog({ title: 'この面談を「支払い済み」にしますか？', body: '<p>都度払いのお支払いを確認したら押してください。</p>', ok: '支払い済みにする' }))) return;
@@ -5379,26 +5712,36 @@ const actions = {
   },
   'meeting-move': async (el) => {
     const [d, t] = splitLocal(el.dataset.at);
-    const [staffOn, staff, cur] = await Promise.all([meetingStaffOn(), staffList(),
-      sb.from('meetings').select('join_url, join_info').eq('id', el.dataset.id).maybeSingle().then((x) => (x.error ? null : x.data), () => null)]);
-    const linkOn = !!cur;
+    const [staffOn, staff, cur, zoom] = await Promise.all([meetingStaffOn(), staffList(),
+      sb.from('meetings').select('*').eq('id', el.dataset.id).maybeSingle().then((x) => (x.error ? null : x.data), () => null), staffZoom()]);
+    const linkOn = !!cur && 'join_url' in cur;
+    const fallback = zoom.get(el.dataset.staff || '')?.zoom_url || local.get(MEET_URL_KEY) || '';
     const v = await confirmDialog({
       title: '面談の日時・対応者・参加リンク',
       body: `<div class="form modal-form"><div class="grid"><div><label>日付</label><input name="date" type="date" value="${d}" required></div>
-        <div><label>時刻</label><input name="time" type="time" value="${t}" step="300" required></div></div>
-        <label>時間（分）</label><input name="duration_min" type="number" min="5" max="180" value="${esc(el.dataset.min || 25)}" required>
-        ${staffOn ? `<label>対応するプロ・コーチ</label><select name="staff_id">${staffOptions(staff, el.dataset.staff || '')}</select>` : ''}
-        ${linkOn ? meetLinkFields(cur.join_url || local.get(MEET_URL_KEY) || '', cur.join_info || '') : ''}</div>`,
+        <div><label>開始時刻</label><input name="time" type="time" value="${t}" step="300" required></div></div>
+        <label>時間（分）</label><input name="duration_min" type="number" min="5" max="180" value="${esc(el.dataset.min || MEETING_MIN)}" required>
+        ${staffOn ? `<label>対応するプロ・コーチ</label><select name="staff_id" data-zoom-staff>${staffOptions(staff, el.dataset.staff || '')}</select>` : ''}
+        ${linkOn ? meetLinkFields(cur.join_url || fallback, cur.join_info || (cur.join_url ? '' : zoom.get(el.dataset.staff || '')?.zoom_note || '')) : ''}</div>`,
       ok: '変更する',
+      // プロ・コーチを変えたら、その人のZoomに入れ替える
+      onOpen: (wrap) => { if (linkOn && staffOn) wrap.querySelector('[data-zoom-staff]')?.addEventListener('change', () => fillZoomFromStaff(wrap, zoom, true)); },
     });
     if (!v) return;
     const at = new Date(`${v.date}T${v.time}`);
-    await must(sb.from('meetings').update({ scheduled_at: at.toISOString(), duration_min: Number(v.duration_min) || 25, status: 'scheduled', ...(staffOn ? { staff_id: v.staff_id || null } : {}), ...(linkOn ? meetLinkRow(v) : {}) }).eq('id', el.dataset.id));
+    const staffId = staffOn ? v.staff_id || null : null;
+    if (staffOn && !(await confirmClash(staffId, at.toISOString(), el.dataset.id, staff))) return;
+    const moved = !cur || new Date(cur.scheduled_at).getTime() !== at.getTime();
+    const row = { scheduled_at: at.toISOString(), duration_min: Number(v.duration_min) || MEETING_MIN, status: 'scheduled', ...(staffOn ? { staff_id: staffId } : {}), ...(linkOn ? meetLinkRow(v) : {}) };
+    // 日時を変えたら、事前アンケートのお願い・前日のお知らせメールを、新しい日時でもう一度送れるようにする
+    if (moved && cur && 'pre_reminded_at' in cur) row.pre_reminded_at = null;
+    if (moved && cur && 'reminded_at' in cur) row.reminded_at = null;
+    await must(sb.from('meetings').update(row).eq('id', el.dataset.id));
     toast(`${fmtShort(at.toISOString())} に変更しました`); render();
   },
   'meeting-status': async (el) => {
     const label = { canceled: 'キャンセル', no_show: '欠席' }[el.dataset.status];
-    if (!(await confirmDialog({ title: `この面談を「${label}」にしますか？`, body: '<p>あとから「まとめを編集」で変更できます。</p>', ok: `${label}にする` }))) return;
+    if (!(await confirmDialog({ title: `この面談を「${label}」にしますか？`, body: '<p>あとから面談モードの「面談の記録」で変更できます。</p>', ok: `${label}にする` }))) return;
     await must(sb.from('meetings').update({ status: el.dataset.status }).eq('id', el.dataset.id));
     toast(`${label}にしました`); render();
   },
@@ -5866,8 +6209,29 @@ const forms = {
   },
   'cc-reply': async (f) => {
     const body = f.body.value.trim(); if (!body) throw new Error('返信を入力してください');
-    await must(sb.from('concierge_messages').insert({ member_id: f.member_id.value, from_staff: true, body }));
-    toast('送りました'); render();
+    const sent = await must(sb.from('concierge_messages').insert({ member_id: f.member_id.value, from_staff: true, body }).select('id').single());
+    badgeAt = 0;
+    // 会員にメールでも知らせる（お知らせメールを止めている会員・1時間以内に送った会員には送らない）
+    let note = '送りました';
+    if (f.email?.checked && sent?.id) {
+      try {
+        const r = await callFunction('notify-concierge', { message_id: sent.id });
+        note = r?.sent ? '送りました（会員にメールでも知らせました）' : `送りました（${r?.reason || 'メールは送っていません'}）`;
+      } catch {
+        note = '送りました（お知らせメールは送れませんでした）';
+      }
+    }
+    toast(note); render();
+  },
+  // スタッフのZoomの部屋（面談を登録するとき、このプロ・コーチを選ぶと参加リンクに入る）
+  'staff-zoom': async (f) => {
+    let url = f.zoom_url.value.trim();
+    if (url && !/^https?:\/\//i.test(url) && /^[\w-]+(\.[\w-]+)+(\/\S*)?$/.test(url)) url = `https://${url}`;
+    if (url && !/^https?:\/\/\S+$/i.test(url)) throw new Error('Zoomのリンクは https:// から始まるURLを入れてください');
+    const r = await sb.from('staff_settings').upsert({ staff_id: f.dataset.id, zoom_url: url || null, zoom_note: f.zoom_note.value.trim(), updated_at: new Date().toISOString() }, { onConflict: 'staff_id' });
+    if (r.error) throw new Error(/staff_settings|schema cache|does not exist/i.test(r.error.message || '') ? 'データベースの更新（20261123100000_staff_tools.sql の実行）が必要です' : r.error.message);
+    staffZoomCache = null;
+    toast('Zoomの部屋を保存しました'); render();
   },
   'cc-open': async (f) => { if (f.member_id.value) go(`admin/concierge/${f.member_id.value}`); },
   'meeting-pre': async (f) => {
@@ -5875,32 +6239,64 @@ const forms = {
     toast('事前アンケートを送りました。面談でお待ちしています'); go('home');
   },
   'mtg-prep': async (f) => {
-    await must(sb.from('meetings').update({ prep_memo: f.prep_memo.value.trim() }).eq('id', f.dataset.id));
+    const memo = f.prep_memo.value.trim();
+    if (f.dataset.legacy) await must(sb.from('meetings').update({ prep_memo: memo }).eq('id', f.dataset.id));
+    else await must(sb.from('meeting_prep').upsert({ meeting_id: f.dataset.id, memo, updated_at: new Date().toISOString() }, { onConflict: 'meeting_id' }));
     toast('準備メモを保存しました');
   },
   'mtg-record': async (f) => {
     const v = (n) => (f[n]?.value || '').trim();
     const status = f.querySelector('input[name="mstatus"]:checked')?.value || 'done';
     const member = f.dataset.member;
-    const mt = await must(sb.from('meetings').select('scheduled_at').eq('id', f.dataset.id).single());
+    const mt = await must(sb.from('meetings').select('*').eq('id', f.dataset.id).single());
     if (status !== 'done') {
       await must(sb.from('meetings').update({ status }).eq('id', f.dataset.id));
       if (v('memo')) await must(sb.from('staff_notes').insert({ member_id: member, body: `【面談 ${fmtShort(mt.scheduled_at)}】${v('memo')}` }));
       toast(status === 'no_show' ? '欠席として保存しました' : 'キャンセルとして保存しました'); render(); return;
     }
     if (!v('summary')) throw new Error('会員へのまとめを入れてください（①〜⑤を書くと自動で作られます）');
-    await must(sb.from('meetings').update({ status: 'done', summary: v('summary') }).eq('id', f.dataset.id));
-    // 電子カルテに残す（設定前なら担当者メモに残す）
+    // 電子カルテに残す内容（Zoomの要約は①のあとに付ける）。長すぎて切れるときは、先に知らせる
     const ai = v('ai');
-    const base = { member_id: member, entry_date: today(), kind: 'meeting', content: `${v('content') || '面談'}${ai ? `\n\n【Zoomの要約】\n${ai}` : ''}`.slice(0, 2000), issues: v('issues'), drills: v('drills'), next_action: v('next_action') || 'なし' };
-    let r = await sb.from('chart_entries').insert({ ...base, changes: v('changes'), pending: v('memo') });
-    if (r.error) r = await sb.from('chart_entries').insert({ ...base, content: [base.content, v('changes') && `よくなった点：${v('changes')}`, v('memo') && `メモ：${v('memo')}`].filter(Boolean).join('\n') });
-    if (r.error) {
-      const txt = [v('content'), ai && `Zoomの要約：${ai}`, v('changes') && `よくなった点：${v('changes')}`, v('issues') && `アドバイス：${v('issues')}`, v('drills') && `ドリル：${v('drills')}`, v('next_action') && `次回：${v('next_action')}`, v('memo') && `メモ：${v('memo')}`].filter(Boolean).join('\n');
-      if (txt) await must(sb.from('staff_notes').insert({ member_id: member, body: `【面談 ${fmtShort(mt.scheduled_at)}】${txt}`.slice(0, 2000) }));
+    const linkOn = 'chart_entry_id' in mt;
+    const max = linkOn ? CHART_CONTENT_MAX : CHART_CONTENT_MAX_OLD;
+    let content = `${v('content') || '面談'}${ai ? `${ZOOM_MARK}${ai}` : ''}`;
+    if (content.length > max) {
+      const ok = await confirmDialog({
+        title: '記録が長すぎます',
+        body: `<p>①とZoomの要約を合わせて <b>${content.length.toLocaleString()}文字</b> あります。カルテに残せるのは ${max.toLocaleString()}文字までのため、<b>最後の${(content.length - max).toLocaleString()}文字が保存されません</b>。</p>
+          <p class="small">全部残したいときは「キャンセル」を押して、Zoomの要約を短くしてください。</p>`,
+        ok: '切って保存する',
+      });
+      if (!ok) return;
+      content = content.slice(0, max);
     }
-    if (f.notify?.checked) await sb.from('concierge_messages').insert({ member_id: member, from_staff: true, body: '本日はオンライン面談ありがとうございました。\nホームの「前回の面談のまとめ」に、今日のポイントと次の練習を載せました。次の動画もお待ちしています。' }).then(() => {}, () => {});
-    toast('面談の記録を保存しました'); render();
+    await must(sb.from('meetings').update({ status: 'done', summary: v('summary') }).eq('id', f.dataset.id));
+    const base = { kind: 'meeting', content, issues: v('issues'), drills: v('drills'), next_action: v('next_action') || 'なし' };
+    const more = { changes: v('changes'), pending: v('memo') };
+    // すでに記録があれば書き換える（記録を消していたら、新しく作る）
+    let entryId = null;
+    if (linkOn && mt.chart_entry_id) {
+      const u = await sb.from('chart_entries').update({ ...base, ...more, updated_at: new Date().toISOString() }).eq('id', mt.chart_entry_id).select('id');
+      if (u.error) throw u.error;
+      if (u.data?.length) entryId = mt.chart_entry_id;
+    }
+    if (!entryId) {
+      const row = { ...base, member_id: member, entry_date: today() };
+      let r = await sb.from('chart_entries').insert({ ...row, ...more }).select('id').single();
+      if (r.error) r = await sb.from('chart_entries').insert({ ...row, content: [content, v('changes') && `よくなった点：${v('changes')}`, v('memo') && `メモ：${v('memo')}`].filter(Boolean).join('\n').slice(0, max) }).select('id').single();
+      if (r.error) {
+        const txt = [v('content'), ai && `Zoomの要約：${ai}`, v('changes') && `よくなった点：${v('changes')}`, v('issues') && `アドバイス：${v('issues')}`, v('drills') && `ドリル：${v('drills')}`, v('next_action') && `次回：${v('next_action')}`, v('memo') && `メモ：${v('memo')}`].filter(Boolean).join('\n');
+        if (txt) await must(sb.from('staff_notes').insert({ member_id: member, body: `【面談 ${fmtShort(mt.scheduled_at)}】${txt}`.slice(0, 2000) }));
+      } else entryId = r.data?.id || null;
+      if (entryId && linkOn) await must(sb.from('meetings').update({ chart_entry_id: entryId }).eq('id', f.dataset.id));
+    }
+    if (f.notify?.checked) {
+      const msg = { member_id: member, from_staff: true, body: '本日はオンライン面談ありがとうございました。\nホームの「前回の面談のまとめ」に、今日のポイントと次の練習を載せました。次の動画もお待ちしています。' };
+      // 自動の連絡として送る（お返事待ちの判定に数えない）。データベースの更新前は、しるしなしで送る
+      const r = await sb.from('concierge_messages').insert({ ...msg, is_auto: true }).then((x) => x, (e) => ({ error: e }));
+      if (r.error) await sb.from('concierge_messages').insert(msg).then(() => {}, () => {});
+    }
+    toast(mt.status === 'done' ? '面談の記録を書き換えました' : '面談の記録を保存しました'); render();
   },
   login: async (f) => {
     unlockAudio();
@@ -6111,6 +6507,17 @@ const forms = {
     toast(update.status ? '対応済みにしました' : '保存しました'); render();
   },
   'admin-profile': async (f) => {
+    // 権限を変えるときは、先に確認する（スタッフにすると、すべての会員の情報が見られるようになる）
+    if (f.role && f.role.value !== f.dataset.role) {
+      const toStaff = f.role.value === 'admin';
+      const ok = await confirmDialog({
+        title: toStaff ? 'この会員をスタッフにしますか？' : 'このスタッフを会員に戻しますか？',
+        body: toStaff ? '<p>すべての会員の情報が見られるようになります。動画・カルテ・連絡などもすべて見られます。スタッフ・コーチ以外にはしないでください。</p>'
+          : '<p>スタッフの画面が使えなくなり、ほかの会員の情報は見られなくなります。</p>',
+        ok: toStaff ? 'スタッフにする' : '会員に戻す',
+      });
+      if (!ok) return;
+    }
     const update = {
       name: f.name.value.trim(), plan: f.plan.value || null, goal: f.goal.value.trim(),
       // ロードマップのテーマのままなら、手で書いたテーマとしては保存しない
@@ -6316,9 +6723,27 @@ const forms = {
       }
     }
     toast(notice);
+    // 提出動画から書いたときは、いまの絞り込みの順で次の確認待ちの動画を開けるようにする
+    if (f.dataset.submission && !f.dataset.id) {
+      const next = await nextInboxItem(f.dataset.submission);
+      if (next && await confirmDialog({ title: 'レッスンを保存しました', body: `<p>${esc(notice)}</p><p>続けて、次の確認待ちの動画を開きますか？</p>`, ok: '次の動画へ', cancel: '一覧に戻る' })) {
+        go(`admin/lesson/new/s/${next}`); return;
+      }
+    }
     go(f.dataset.submission && !f.dataset.id ? 'admin/inbox' : `admin/member/${f.dataset.member}/lesson`);
   },
 };
+// 提出動画の一覧（いまの絞り込みの順）で、この動画の次にある、まだ確認待ちの動画
+async function nextInboxItem(currentId) {
+  const order = state.inboxOrder || [];
+  const i = order.indexOf(currentId);
+  if (i < 0) return null;
+  const cands = [...order.slice(i + 1), ...order.slice(0, i)];
+  if (!cands.length) return null;
+  const rows = await sb.from('submissions').select('id, status').in('id', cands).then((r) => (r.error ? [] : r.data || []), () => []);
+  const pending = new Set(rows.filter((r) => r.status === 'pending').map((r) => r.id));
+  return cands.find((id) => pending.has(id)) || null;
+}
 
 // はじめの一歩の項目を開いたら、次からはホームの下のほうに出す
 document.addEventListener('click', (ev) => {
@@ -6330,6 +6755,7 @@ document.addEventListener('click', async (ev) => {
   ev.preventDefault();
   // 長押しのコマ送りで、押した時点でもう1コマ進めてある（指を離したときのクリックでは動かさない）
   if (el.dataset.held) { delete el.dataset.held; return; }
+  badgeAt = 0; // 操作したあとは、メニューの件数を読み直す
   try { await actions[el.dataset.action](el); } catch (e) { console.error(e); toast(e.message || 'エラーが発生しました', true); }
 });
 
@@ -6437,6 +6863,7 @@ document.addEventListener('submit', async (ev) => {
   if (!sb) { toast('会員ログインは現在準備中です', true); return; }
   const btn = f.querySelector('button[type="submit"]');
   if (btn) btn.disabled = true;
+  badgeAt = 0; // 保存したあとは、メニューの件数を読み直す
   try { await forms[f.dataset.form](f, ev); } catch (e) { console.error(e); toast(e.message || 'エラーが発生しました', true); }
   if (btn && btn.isConnected) btn.disabled = false;
 });
@@ -6444,6 +6871,7 @@ document.addEventListener('submit', async (ev) => {
 // 動画を選んだら、ファイル名と容量を表示してプレビューする
 document.addEventListener('change', (ev) => {
   if (ev.target.matches('[data-report-month]')) { if (ev.target.value) go(`admin/report/${ev.target.value}`); return; }
+  if (ev.target.matches('[data-member-sort]')) { state.memberSort = ev.target.value; applyMemberFilter(); return; }
   if (ev.target.name === 'member_id' && ev.target.closest('.modal')) { refreshPayType(ev.target.closest('.modal')); return; }
   if (ev.target.name === 'sound_toggle') {
     local.set('atg-sound', ev.target.checked ? 'on' : 'off');
