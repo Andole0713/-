@@ -2820,10 +2820,11 @@ async function viewConciergeAdmin(memberId) {
   if (!memberId) {
     const [cc, people] = await Promise.all([
       loadConcierge(180),
-      must(fetchAll(() => sb.from('profiles').select('id, name, role').order('name'))),
+      must(fetchAll(() => sb.from('profiles').select('id, name, role, email, plan, subscription_status, access_until').order('name'))),
     ]);
     if (!cc) return header('コンシェルジュサポート', 'admin/dashboard') + '<div class="content"><div class="error">データベースの設定（20261115000000_concierge.sql）がまだのため使えません。</div></div>' + adminNav('admin/concierge');
     const members = people.filter((m) => m.role !== 'admin'); const nm = new Map(members.map((m) => [m.id, m.name || '（名前未設定）']));
+    ccMembers = members; // 「会員に新しく送る」の検索に使う
     const waiting = new Map(cc.pending.map((m) => [m.member_id, m]));
     const last = new Map(); cc.msgs.forEach((m) => last.set(m.member_id, m));
     // お返事待ちを上に（お返事待ちは、会員からの連絡を表示する）
@@ -2837,7 +2838,9 @@ async function viewConciergeAdmin(memberId) {
     };
     return header('コンシェルジュサポート', 'admin/dashboard') + `<div class="content">
       <p class="page-lead">会員とのご連絡です。<b>お返事待ち</b>は、会員から届いてまだ返していないものです（自動で送った連絡は、返信に数えません）。返信がいらない連絡は、開いて「対応不要」にできます。</p>
-      <form class="form card cc-new" data-form="cc-open"><label>会員に新しく送る</label><div class="row-inline"><select name="member_id" required><option value="">会員を選ぶ</option>${members.map((m) => `<option value="${m.id}">${esc(m.name || '（名前未設定）')}</option>`).join('')}</select><button type="submit" class="btn btn-sm">開く</button></div></form>
+      <form class="form card cc-new" data-form="cc-open"><label for="cc-member-q">会員に新しく送る</label>
+        <div class="cc-pick"><input type="search" id="cc-member-q" class="member-search" data-member-search data-list="cc" placeholder="名前・メールで検索" aria-label="会員を名前・メールで検索" autocomplete="off">
+        <div class="row-inline"><select name="member_id" required aria-label="会員を選ぶ">${memberOptionsHtml(members)}</select><button type="submit" class="btn btn-sm">開く</button></div></div></form>
       ${threads.length ? threads.map((m) => `<a class="card cc-row${waiting.has(m.member_id) ? ' wait' : ''}" href="#/admin/concierge/${m.member_id}">
         <div class="between"><b>${esc(nm.get(m.member_id) || '（削除された会員）')}</b><span class="muted small">${fmtShort(m.created_at)}</span></div>
         <div class="small">${stateOf(m)} ${esc(m.body.slice(0, 60))}</div></a>`).join('') : emptyBox('💬', 'まだやりとりはありません')}
@@ -3254,6 +3257,7 @@ async function refreshPayType(wrap) {
   sel.value = count ? 'credit' : 'unpaid';
   hint.textContent = count ? '予約した時点で権利を1回使います（キャンセルにすると戻ります。欠席は戻りません）。' : '面談の権利が残っていないため、都度払いになります。';
 }
+let ccMembers = []; // コンシェルジュの「会員に新しく送る」の候補
 async function meetingMemberOptions(selected) {
   if (!meetingMembers.length || !('email' in meetingMembers[0])) meetingMembers = await must(sb.from('profiles').select('id, name, email, role, plan, subscription_status, access_until').neq('role', 'admin').order('name'));
   return memberOptionsHtml(meetingMembers, selected);
@@ -6969,7 +6973,7 @@ document.addEventListener('input', (ev) => {
   if (ev.target.matches('[data-glossary-search]')) { filterGlossary(); return; }
   if (ev.target.matches('[data-member-search]')) {
     const sel = ev.target.parentElement.querySelector('select[name="member_id"]');
-    sel.innerHTML = memberOptionsHtml(meetingMembers, sel.value, ev.target.value);
+    sel.innerHTML = memberOptionsHtml(ev.target.dataset.list === 'cc' ? ccMembers : meetingMembers, sel.value, ev.target.value);
     const modal = ev.target.closest('.modal');
     if (modal) refreshPayType(modal);
     return;
