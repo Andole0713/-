@@ -6,6 +6,36 @@ import { adminClient, planForPriceId, requireEnv, stripe } from "../_shared/comm
 const webhookSecret = requireEnv("STRIPE_WEBHOOK_SECRET");
 const cryptoProvider = Stripe.createSubtleCryptoProvider();
 
+// 終わった契約（もう再開できない状態）
+const ENDED = ["canceled", "incomplete_expired"];
+// 支払いが続いている（または続けられる）状態
+const LIVE = ["active", "trialing", "past_due", "unpaid", "paused"];
+
+// この通知の契約を、会員の「今の契約」として反映してよいか
+//   ・保存している契約がない／同じ契約 → 反映する
+//   ・保存している契約が終わっている（解約済み・期限切れ）→ 新しい契約に切り替える
+//   ・保存している契約が支払い未完了（incomplete）のままで、新しい契約の支払いが済んでいる → 切り替える
+//   ・それ以外（保存している契約が続いている）→ 反映しない（古い契約・二重の契約の通知で上書きしない）
+async function isCurrentSubscription(
+  before: { subscription_id: string | null; subscription_status: string | null },
+  subscription: Stripe.Subscription,
+): Promise<boolean> {
+  const storedId = before.subscription_id?.trim();
+  if (!storedId || storedId === subscription.id) return true;
+  // 保存している状態は古いことがあるため、Stripe から今の状態を取り直す
+  let storedStatus = before.subscription_status ?? "";
+  try {
+    storedStatus = (await stripe.subscriptions.retrieve(storedId)).status;
+  } catch (e) {
+    const code = (e as { code?: string })?.code;
+    if (code === "resource_missing") return true; // 保存している契約が Stripe に存在しない
+    throw e; // 一時的なエラー：500 を返して Stripe に再送してもらう
+  }
+  if (ENDED.includes(storedStatus)) return true;
+  if (storedStatus === "incomplete" && LIVE.includes(subscription.status)) return true;
+  return false;
+}
+
 async function syncSubscription(subscription: Stripe.Subscription) {
   const item = subscription.items.data[0];
   const customerId = typeof subscription.customer === "string"
@@ -39,8 +69,13 @@ async function syncSubscription(subscription: Stripe.Subscription) {
     ({ data: before } = await db.from("profiles").select("id, subscription_id, subscription_status, cancel_at").eq("id", userId).maybeSingle());
     if (!before) throw new Error(`会員が見つかりません: ${userId}`);
   }
-  // 以前の契約の通知（解約済みの古い契約など）で、今の契約の情報を上書きしない
-  if (before.subscription_id && before.subscription_id !== subscription.id && subscription.status === "canceled") return;
+  // 今の契約とは別の契約の通知（解約済みの古い契約・二重に申し込んだ契約など）で、今の契約の情報を上書きしない
+  if (!(await isCurrentSubscription(before, subscription))) {
+    console.warn(
+      `今の契約（${before.subscription_id}）とは別の契約の通知のため反映しませんでした: ${subscription.id}（${subscription.status}）`,
+    );
+    return;
+  }
 
   const { error } = await db.from("profiles").update(update).eq("id", before.id);
   if (error) throw error;

@@ -6493,8 +6493,11 @@ window.addEventListener('hashchange', render);
 async function waitForCheckout() {
   $app.innerHTML = '<div class="loading">決済を確認しています…</div>';
   for (let i = 0; i < 15; i++) {
-    await loadProfile();
-    if (isActive(state.profile)) { toast('ご登録ありがとうございます！'); return; }
+    // 読み込みに失敗しても（通信の一時的な不調など）、待つのをやめずに次の確認へ進む
+    try {
+      await loadProfile();
+      if (isActive(state.profile)) { toast('ご登録ありがとうございます！'); return; }
+    } catch (e) { console.warn('契約状態を確認できませんでした', e); }
     await new Promise((r) => setTimeout(r, 2000));
   }
   toast('決済の反映に時間がかかっています。しばらくしてから再読み込みしてください。', true);
@@ -6584,8 +6587,9 @@ async function init() {
 
   const { data } = await sb.auth.getSession();
   state.session = data.session;
-  if (state.session && checkout === 'success') await waitForCheckout();
-  else if (checkout === 'cancel') toast('お申し込みはキャンセルされました');
+  if (state.session && checkout === 'success') {
+    try { await waitForCheckout(); } catch (e) { console.warn(e); } // 失敗しても「決済を確認しています…」で止まらないよう、必ず画面を表示する
+  } else if (checkout === 'cancel') toast('お申し込みはキャンセルされました');
   render();
 }
 
