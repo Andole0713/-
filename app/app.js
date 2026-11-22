@@ -304,7 +304,9 @@ async function uploadVideo(file, path, onProgress, bucket = VIDEO_BUCKET) {
 }
 
 function videoFileName(file) {
-  const ext = (file.name.split('.').pop() || '').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 5) || 'mp4';
+  // 保存できる拡張子だけにする（それ以外や拡張子なしは mp4 として保存。保存場所の決まりと同じ一覧）
+  const raw = file.name.includes('.') ? file.name.split('.').pop().toLowerCase() : '';
+  const ext = ['mp4', 'mov', 'm4v', 'webm', '3gp', '3g2', 'qt', 'mkv', 'avi'].includes(raw) ? raw : 'mp4';
   return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
 }
 
