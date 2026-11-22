@@ -2218,3 +2218,23 @@ body.rec-open{overflow:hidden}
 .mtg-rec .mtg-ai{margin:10px 0 6px;border:1px solid color-mix(in srgb,#2d8cff 35%,#fff);background:color-mix(in srgb,#2d8cff 5%,#fff);border-radius:10px;padding:8px 10px}
 .mtg-ai textarea{margin:0}
 .mtg-ai-btns{margin-top:6px}.mtg-ai-btns .btn{margin:0}
+
+/* スタッフ向けの改善 */
+.mtg-ai-btns{display:flex;align-items:center;flex-wrap:wrap;gap:8px}
+.mtg-resave{margin:8px 0}
+.cc-wait-bar{display:flex;align-items:center;flex-wrap:wrap;gap:8px;padding:10px 14px}
+.cc-wait-bar .btn{margin:0}
+.cc-done-note{margin:6px 2px 10px}
+.inbox-chips{margin:0 0 6px}
+.member-tools{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.member-tools input[type="search"]{flex:1 1 220px;margin:0}
+.member-sort{display:flex;align-items:center;gap:6px;margin:0;font-size:13px;white-space:nowrap}
+.member-sort select{margin:0;width:auto;min-width:0}
+.member-chips.sub button{font-weight:600;font-size:12.5px;padding:5px 12px}
+.sys-sec .dash-row small{display:block}
+/* スタッフのメニュー（8つ）：狭い画面では文字を小さくして、長い名前は2行に */
+@media (max-width:959px){
+  .nav[style*="repeat(8"] a{padding-left:0;padding-right:0}
+  .nav[style*="repeat(8"] a span{font-size:9.5px;letter-spacing:0;white-space:nowrap;line-height:1.15;max-width:100%}
+  .nav[style*="repeat(8"] a[href="#/admin/concierge"] span{white-space:normal}
+}

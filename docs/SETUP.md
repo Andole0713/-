@@ -158,6 +158,32 @@ select cron.schedule(
 
 会員は「アカウント → お知らせメール」でいつでも停止できます。
 
+### コンシェルジュサポートの返信メール・スタッフへのまとめメール
+
+先に **SQL Editor** で `supabase/migrations/20261123100000_staff_tools.sql` を実行してから、ターミナルで次を実行します（`RESEND_API_KEY`・`MAIL_FROM`・`SITE_URL`・`CRON_SECRET` は上で登録したものをそのまま使います）。
+
+```bash
+npx supabase functions deploy notify-concierge
+npx supabase functions deploy staff-digest --no-verify-jwt
+npx supabase functions deploy meeting-reminders --no-verify-jwt   # 面談ごとに送るように変わったので、もう一度デプロイ
+```
+
+- **コンシェルジュサポートの返信**：スタッフが管理画面から連絡を送ると、会員に「連絡が届きました」とメールで知らせます（同じ会員には1時間に1通まで。送る画面の「会員にメールでも知らせる」を外すと送りません）
+- **スタッフへのまとめ**：毎日 11:00 と 17:00（日本時間）に、スタッフ（管理者）全員へ「新しい動画・返信目標を過ぎた動画・お返事待ち・取り消し依頼・結果が未入力の面談」の数を送ります（どれも0件なら送りません）。**SQL Editor** で次を実行してください（`<プロジェクトID>` と `<CRON_SECRET>` は置き換え）
+
+```sql
+select cron.schedule(
+  'staff-digest',
+  '0 2,8 * * *',  -- 毎日 2:00・8:00（UTC）＝日本時間 11:00・17:00
+  $$
+  select net.http_post(
+    url := 'https://<プロジェクトID>.supabase.co/functions/v1/staff-digest',
+    headers := jsonb_build_object('Authorization', 'Bearer <CRON_SECRET>')
+  );
+  $$
+);
+```
+
 ## 6. Stripe Webhook を登録
 
 1. Stripe の **開発者 → Webhook → エンドポイントを追加**
