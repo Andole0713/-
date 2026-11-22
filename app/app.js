@@ -4347,7 +4347,7 @@ async function viewStats() {
 
     ${sec('継続', '契約の開始・終了の記録から計算')}
     <div class="rp-grid">${tile('平均の在籍期間', avgTenureAll != null ? Math.round(avgTenureAll * 10) / 10 : null, 'か月', '今も続けている人を含む')}${tile('辞めた人の在籍期間', avgTenureEnded != null ? Math.round(avgTenureEnded * 10) / 10 : null, 'か月', `${rangeLabel}に辞めた ${ended.length}名の平均`)}</div>
-    <div class="card st-card"><h3>何か月目で辞めたか</h3>${bars(tenureRows, { unit: '名', empty: 'この期間に辞めた人はいません' })}<p class="muted small">最低契約期間は4か月です。辞める人が多い月の前に、面談やお祝いで声をかけるのが効果的です。</p></div>
+    <div class="card st-card"><h3>何か月目で辞めたか</h3>${bars(tenureRows, { unit: '名', empty: 'この期間に辞めた人はいません' })}<p class="muted small">辞める人が多い月の前に、面談やお祝いで声をかけるのが効果的です。</p></div>
 
     ${sec('動画・面談の権利の消化', `${rangeLabel}に付与された権利`)}
     <div class="st-two">${creditBlock('動画の権利', cv)}${creditBlock('面談の権利', cm)}</div>
