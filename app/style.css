@@ -2295,3 +2295,11 @@ body.rec-open{overflow:hidden}
   .nav[style*="repeat(8"] a span{font-size:9.5px;letter-spacing:0;white-space:nowrap;line-height:1.15;max-width:100%}
   .nav[style*="repeat(8"] a[href="#/admin/concierge"] span{white-space:normal}
 }
+/* 紹介パートナー・アンケートの必須 */
+.sv-req { display: inline-block; margin-left: 6px; padding: 0 6px; border-radius: 4px; background: var(--danger, #b3261e); color: #fff; font-size: 11px; font-weight: 700; vertical-align: 2px; }
+.sv-partner select { width: 100%; }
+.survey-ans .ref-rec { margin-top: 10px; padding-top: 8px; border-top: 1px dashed var(--line, #ddd); }
+.survey-ans .ref-rec .between { gap: 8px; align-items: center; }
+.partner-tbl td { vertical-align: middle; }
+.partner-tbl .st-link { word-break: break-all; font-size: 12px; }
+.row-form { display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); align-items: end; }

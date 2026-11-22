@@ -3620,7 +3620,12 @@ async function viewMemberDetail(id, tab) {
     must(sb.from('staff_notes').select('id, body, pinned, created_at').eq('member_id', id).order('pinned', { ascending: false }).order('created_at', { ascending: false })),
     must(sb.from('roadmap_practice').select('practiced_on').eq('member_id', id).gte('practiced_on', isoDaysFrom(-30).slice(0, 10))),
     sb.from('member_karte').select('*').eq('member_id', id).maybeSingle().then((r) => r.data, () => null),
-    sb.from('member_survey').select('*').eq('member_id', id).maybeSingle().then((r) => (r.error ? undefined : r.data), () => undefined),
+    // アンケートの回答に、紹介の記録（契約のとき）と演者の一覧をつける
+    Promise.all([
+      sb.from('member_survey').select('*').eq('member_id', id).maybeSingle().then((r) => (r.error ? undefined : r.data), () => undefined),
+      sb.from('referral_records').select('*').eq('member_id', id).maybeSingle().then((r) => (r.error ? undefined : r.data), () => undefined),
+      sb.from('referral_partners').select('id, name').order('sort').order('name').then((r) => (r.error ? [] : r.data || []), () => []),
+    ]).then(([sv, rec, parts]) => (sv ? { ...sv, _rec: rec, _parts: parts } : sv)),
     loadCredits(id).catch(() => null),
     sb.from('exit_reasons').select('*').eq('member_id', id).order('created_at', { ascending: false }).then((r) => (r.error ? null : r.data || []), () => null),
     sb.from('member_memos').select('id, body, created_at, updated_at').eq('member_id', id).order('created_at', { ascending: false }).limit(100).then((r) => (r.error ? null : r.data || []), () => null),
@@ -4000,7 +4005,7 @@ function surveyCard(sv) {
   let age = '';
   if (sv.birth_date) { const t = today(); const b = sv.birth_date; age = `（${Number(t.slice(0, 4)) - Number(b.slice(0, 4)) - (t.slice(5) < b.slice(5) ? 1 : 0)}歳）`; }
   const rows = [
-    ['何で知ったか', [optLabel('referral', sv.referral), sv.referral_note].filter(Boolean).join('・')],
+    ['何で知ったか', [optLabel('referral', sv.referral), sv.referral === 'bunbu' ? (sv._parts || []).find((x) => x.id === sv.referral_partner_id)?.name || '演者は覚えていない' : '', sv.referral_note].filter(Boolean).join('・')],
     ['生年月日', sv.birth_date ? `${fmtDate(sv.birth_date)}${age}` : optLabel('age_band', sv.age_band)],
     ['ゴルフ歴', optLabel('golf_years', sv.golf_years)],
     ['今のスコア', optLabel('score_band', sv.score_band)],
@@ -4010,6 +4015,9 @@ function surveyCard(sv) {
   return `<div class="card survey-ans">
     <div class="between"><b>かんたんアンケート</b><span class="muted small">回答 ${fmtDate(sv.updated_at || sv.created_at)}</span></div>
     <dl>${rows.map(([k, v]) => `<div><dt>${k}</dt><dd>${v ? esc(v) : '<span class="muted">—</span>'}</dd></div>`).join('')}</dl>
+    ${sv._rec === undefined ? '' : `<div class="ref-rec"><span class="muted small">紹介の記録（契約のときの回答）</span>
+      <div class="between"><span>${sv._rec ? `${esc([optLabel('referral', sv._rec.referral), sv._rec.referral === 'bunbu' ? sv._rec.partner_name || '演者は覚えていない' : ''].filter(Boolean).join('・'))}<span class="muted small">（${fmtDate(sv._rec.recorded_at)}${sv._rec.updated_at ? '・スタッフが修正' : ''}）</span>` : '<span class="muted">まだありません（契約中に答えると記録されます）</span>'}</span>
+      <button type="button" class="btn-sm btn-sub" data-action="ref-edit" data-member="${sv.member_id}">直す</button></div></div>`}
   </div>`;
 }
 function karteForm(memberId, k, more = false) {
@@ -4297,11 +4305,53 @@ async function viewTemplates() {
 // 統計のページ切り替え（期間の統計／月のまとめ）
 const statsTabs = (active) => `<div class="st-tabs" role="tablist" aria-label="統計の種類">
     <a role="tab" href="#/admin/stats" class="${active === 'stats' ? 'on' : ''}"${active === 'stats' ? ' aria-selected="true"' : ''}>📈 期間の統計</a>
-    <a role="tab" href="#/admin/report" class="${active === 'report' ? 'on' : ''}"${active === 'report' ? ' aria-selected="true"' : ''}>📊 月のまとめ</a></div>`;
+    <a role="tab" href="#/admin/report" class="${active === 'report' ? 'on' : ''}"${active === 'report' ? ' aria-selected="true"' : ''}>📊 月のまとめ</a>
+    <a role="tab" href="#/admin/partners" class="${active === 'partners' ? 'on' : ''}"${active === 'partners' ? ' aria-selected="true"' : ''}>🎤 紹介パートナー</a></div>`;
+
+// 紹介パートナー（文武遊ちゃんねるの演者など）：一覧・専用リンク・アンケートで選ばれた人数
+async function viewPartners() {
+  const [parts, recs, svs] = await Promise.all([
+    sb.from('referral_partners').select('*').order('sort').order('name').then((r) => (r.error ? null : r.data || []), () => null),
+    fetchAll(() => sb.from('referral_records').select('partner_id, referral, recorded_at')).then((r) => r.data || [], () => []),
+    fetchAll(() => sb.from('member_survey').select('referral, referral_partner_id').eq('referral', 'bunbu')).then((r) => r.data || [], () => []),
+  ]);
+  const lp = new URL('../', location.href).href;
+  if (parts === null) {
+    return header('統計') + `<div class="content wide stats">${statsTabs('partners')}
+      <div class="card"><p>この画面を使うには、データベースの更新（<code>20261124000000_referral_partners.sql</code>）が必要です。</p></div></div>`;
+  }
+  const recN = (id) => recs.filter((x) => x.partner_id === id).length;
+  const svN = (id) => svs.filter((x) => x.referral_partner_id === id).length;
+  const unknownRec = recs.filter((x) => x.referral === 'bunbu' && !x.partner_id).length;
+  return header('統計') + `<div class="content wide stats">
+    ${statsTabs('partners')}
+    <p class="page-lead">文武遊ちゃんねるの演者など、オルタイムゴルフを紹介してくれる方の一覧です。会員はかんたんアンケートの「何で知りましたか？」で「文武遊ちゃんねる（YouTube）」を選び、どなたの配信で知ったかを選びます。<b>契約中にはじめて答えた内容</b>が「紹介の記録」として残ります（会員があとで回答を変えても変わりません。会員の詳細の画面から直せます）。</p>
+    <div class="card">
+      <h3 style="margin-top:0">演者を追加</h3>
+      <form class="form row-form" data-form="partner-add">
+        <label>名前（アンケートに出ます）<input name="name" maxlength="60" required placeholder="例：田中さん"></label>
+        <label>リンク用のコード（半角の英小文字・数字）<input name="code" maxlength="31" required placeholder="例：tanaka" autocapitalize="off" autocomplete="off"></label>
+        <button class="btn-gold" type="submit">追加する</button>
+      </form>
+    </div>
+    <div class="card">
+      <h3 style="margin-top:0">演者の一覧</h3>
+      ${parts.length ? `<div class="tbl-wrap"><table class="st-tbl partner-tbl"><thead><tr><th>名前</th><th>専用リンク</th><th>紹介の記録</th><th>今の回答</th><th></th></tr></thead><tbody>
+        ${parts.map((x) => { const url = `${lp}?from=bunbu-${x.code}`; return `<tr class="${x.active ? '' : 'muted'}"><td><b>${esc(x.name)}</b>${x.active ? '' : '<br><span class="pill mute">アンケートに出さない</span>'}</td>
+          <td><code class="st-link">${esc(url)}</code> <button type="button" class="btn-sm btn-sub" data-action="copy-text" data-text="${esc(url)}">コピー</button></td>
+          <td>${recN(x.id)}人</td><td>${svN(x.id)}人</td>
+          <td><button type="button" class="btn-sm btn-sub" data-action="partner-edit" data-id="${x.id}">変更</button></td></tr>`; }).join('')}
+      </tbody></table></div>
+      <p class="muted small">「紹介の記録」は契約のときの回答で数えた人数、「今の回答」は今のアンケートの回答で数えた人数です。演者は覚えていない（文武遊ちゃんねるを選んだが演者は選ばなかった）記録：${unknownRec}人</p>` : '<p class="muted">まだ登録されていません。</p>'}
+      <p class="muted small">専用リンクは、YouTubeの概要欄や配信画面（QRコード）に使います。このリンクからホームページに来た人は、アンケートでその演者が最初から選ばれた状態になります。QRコードは、リンクをコピーしてQRコードを作るサービスで作れます。</p>
+      <p class="muted small">配信で紹介してもらうときは、「オルタイムゴルフの宣伝（PR）です」と伝え、YouTubeの「有料プロモーション」の表示もオンにしてもらってください（ステマ規制への対応）。</p>
+    </div>
+  </div>`;
+}
 // 月のまとめ（経営の数字）
 // ---------- 統計のための記録（アンケート・レッスンの評価・すすめたい度・退会理由） ----------
 const SURVEY_OPTS = {
-  referral: [['store', '店舗（オルタイムゴルフ）'], ['instagram', 'Instagram'], ['line', 'LINE'], ['youtube', 'YouTube'], ['search', '検索（Google など）'], ['friend', '知人・友人の紹介'], ['flyer', 'チラシ・ポスター'], ['other', 'その他']],
+  referral: [['store', '店舗（オルタイムゴルフ）'], ['instagram', 'Instagram'], ['line', 'LINE'], ['youtube', 'YouTube'], ['bunbu', '文武遊ちゃんねる（YouTube）'], ['search', '検索（Google など）'], ['friend', '知人・友人の紹介'], ['flyer', 'チラシ・ポスター'], ['other', 'その他']],
   age_band: [['10s', '10代'], ['20s', '20代'], ['30s', '30代'], ['40s', '40代'], ['50s', '50代'], ['60s', '60代'], ['70s', '70代以上']],
   golf_years: [['none', 'これから始める'], ['lt1', '1年未満'], ['1-3', '1〜3年'], ['3-10', '3〜10年'], ['10+', '10年以上']],
   score_band: [['none', 'コースはまだ'], ['120+', '120以上'], ['110', '110台'], ['100', '100台'], ['90', '90台'], ['80', '80台'], ['lt80', '79以下']],
@@ -4322,13 +4372,28 @@ const optLabel = (key, v) => SURVEY_OPTS[key]?.find(([k]) => k === v)?.[1] || ''
 const monthKey = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
 
 // はじめのアンケート（初回のガイドのあと。アカウントからいつでも変更できる）
+// 「何で知りましたか？」は必須。契約中の会員は、答えるまでほかの画面に進めない（紹介の記録に使う）
+// 文武遊ちゃんねるの演者の専用リンク（?from=bunbu-コード）から来た人は、その演者を最初から選んだ状態にする
+const partnerFromLink = () => { try { return JSON.parse(localStorage.getItem('atg-partner') || 'null')?.code || ''; } catch { return ''; } };
 async function viewSurvey() {
-  const s = await sb.from('member_survey').select('*').eq('member_id', state.profile.id).maybeSingle().then((r) => r.data) || {};
-  const chips = (key) => `<fieldset class="sv-q"><legend>${SURVEY_Q[key]}</legend><div class="sv-chips">${SURVEY_OPTS[key].map(([v, l]) => `<label><input type="radio" name="${key}" value="${v}" ${s[key] === v ? 'checked' : ''}><span>${l}</span></label>`).join('')}</div></fieldset>`;
-  return header('かんたんアンケート', state.profile.onboarded_at ? 'account' : '') + `<div class="content">
-    <p class="page-lead">レッスンやサービスをよくするために、教えてください（30秒ほどで終わります）。答えたくない項目は空けたままで大丈夫です。</p>
+  const [sRow, partners] = await Promise.all([
+    sb.from('member_survey').select('*').eq('member_id', state.profile.id).maybeSingle().then((r) => r.data),
+    sb.from('referral_partners').select('id, name, code').eq('active', true).order('sort').order('name').then((r) => (r.error ? [] : r.data || []), () => []),
+  ]);
+  const s = { ...(sRow || {}) };
+  const required = isActive(state.profile) && !s.referral;
+  // 専用リンクから来た人：まだ答えていなければ、その演者を選んだ状態にする
+  const linked = partners.find((x) => x.code === partnerFromLink());
+  if (!s.referral && linked) { s.referral = 'bunbu'; s.referral_partner_id = linked.id; }
+  const chips = (key, req) => `<fieldset class="sv-q"><legend>${SURVEY_Q[key]}${req ? '<span class="sv-req">必須</span>' : ''}</legend><div class="sv-chips">${SURVEY_OPTS[key].map(([v, l]) => `<label><input type="radio" name="${key}" value="${v}" ${s[key] === v ? 'checked' : ''}${req ? ' required' : ''}><span>${l}</span></label>`).join('')}</div></fieldset>`;
+  const partnerSel = `<fieldset class="sv-q sv-partner"${s.referral === 'bunbu' ? '' : ' hidden'}><legend>どなたの配信でお知りになりましたか？</legend>
+    <select name="referral_partner" aria-label="配信の演者"><option value="">選ぶ</option>${partners.map((x) => `<option value="${x.id}" ${s.referral_partner_id === x.id ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}<option value="unknown" ${s.referral === 'bunbu' && s.member_id && !s.referral_partner_id ? 'selected' : ''}>覚えていない・特にない</option></select></fieldset>`;
+  return header('かんたんアンケート', required ? '' : state.profile.onboarded_at ? 'account' : '') + `<div class="content">
+    ${required ? '<div class="card notice-card"><b>ご契約ありがとうございます</b><p class="small" style="margin:4px 0 0">はじめに、かんたんアンケートにお答えください。「何で知りましたか？」だけお答えいただければ、ほかの項目は空けたままで大丈夫です。</p></div>' : ''}
+    <p class="page-lead">レッスンやサービスをよくするために、教えてください（30秒ほどで終わります）。「何で知りましたか？」以外は、答えたくない項目は空けたままで大丈夫です。</p>
     <form class="card form survey" data-form="survey">
-      ${chips('referral')}
+      ${chips('referral', true)}
+      ${partnerSel}
       <input name="referral_note" maxlength="100" value="${esc(s.referral_note || '')}" placeholder="紹介してくれた方・その他の内容（任意）" aria-label="何で知ったかの補足">
       <fieldset class="sv-q"><legend>${SURVEY_Q.birth_date}</legend>
         <input type="date" name="birth_date" value="${esc(s.birth_date || '')}" min="1920-01-01" max="${today()}" aria-label="生年月日"></fieldset>
@@ -4337,10 +4402,10 @@ async function viewSurvey() {
         <select name="prefecture" aria-label="お住まいの都道府県"><option value="">選ぶ</option>${PREFS.map((x) => `<option ${s.prefecture === x ? 'selected' : ''}>${x}</option>`).join('')}</select></fieldset>
       ${chips('store_use')}
       <p class="muted small">回答はサービスの改善と統計（会員全体の傾向）にだけ使います。<a href="../legal/privacy.html" target="_blank" rel="noopener">プライバシーポリシー</a></p>
-      <button class="btn-block btn-gold" type="submit">${s.member_id ? '回答を更新する' : '回答する'}</button>
+      <button class="btn-block btn-gold" type="submit">${sRow ? '回答を更新する' : '回答する'}</button>
     </form>
-    ${s.member_id ? '' : '<button type="button" class="btn-block btn-sub" data-action="survey-later">あとで答える</button>'}
-  </div>` + (isActive(state.profile) ? memberNav('menu') : '');
+    ${sRow || required ? '' : '<button type="button" class="btn-block btn-sub" data-action="survey-later">あとで答える</button>'}
+  </div>` + (isActive(state.profile) && !required ? memberNav('menu') : '');
 }
 
 // ホームに出すお願いカード（アンケート・すすめたい度・退会理由）。新しい記録の SQL が未実行なら出さない
@@ -4553,8 +4618,8 @@ function statsMore(d) {
         <p class="muted small">きっかけは、専用リンクから来た人はリンクで、それ以外はアンケートの回答で数えています。</p></div>
     </div>
     <details class="card st-card st-fold"><summary>きっかけ別の専用リンク（広告・SNS・チラシのQRコードに使う）</summary>
-      <p class="muted small">このリンクからホームページに来て登録した人は、自動で「どこから来たか」が記録されます。</p>
-      ${SURVEY_OPTS.referral.filter(([k]) => !['friend', 'other'].includes(k)).map(([k, l]) => `<div class="list-item small"><span>${esc(l)}</span><code class="st-link">${esc(`${lpUrl}?from=${k}`)}</code><button type="button" class="btn-sm btn-sub" data-action="copy-text" data-text="${esc(`${lpUrl}?from=${k}`)}">コピー</button></div>`).join('')}
+      <p class="muted small">このリンクからホームページに来て登録した人は、自動で「どこから来たか」が記録されます。文武遊ちゃんねるの演者ごとのリンクは<a href="#/admin/partners">紹介パートナー</a>の画面にあります。</p>
+      ${SURVEY_OPTS.referral.filter(([k]) => !['friend', 'other', 'bunbu'].includes(k)).map(([k, l]) => `<div class="list-item small"><span>${esc(l)}</span><code class="st-link">${esc(`${lpUrl}?from=${k}`)}</code><button type="button" class="btn-sm btn-sub" data-action="copy-text" data-text="${esc(`${lpUrl}?from=${k}`)}">コピー</button></div>`).join('')}
     </details>
     <details class="card st-card st-fold"><summary>広告費を入力する</summary>
       <form class="form ad-form" data-form="ad-spend">
@@ -5188,6 +5253,7 @@ async function render() {
         return;
       }
       if (r[1] === 'report') return paint(await viewReport(r[2]));
+      if (r[1] === 'partners') return paint(await viewPartners());
       if (r[1] === 'stats') return paint(await viewStats());
       if (r[1] === 'templates') return paint(await viewTemplates());
       if (r[1] === 'quotas') return paint(await viewQuotaSettings());
@@ -5215,6 +5281,13 @@ async function render() {
     if (r[0] === 'scores' && isActive(p)) return paint(await viewScores());
     if (r[0] === 'install') return paint(viewInstall());
     if (!p.onboarded_at) return go('guide');
+    // 「何で知りましたか？」に答えていなければ、先にアンケートへ（読み込めないときは止めない）
+    if (state.surveyFor !== p.id) {
+      state.surveyFor = p.id;
+      state.surveyDone = await sb.from('member_survey').select('referral').eq('member_id', p.id).maybeSingle()
+        .then((x) => (x.error ? true : !!x.data?.referral), () => true);
+    }
+    if (!state.surveyDone) return go('survey');
     const [unreadLessons, unreadDrills, unseenCele, unreadCc] = await Promise.all([
       sb.from('lessons').select('id', { count: 'exact', head: true }).eq('member_id', p.id).is('read_at', null),
       sb.from('roadmap_items').select('id', { count: 'exact', head: true }).eq('member_id', p.id).is('seen_at', null).eq('hidden', false)
@@ -5412,6 +5485,36 @@ const actions = {
     toast('削除しました'); render();
   },
   'survey-later': () => go('home'),
+  'partner-edit': async (el) => {
+    const x = await must(sb.from('referral_partners').select('*').eq('id', el.dataset.id).maybeSingle());
+    if (!x) return;
+    const v = await confirmDialog({ title: '演者の変更', ok: '保存する', body: `
+      <label>名前<input name="name" maxlength="60" value="${esc(x.name)}"></label>
+      <label>並び順（小さいほど上）<input name="sort" type="number" value="${x.sort}"></label>
+      <label class="check"><input type="checkbox" name="active" ${x.active ? 'checked' : ''}> アンケートに出す</label>
+      <p class="small muted">コードは専用リンクに使うため変えられません（${esc(x.code)}）。紹介の記録が残っている演者は、消さずに「アンケートに出す」を外してください。</p>` });
+    if (!v) return;
+    const name = String(v.name || '').trim();
+    if (!name) throw new Error('名前を入れてください');
+    await must(sb.from('referral_partners').update({ name, sort: Number(v.sort) || 0, active: v.active === true || v.active === 'on' }).eq('id', x.id));
+    toast('保存しました'); render();
+  },
+  // 紹介の記録（契約のときの回答）をスタッフが直す
+  'ref-edit': async (el) => {
+    const id = el.dataset.member;
+    const [rec, parts] = await Promise.all([
+      sb.from('referral_records').select('*').eq('member_id', id).maybeSingle().then((r) => r.data, () => null),
+      must(sb.from('referral_partners').select('id, name').order('sort').order('name')),
+    ]);
+    const v = await confirmDialog({ title: '紹介の記録を直す', ok: '保存する', body: `<p class="small">文武遊ちゃんねるの演者ごとの人数は、この記録で数えます。会員がアンケートの回答を変えても、この記録は変わりません。</p>
+      <label>何で知ったか<select name="referral">${SURVEY_OPTS.referral.map(([k, l]) => `<option value="${k}" ${rec?.referral === k ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label>
+      <label>演者（文武遊ちゃんねるのとき）<select name="partner"><option value="">覚えていない・特にない</option>${parts.map((x) => `<option value="${x.id}" ${rec?.partner_id === x.id ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select></label>` });
+    if (!v) return;
+    const partner = v.referral === 'bunbu' && v.partner ? parts.find((x) => x.id === v.partner) : null;
+    await must(sb.from('referral_records').upsert({ member_id: id, referral: v.referral, partner_id: partner?.id || null, partner_name: partner?.name || null,
+      updated_by: state.profile.id, updated_at: new Date().toISOString() }, { onConflict: 'member_id' }));
+    toast('紹介の記録を直しました'); render();
+  },
   'ask-hide': (el) => {
     local.set(el.dataset.key, el.dataset.month ? monthKey() : '1');
     el.closest('.ask-card').remove();
@@ -6315,6 +6418,13 @@ const forms = {
     await must(sb.from('ad_spend').upsert({ month: `${f.month.value}-01`, channel: f.channel.value, amount: Number(f.amount.value), updated_at: new Date().toISOString() }, { onConflict: 'month,channel' }));
     toast('広告費を保存しました'); render();
   },
+  'partner-add': async (f) => {
+    const name = f.name.value.trim(); const code = f.code.value.trim().toLowerCase();
+    if (!/^[a-z0-9][a-z0-9_-]{0,30}$/.test(code)) throw new Error('コードは半角の英小文字・数字で入れてください（例：tanaka）');
+    const r = await sb.from('referral_partners').insert({ name, code });
+    if (r.error) throw new Error(/duplicate|unique/i.test(r.error.message || '') ? 'このコードはもう使われています' : r.error.message);
+    toast('追加しました'); render();
+  },
   survey: async (f) => {
     const val = (k) => f.querySelector(`[name="${k}"]:checked`)?.value || '';
     // 生年月日から年代を出す（統計の「年代」はこれを使う）
@@ -6322,12 +6432,19 @@ const forms = {
     let age = null;
     if (bd) { const t = today(); age = Number(t.slice(0, 4)) - Number(bd.slice(0, 4)) - (t.slice(5) < bd.slice(5) ? 1 : 0); }
     const band = age == null ? '' : age < 20 ? '10s' : age >= 70 ? '70s' : `${Math.floor(age / 10)}0s`;
-    const row = { member_id: state.profile.id, referral: val('referral'), referral_note: f.referral_note.value.trim(), golf_years: val('golf_years'),
+    const referral = val('referral');
+    if (!referral) throw new Error('「何で知りましたか？」を選んでください');
+    const partner = f.referral_partner?.value || '';
+    if (referral === 'bunbu' && !partner && f.referral_partner?.options.length > 2) throw new Error('どなたの配信でお知りになったか選んでください（覚えていなければ「覚えていない・特にない」）');
+    const row = { member_id: state.profile.id, referral, referral_note: f.referral_note.value.trim(), golf_years: val('golf_years'),
       score_band: val('score_band'), prefecture: f.prefecture.value, store_use: val('store_use'), updated_at: new Date().toISOString() };
     if (band) row.age_band = band;
-    // データベースの更新（生年月日の欄）の前でも、ほかの回答は保存する
-    const { error } = await sb.from('member_survey').upsert({ ...row, birth_date: bd || null }, { onConflict: 'member_id' });
-    if (error) await must(sb.from('member_survey').upsert(row, { onConflict: 'member_id' }));
+    const partnerId = referral === 'bunbu' && partner && partner !== 'unknown' ? partner : null;
+    // データベースの更新（生年月日・演者の欄）の前でも、ほかの回答は保存する
+    let { error } = await sb.from('member_survey').upsert({ ...row, birth_date: bd || null, referral_partner_id: partnerId }, { onConflict: 'member_id' });
+    if (error) ({ error } = await sb.from('member_survey').upsert({ ...row, birth_date: bd || null }, { onConflict: 'member_id' }));
+    if (error) await must(sb.from('member_survey').upsert({ ...row, referral: referral === 'bunbu' ? 'youtube' : referral }, { onConflict: 'member_id' }));
+    state.surveyDone = true;
     toast('ご協力ありがとうございました！');
     go('home');
     setTimeout(() => checkNewBadges().catch(() => {}), 600);
@@ -6795,6 +6912,11 @@ document.addEventListener('contextmenu', (ev) => { if (ev.target.closest(HOLD_ST
 
 let courseTimer;
 document.addEventListener('change', (ev) => {
+  // アンケート：「文武遊ちゃんねる」を選んだら、演者を選ぶ欄を出す
+  if (ev.target.name === 'referral' && ev.target.closest('form.survey')) {
+    const box = ev.target.form.querySelector('.sv-partner'); if (box) box.hidden = ev.target.value !== 'bunbu';
+    return;
+  }
   // コンシェルジュサポート：用件を選んだら、内容を書く欄を出す
   if (ev.target.matches?.('[data-cc-cat]')) {
     const f = ev.target.form; const box = f?.querySelector('.cc-compose'); if (!box) return;
