@@ -917,11 +917,20 @@ function viewRecovery() {
 const planUrl = (id) => HACOMONO_PLAN_URLS?.[id] || BOOKING_URL;
 // 申込み中の案内（プランを選ぶ画面の上）
 const planAppBox = (a) => {
-  if (!a || a.confirmed_at) return '';
-  const pl = PLANS.find((x) => x.id === a.plan);
-  return `<div class="card plan-app"><b>お申し込みの手続き中です</b>
-    <p class="small" style="margin:4px 0 0">${esc(pl?.name || a.plan)}（${fmtDate(a.applied_at)}）。hacomono でのお支払いが確認でき次第、スタッフがご利用できる状態にします。完了までしばらくお待ちください。</p>
-    <p class="small muted" style="margin:4px 0 0">hacomono での手続きがまだの方は、下でプランを選んで「申し込む」からお進みください。</p></div>`;
+  if (a && !a.confirmed_at) {
+    const pl = PLANS.find((x) => x.id === a.plan);
+    return `<div class="card plan-app"><b>お申し込みの確認中です</b>
+      <p class="small" style="margin:4px 0 0">${esc(pl?.name || a.plan)}（${fmtDate(a.applied_at)}に「hacomonoで手続きを済ませた」を押しました）。hacomono でのお支払いが確認でき次第、スタッフがご利用できる状態にします。</p>
+      <p class="small muted" style="margin:4px 0 0">まだ手続きをしていない・間違えて押した場合は、取り消してください。</p>
+      <button type="button" class="btn-sm btn-sub" data-action="plan-app-cancel">取り消す</button></div>`;
+  }
+  // hacomono を開いたあと：手続きを済ませたかを聞く
+  const opened = state.profile && local.get(`atg-hc-opened:${state.profile.id}`);
+  const op = opened && PLANS.find((x) => x.id === opened);
+  if (!op || (a && a.confirmed_at)) return '';
+  return `<div class="card plan-app"><b>hacomono でのお手続きは済みましたか？</b>
+    <p class="small" style="margin:4px 0 0">${esc(op.name)}の申込み画面（hacomono）を開きました。契約とお支払いまで済んだら「済ませた」を押してください。スタッフが確認して、ご利用できる状態にします。</p>
+    <div class="plan-ask"><button type="button" class="btn-sm btn-gold" data-action="plan-app-done" data-plan="${esc(op.id)}">済ませた</button><button type="button" class="btn-sm btn-sub" data-action="plan-app-not">まだ・やめた</button></div></div>`;
 };
 
 // プランの詳細（閉じるボタン・背景・Esc で閉じる）
@@ -983,7 +992,6 @@ function viewPlans() {
   const sel = plans.find((pl) => pl.id === state.planSel);
   const meetTxt = (pl) => (pl.credits?.meeting ? `毎月${pl.credits.meeting}回` : 'オプション（1回6,000円）');
   const videoTxt = (pl) => (pl.credits?.video ? `毎月${pl.credits.video}回` : '—');
-  const pending = state.planApp && !state.planApp.confirmed_at;
   return header('プランを選ぶ') + `<div class="content">
     <div class="hero"><span class="pill">WELCOME</span><h1>${esc(p.name || 'ようこそ')}さん</h1>
       <div class="muted">${anyCheckout ? 'プランを選んで決済が完了すると' : 'お申し込みが完了すると'}、動画の添削・オンライン面談・ドリルなどが使えるようになります。</div></div>
@@ -1026,7 +1034,7 @@ function viewPlans() {
     <div class="plan-apply-bar${sel ? ' on' : ''}" id="plan-apply">
       ${sel ? `<div class="pab-sel"><span class="muted small">選んだプラン</span><b>${esc(sel.name)}</b><span>${esc(sel.price)}</span></div>
         ${sel.checkout ? `<button class="btn-block btn-gold" data-action="checkout" data-plan="${esc(sel.id)}">申し込む</button>`
-          : `<a class="btn btn-block btn-gold plan-go" href="${esc(planUrl(sel.id))}" target="_blank" rel="noopener" data-plan-apply="${esc(sel.id)}">${pending ? 'もう一度 hacomono を開く' : '申し込む'}</a>
+          : `<a class="btn btn-block btn-gold plan-go" href="${esc(planUrl(sel.id))}" target="_blank" rel="noopener" data-plan-apply="${esc(sel.id)}">${esc(sel.name)}を申し込む</a>
         <p class="muted small" style="margin:8px 0 0">「申し込む」を押すと、hacomono（LINEの予約と同じ画面）が開きます。そこで${HACOMONO_PLAN_URLS?.[sel.id] ? '' : `「${esc(sel.name)}」を選んで、`}契約とお支払いをしてください。</p>`}`
         : '<p class="pab-empty">上のプランから1つ選ぶと、ここから申し込めます。</p>'}
       <div class="plan-ask"><a class="btn btn-sm btn-line" href="${esc(CONTACT.lineUrl)}" target="_blank" rel="noopener">LINEで相談</a><a class="btn btn-sm btn-sub" href="tel:${esc(CONTACT.tel)}">電話で相談</a></div>
@@ -3206,7 +3214,7 @@ async function viewDashboard() {
     ...(planApps?.length ? [section('hacomonoでの申込み（確認待ち）', '✎', planApps.map((x) => {
       const m = members.find((y) => y.id === x.member_id);
       const pl = PLANS.find((y) => y.id === x.plan);
-      return row(memberLink(x.member_id, m?.name), `${esc(pl?.name || x.plan)}・${fmtShort(x.applied_at)} に申込みボタン${m && isActive(m) ? '・<b>もう利用できる状態です</b>' : ''}`,
+      return row(memberLink(x.member_id, m?.name), `${esc(pl?.name || x.plan)}・${fmtShort(x.applied_at)} に「手続きを済ませた」${m && isActive(m) ? '・<b>もう利用できる状態です</b>' : ''}`,
         `<button type="button" class="btn btn-sm btn-gold" data-action="app-confirm" data-member="${x.member_id}" data-plan="${esc(x.plan)}">プランを有効にする</button>`);
     }), '', '<span class="muted small dash-note">hacomono で支払いを確かめてから</span>', 'info')] : []),
     section('面談：結果の入力待ち', '!', lateMeetings.map((m) => row(`${memberLink(m.member_id, m.profiles?.name)}`, `${fmtShort(m.scheduled_at)} の面談`,
@@ -4456,7 +4464,7 @@ async function viewPartners() {
           <td>${supN(x.code)}人</td><td>${appN(x.code)}人</td><td>${recN(x.id)}人${svN(x.id) ? `<br><span class="muted small">アンケートで選んだ人 ${svN(x.id)}人</span>` : ''}</td>
           <td><button type="button" class="btn-sm btn-sub" data-action="partner-edit" data-id="${x.id}">変更</button></td></tr>`; }).join('')}
       </tbody></table></div>
-      <p class="muted small">「登録」はこのリンクからアプリに登録した人数、「申込み」はそのうちプランを選んで「申し込む」を押した人数、「契約」はプランが有効になった時点の紹介の記録の人数です（リンクから登録した人はリンクの演者、それ以外はアンケートの回答）。演者は覚えていない（文武遊ちゃんねるを選んだが演者は選ばなかった）記録：${unknownRec}人</p>` : '<p class="muted">まだ登録されていません。</p>'}
+      <p class="muted small">「登録」はこのリンクからアプリに登録した人数、「申込み」はそのうち hacomono で手続きを済ませたと答えた人数、「契約」はプランが有効になった時点の紹介の記録の人数です（リンクから登録した人はリンクの演者、それ以外はアンケートの回答）。演者は覚えていない（文武遊ちゃんねるを選んだが演者は選ばなかった）記録：${unknownRec}人</p>` : '<p class="muted">まだ登録されていません。</p>'}
       <p class="muted small">専用リンクは、YouTubeの概要欄や配信画面（QRコード）に使います。押すと、オンラインレッスンの案内と料金がついた<b>アプリの新規登録の画面</b>が開きます。ここから登録した人は、紹介の記録にこの演者が自動で入ります。QRコードは、リンクをコピーしてQRコードを作るサービスで作れます。</p>
       <p class="muted small">配信で紹介してもらうときは、「オルタイムゴルフの宣伝（PR）です」と伝え、YouTubeの「有料プロモーション」の表示もオンにしてもらってください（ステマ規制への対応）。</p>
     </div>
@@ -5601,6 +5609,22 @@ const actions = {
     toast('削除しました'); render();
   },
   'survey-later': () => go('home'),
+  // hacomono で手続きを済ませた → 申込みとして記録（スタッフの確認待ちに出る）
+  'plan-app-done': async (el) => {
+    const plan = el.dataset.plan;
+    const { error } = await sb.from('plan_applications').upsert({ member_id: state.profile.id, plan }, { onConflict: 'member_id' });
+    if (error) return toast('記録できませんでした。時間をおいてもう一度お試しください。');
+    local.del(`atg-hc-opened:${state.profile.id}`);
+    state.planApp = { plan, applied_at: new Date().toISOString(), confirmed_at: null };
+    toast('受け付けました。スタッフの確認をお待ちください'); render();
+  },
+  'plan-app-not': () => { local.del(`atg-hc-opened:${state.profile.id}`); render(); },
+  'plan-app-cancel': async () => {
+    if (!(await confirmDialog({ title: 'お申し込みを取り消しますか？', body: 'hacomono で契約・お支払いを済ませている場合は、取り消さずにお待ちください。', ok: '取り消す' }))) return;
+    const { error } = await sb.from('plan_applications').delete().eq('member_id', state.profile.id).is('confirmed_at', null);
+    if (error) return toast('取り消せませんでした。コンシェルジュまたはお電話でご連絡ください。');
+    state.planApp = null; toast('取り消しました'); render();
+  },
   // プランを選ぶ（選んだら、下の「申し込む」へ移動する）
   'plan-select': (el) => {
     state.planSel = el.dataset.plan; render();
@@ -7046,14 +7070,25 @@ document.addEventListener('pointerdown', (ev) => {
 ['pointerup', 'pointercancel', 'blur'].forEach((t) => (t === 'blur' ? window : document).addEventListener(t, stopStepHold));
 document.addEventListener('contextmenu', (ev) => { if (ev.target.closest(HOLD_STEP.map((a) => `[data-action="${a}"]`).join(','))) ev.preventDefault(); });
 
+// プラン画面：下の申し込み欄が見えているあいだは、画面下の小さいバーを隠す（同じボタンが2つ並ばないように）
+const syncPlanMini = () => {
+  const mini = document.querySelector('.plan-mini'); const bar = document.getElementById('plan-apply');
+  if (!mini || !bar) return;
+  const r = bar.getBoundingClientRect();
+  mini.classList.toggle('off', r.top < window.innerHeight - 40);
+};
+window.addEventListener('scroll', syncPlanMini, { passive: true });
+window.addEventListener('resize', syncPlanMini);
+new MutationObserver(syncPlanMini).observe(document.getElementById('app') || document.body, { childList: true });
+
 let courseTimer;
 document.addEventListener('click', (ev) => {
   const a = ev.target.closest('[data-plan-apply]');
   if (!a || !state.profile) return;
+  // hacomono を開いただけでは「申込み」にしない。戻ってきたら「手続きを済ませた」かを聞く
   const plan = a.dataset.planApply;
-  sb.from('plan_applications').upsert({ member_id: state.profile.id, plan }, { onConflict: 'member_id' }).then(() => {}, () => {});
   sb.from('site_events').insert({ kind: 'plan', source: landingSource()?.source || '' }).then(() => {}, () => {});
-  state.planApp = { plan, applied_at: new Date().toISOString(), confirmed_at: null };
+  local.set(`atg-hc-opened:${state.profile.id}`, plan);
   setTimeout(() => { if (getRoute()[0] === 'plans') render(); }, 400);
 });
 document.addEventListener('change', (ev) => {
