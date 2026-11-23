@@ -164,7 +164,7 @@ body.on-auth .app{background:transparent;max-width:none}
 #video:focus-visible + .file-pick{outline:2px solid var(--gold);outline-offset:2px}
 #upload-progress{margin-top:14px}
 .plan{position:relative}
-.plan.rec{border:1px solid var(--gold);box-shadow:0 12px 30px rgba(15,23,18,.08)}
+.plan.plan-rec{border:1px solid var(--gold);box-shadow:0 12px 30px rgba(15,23,18,.08)}
 .plan h3{font-size:20px;margin:6px 0 2px}
 .plan .lead{color:var(--muted);font-size:13.5px;margin:6px 0 0}
 .plan ul{list-style:none;padding:0;margin:10px 0 4px}
@@ -2318,6 +2318,28 @@ body.rec-open{overflow:hidden}
 .plan-app { border-left: 4px solid var(--gold, #b8955a); margin-bottom: 12px; }
 .dash-note { margin-left: 8px; font-weight: 400; }
 
-/* ホームページで選んだプラン */
-.plan-picked { border: 2px solid var(--gold, #b8955a); margin-bottom: 14px; }
-.signup-intro .si-pick { margin: 4px 0 8px; font-size: 13px; }
+/* プランを選ぶ画面：流れ・くらべ・選ぶ・申し込む */
+.plans-flow h2, .plans-compare h2 { font-size: 17px; margin: 0 0 10px; }
+.pf-steps { list-style: none; counter-reset: pf; margin: 0; padding: 0; display: grid; gap: 10px; }
+.pf-steps li { counter-increment: pf; position: relative; padding-left: 36px; font-size: 13px; line-height: 1.7; }
+.pf-steps li::before { content: counter(pf); position: absolute; left: 0; top: 1px; width: 24px; height: 24px; border-radius: 50%; background: var(--ink, #0f1712); color: var(--gold, #b8955a); font-weight: 700; font-size: 13px; display: grid; place-items: center; }
+.pf-steps li b { display: block; font-size: 14px; }
+.pf-steps li span { color: var(--muted, #5b6660); }
+.plans-compare .tbl-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.pc-tbl { border-collapse: collapse; width: 100%; min-width: 520px; font-size: 13px; }
+.pc-tbl th, .pc-tbl td { border-bottom: 1px solid var(--line, #e6dfd2); padding: 8px 6px; text-align: center; vertical-align: top; }
+.pc-tbl tbody th { text-align: left; white-space: nowrap; font-weight: 600; color: var(--muted, #5b6660); position: sticky; left: 0; background: #fff; }
+.pc-tbl thead th { font-size: 13px; }
+.plans-h { font-size: 17px; margin: 18px 0 0; }
+.card.plan.selected { border: 2px solid var(--gold, #b8955a); box-shadow: 0 12px 30px rgba(15,23,18,.10); }
+.plan-pick-btn { margin-top: 8px; }
+.plan-detail-btn { margin-top: 10px; }
+.plan-apply-bar { position: relative; z-index: 6; background: #fff; border: 1px solid var(--line, #e6dfd2); border-radius: 16px; padding: 14px; margin: 16px 0; scroll-margin-bottom: 90px; }
+.plan-mini { position: sticky; bottom: calc(76px + env(safe-area-inset-bottom, 0px)); z-index: 5; display: flex; align-items: center; justify-content: space-between; gap: 10px; background: var(--ink, #0f1712); color: #fff; border: 1px solid var(--gold, #b8955a); border-radius: 14px; padding: 8px 8px 8px 14px; margin: 8px 0 -76px; box-shadow: 0 8px 24px rgba(15,23,18,.25); }
+.plan-mini small { display: block; font-size: 11px; color: var(--gold-2, #d8c08a); }
+.plan-mini b { font-size: 15px; }
+.plan-mini .btn { min-width: 120px; margin: 0; }
+.plan-apply-bar.on { border: 2px solid var(--gold, #b8955a); }
+.pab-sel { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+.pab-sel b { font-size: 16px; }
+.pab-empty { margin: 0 0 4px; font-size: 13px; color: var(--muted, #5b6660); text-align: center; }
