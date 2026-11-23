@@ -970,8 +970,7 @@ function showPlanDetail(pl) {
   wrap.addEventListener('click', (e) => {
     const pick = e.target.closest('[data-sheet-select]');
     if (pick) {
-      close(); state.planSel = pick.dataset.sheetSelect; render();
-      setTimeout(() => document.getElementById('plan-apply')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 60);
+      close(); openPlanApply(pick.dataset.sheetSelect);
       return;
     }
     if (e.target === wrap || e.target.closest('[data-sheet="close"]')) close();
@@ -981,15 +980,51 @@ function showPlanDetail(pl) {
   wrap.querySelector('.sheet-close').focus();
 }
 
+// プランを選んだら、画面の中央に申し込みの画面を出す（うしろは少し暗く）
+function openPlanApply(id) {
+  const pl = PLANS.find((x) => x.id === id); if (!pl) return;
+  const prev = document.activeElement;
+  const wrap = document.createElement('div');
+  wrap.className = 'modal-backdrop';
+  const meet = pl.credits?.meeting ? `毎月${pl.credits.meeting}回` : 'オプション（1回6,000円）';
+  const video = pl.credits?.video ? `毎月${pl.credits.video}回` : '—';
+  wrap.innerHTML = `<div class="modal plan-apply-modal" role="dialog" aria-modal="true" aria-labelledby="pam-title">
+    <span class="eyebrow">${esc(pl.en)}</span>
+    <h2 id="pam-title">${esc(pl.name)}</h2>
+    <div class="pam-price">${esc(pl.price)}</div>
+    <dl class="spec"><div><dt>オンライン面談</dt><dd>${meet}</dd></div><div><dt>動画の添削</dt><dd>${video}</dd></div><div><dt>お支払い</dt><dd>${esc(pl.payment)}</dd></div></dl>
+    ${pl.checkout ? `<button class="btn-block plan-go" data-action="checkout" data-plan="${esc(pl.id)}">${esc(pl.name)}を申し込む</button>`
+      : `<a class="btn btn-block plan-go" href="${esc(planUrl(pl.id))}" target="_blank" rel="noopener" data-plan-apply="${esc(pl.id)}">${esc(pl.name)}を申し込む</a>
+    <p class="muted small" style="margin:8px 0 0">押すと hacomono（LINEの予約と同じ画面）が開きます。${HACOMONO_PLAN_URLS?.[pl.id] ? '' : `そこで「${esc(pl.name)}」を選んで、`}契約とお支払いをしてください。</p>`}
+    <div class="plan-ask"><a class="btn btn-sm btn-line" href="${esc(CONTACT.lineUrl)}" target="_blank" rel="noopener">LINEで相談</a><a class="btn btn-sm btn-sub" href="tel:${esc(CONTACT.tel)}">電話で相談</a></div>
+    <button type="button" class="btn-block btn-sub pam-cancel" data-pam="close">ほかのプランも見る</button>
+  </div>`;
+  const close = () => { document.removeEventListener('keydown', onKey, true); wrap.remove(); prev?.focus?.(); };
+  const onKey = (e) => {
+    if (e.key === 'Escape') { e.preventDefault(); close(); }
+    if (e.key === 'Tab') {
+      const items = [...wrap.querySelectorAll('button, a[href]')];
+      const i = items.indexOf(document.activeElement);
+      e.preventDefault();
+      items[(i + (e.shiftKey ? items.length - 1 : 1)) % items.length].focus();
+    }
+  };
+  wrap.addEventListener('click', (e) => {
+    if (e.target === wrap || e.target.closest('[data-pam="close"]')) return close();
+    // hacomono を開いたら閉じて、画面の上の「お手続きは済みましたか？」が見えるようにする
+    if (e.target.closest('[data-plan-apply]')) { close(); setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 450); }
+  });
+  document.addEventListener('keydown', onKey, true);
+  document.body.appendChild(wrap);
+  wrap.querySelector('.plan-go')?.focus();
+}
+
 function viewPlans() {
   const p = state.profile;
   const troubled = ['past_due', 'unpaid', 'incomplete', 'paused'].includes(p.subscription_status);
   // サイト上でカード決済できるプランがあるときだけ、Stripe・「アカウント」からの解約の案内を出す
   const anyCheckout = PLANS.some((pl) => !pl.hidden && pl.checkout);
   const plans = PLANS.filter((pl) => !pl.hidden);
-  // 選んでいるプラン（ホームページなどで選んでいたものがあれば、それを最初に選んだ状態にする）
-  if (state.planSel === undefined) state.planSel = plans.some((pl) => pl.id === planPick()) ? planPick() : '';
-  const sel = plans.find((pl) => pl.id === state.planSel);
   const meetTxt = (pl) => (pl.credits?.meeting ? `毎月${pl.credits.meeting}回` : 'オプション（1回6,000円）');
   const videoTxt = (pl) => (pl.credits?.video ? `毎月${pl.credits.video}回` : '—');
   return header('プランを選ぶ') + `<div class="content">
@@ -1018,7 +1053,7 @@ function viewPlans() {
     </section>
     <h2 class="plans-h">プランを選ぶ</h2>
     <div class="plan-cards">
-    ${plans.map((pl) => `<div class="card plan${pl.recommended ? ' plan-rec' : ''}${state.planSel === pl.id ? ' selected' : ''}">
+    ${plans.map((pl) => `<div class="card plan${pl.recommended ? ' plan-rec' : ''}">
         <div class="between"><span class="eyebrow">${esc(pl.en)}</span>${pl.recommended ? '<span class="pill">おすすめ</span>' : ''}</div>
         <h3>${esc(pl.name)}</h3>
         <p class="lead">${esc(pl.lead)}</p>
@@ -1026,19 +1061,10 @@ function viewPlans() {
         <div class="price">${esc(pl.price)}</div>
         <ul>${pl.features.map((f) => `<li>${esc(f)}</li>`).join('')}</ul>
         ${pl.detail ? `<button type="button" class="btn-block btn-sub plan-detail-btn" data-action="plan-detail" data-plan="${esc(pl.id)}">詳細を見る</button>` : ''}
-        <button type="button" class="btn-block ${state.planSel === pl.id ? 'btn-gold' : 'btn-sub'} plan-pick-btn" data-action="plan-select" data-plan="${esc(pl.id)}" aria-pressed="${state.planSel === pl.id}">${state.planSel === pl.id ? '✓ このプランを選んでいます' : 'このプランを選ぶ'}</button>
+        <button type="button" class="btn-block btn-gold plan-pick-btn" data-action="plan-select" data-plan="${esc(pl.id)}">このプランを選ぶ</button>
       </div>`).join('')}
-    ${sel && !sel.checkout ? `<div class="plan-mini"><div><small>選んだプラン</small><b>${esc(sel.name)}</b></div>
-      <a class="btn btn-gold" href="${esc(planUrl(sel.id))}" target="_blank" rel="noopener" data-plan-apply="${esc(sel.id)}">申し込む</a></div>` : ''}
     </div>
-    <div class="plan-apply-bar${sel ? ' on' : ''}" id="plan-apply">
-      ${sel ? `<div class="pab-sel"><span class="muted small">選んだプラン</span><b>${esc(sel.name)}</b><span>${esc(sel.price)}</span></div>
-        ${sel.checkout ? `<button class="btn-block btn-gold" data-action="checkout" data-plan="${esc(sel.id)}">申し込む</button>`
-          : `<a class="btn btn-block btn-gold plan-go" href="${esc(planUrl(sel.id))}" target="_blank" rel="noopener" data-plan-apply="${esc(sel.id)}">${esc(sel.name)}を申し込む</a>
-        <p class="muted small" style="margin:8px 0 0">「申し込む」を押すと、hacomono（LINEの予約と同じ画面）が開きます。そこで${HACOMONO_PLAN_URLS?.[sel.id] ? '' : `「${esc(sel.name)}」を選んで、`}契約とお支払いをしてください。</p>`}`
-        : '<p class="pab-empty">上のプランから1つ選ぶと、ここから申し込めます。</p>'}
-      <div class="plan-ask"><a class="btn btn-sm btn-line" href="${esc(CONTACT.lineUrl)}" target="_blank" rel="noopener">LINEで相談</a><a class="btn btn-sm btn-sub" href="tel:${esc(CONTACT.tel)}">電話で相談</a></div>
-    </div>
+    <div class="plan-ask plan-ask-page"><span class="small muted">決める前に相談したい方</span><a class="btn btn-sm btn-line" href="${esc(CONTACT.lineUrl)}" target="_blank" rel="noopener">LINEで相談</a><a class="btn btn-sm btn-sub" href="tel:${esc(CONTACT.tel)}">電話で相談</a></div>
 `}
     ${anyCheckout ? '<p class="muted small">カード決済は Stripe の安全な決済ページで行います。解約・プラン変更はいつでも「アカウント」から行えます。</p>'
       : `<p class="muted small">わからないことは、LINEまたはお電話（${esc(CONTACT.telDisplay)}・${esc(CONTACT.hours)}）でご相談ください。ご契約後の変更・解約は、コンシェルジュサポート（アプリ内の連絡）またはお電話で承ります。</p>`}
@@ -5626,10 +5652,7 @@ const actions = {
     state.planApp = null; toast('取り消しました'); render();
   },
   // プランを選ぶ（選んだら、下の「申し込む」へ移動する）
-  'plan-select': (el) => {
-    state.planSel = el.dataset.plan; render();
-    setTimeout(() => document.getElementById('plan-apply')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 60);
-  },
+  'plan-select': (el) => openPlanApply(el.dataset.plan),
   // hacomono での契約を確かめて、アプリでプランを有効にする
   'app-confirm': async (el) => {
     const id = el.dataset.member;
@@ -7069,17 +7092,6 @@ document.addEventListener('pointerdown', (ev) => {
 });
 ['pointerup', 'pointercancel', 'blur'].forEach((t) => (t === 'blur' ? window : document).addEventListener(t, stopStepHold));
 document.addEventListener('contextmenu', (ev) => { if (ev.target.closest(HOLD_STEP.map((a) => `[data-action="${a}"]`).join(','))) ev.preventDefault(); });
-
-// プラン画面：下の申し込み欄が見えているあいだは、画面下の小さいバーを隠す（同じボタンが2つ並ばないように）
-const syncPlanMini = () => {
-  const mini = document.querySelector('.plan-mini'); const bar = document.getElementById('plan-apply');
-  if (!mini || !bar) return;
-  const r = bar.getBoundingClientRect();
-  mini.classList.toggle('off', r.top < window.innerHeight - 40);
-};
-window.addEventListener('scroll', syncPlanMini, { passive: true });
-window.addEventListener('resize', syncPlanMini);
-new MutationObserver(syncPlanMini).observe(document.getElementById('app') || document.body, { childList: true });
 
 let courseTimer;
 document.addEventListener('click', (ev) => {
