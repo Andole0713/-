@@ -2343,3 +2343,5 @@ body.rec-open{overflow:hidden}
 .pab-sel { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
 .pab-sel b { font-size: 16px; }
 .pab-empty { margin: 0 0 4px; font-size: 13px; color: var(--muted, #5b6660); text-align: center; }
+.plan-app .plan-ask button { flex: 1; margin: 0; }
+.plan-app > button { margin-top: 8px; }
