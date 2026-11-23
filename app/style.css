@@ -2317,3 +2317,7 @@ body.rec-open{overflow:hidden}
 .plan-ask .btn { flex: 1; }
 .plan-app { border-left: 4px solid var(--gold, #b8955a); margin-bottom: 12px; }
 .dash-note { margin-left: 8px; font-weight: 400; }
+
+/* ホームページで選んだプラン */
+.plan-picked { border: 2px solid var(--gold, #b8955a); margin-bottom: 14px; }
+.signup-intro .si-pick { margin: 4px 0 8px; font-size: 13px; }

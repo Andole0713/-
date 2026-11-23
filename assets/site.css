@@ -257,7 +257,7 @@ section{padding:96px 0}
 /* お問い合わせ */
 .contact{background:linear-gradient(180deg,var(--ink-2),var(--ink));color:var(--on-dark)}
 .contact .lead{color:var(--on-dark-muted)}
-.contact-grid{display:grid;grid-template-columns:1fr 1fr;gap:22px;max-width:820px;margin:48px auto 0}
+.contact-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:22px;max-width:1000px;margin:48px auto 0}
 .contact-card{border:1px solid var(--gold-line);border-radius:18px;padding:34px 28px;text-align:center}
 .contact-card h3{font-family:var(--serif);margin:0 0 6px;font-size:19px}
 .contact-card p{margin:0 0 22px;color:var(--on-dark-muted);font-size:13.5px}
@@ -515,3 +515,6 @@ main>section::before{content:"";position:absolute;top:22px;right:max(8px,calc((1
 .cc-price{margin:14px 0 0!important;padding-top:12px;border-top:1px solid var(--paper-2);font-family:var(--serif);font-size:15px;color:var(--text)!important}
 .course-cards .cc-rec{border:1px solid var(--gold);box-shadow:0 14px 34px rgba(15,23,18,.08);position:relative}
 .cc-tag{position:absolute;top:-11px;left:18px;background:var(--ink);color:var(--gold-2);font-size:11px;letter-spacing:.15em;padding:3px 12px;border-radius:999px}
+
+/* プランのカード：相談の小さなリンク */
+.plan-ask-link{display:block;text-align:center;margin-top:12px;font-size:13px;color:inherit;opacity:.8;text-decoration:underline;padding:6px 0}
