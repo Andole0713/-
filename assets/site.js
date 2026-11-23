@@ -36,11 +36,27 @@ const sticky = document.getElementById('stickyCta');
 const contact = document.getElementById('contact');
 const yearEl = document.getElementById('year');
 if (yearEl) yearEl.textContent = new Date().getFullYear();
+// 右下の吹き出し（申し込む）：スクロールすると出てきて、画面についてくる。× で閉じたら、このタブを開いている間は出さない
+const bubble = (() => {
+  let closed = false; try { closed = sessionStorage.getItem('atg-bubble-off') === '1'; } catch { /* noop */ }
+  if (closed) return null;
+  const el = document.createElement('div');
+  el.className = 'apply-bubble';
+  el.innerHTML = '<a class="ab-body" data-apply href="app/#/signup"><small>オンラインレッスン</small><b>申し込む<span aria-hidden="true">›</span></b></a>'
+    + '<button type="button" class="ab-close" aria-label="閉じる">×</button>';
+  el.querySelector('.ab-close').addEventListener('click', () => {
+    el.remove(); try { sessionStorage.setItem('atg-bubble-off', '1'); } catch { /* noop */ }
+  });
+  document.body.appendChild(el);
+  return el;
+})();
 function onScroll() {
   const y = window.scrollY;
   header.classList.toggle('scrolled', y > 40);
   const contactTop = contact ? contact.getBoundingClientRect().top : Infinity;
-  sticky.classList.toggle('show', y > window.innerHeight * 0.6 && contactTop > window.innerHeight * 0.5);
+  const show = y > window.innerHeight * 0.6 && contactTop > window.innerHeight * 0.5;
+  sticky.classList.toggle('show', show);
+  if (bubble?.isConnected) bubble.classList.toggle('show', show);
 }
 window.addEventListener('scroll', onScroll, { passive: true });
 onScroll();
