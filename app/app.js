@@ -1,6 +1,6 @@
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/+esm';
 import { Upload as TusUpload } from 'https://cdn.jsdelivr.net/npm/tus-js-client@4.3.1/+esm';
-import { SUPABASE_URL, SUPABASE_ANON_KEY, SCHOOL_NAME, PLANS, CONTACT, BOOKING_URL } from './config.js';
+import { SUPABASE_URL, SUPABASE_ANON_KEY, SCHOOL_NAME, PLANS, CONTACT, BOOKING_URL, HACOMONO_PLAN_URLS } from './config.js';
 import { helpPage, HELP_TABS, wordOfDay } from './help.js';
 
 // 撮影アプリ SwingFrame（会員ページの中の swing/ に入っている。ログインなしでだれでも使える）
@@ -815,6 +815,33 @@ function viewContinue() {
     <button type="button" class="link continue-switch" data-action="switch-account">別のアカウントでログイン</button>`);
 }
 
+// 専用リンク（?from=…）でアプリに来た人：どこから来たかを覚える（登録したときに記録する）
+// 演者のリンク（?from=bunbu-コード）は、最後に来たものを覚える。ページを見た回数も、きっかけ別に数える
+const LANDING_FROM = (() => {
+  let f = '';
+  try { f = (new URLSearchParams(location.search).get('from') || '').toLowerCase().replace(/[^a-z0-9_-]/g, '').slice(0, 40); } catch { return ''; }
+  if (!f) return '';
+  if (!local.get('atg-from')) local.set('atg-from', JSON.stringify({ source: f, ts: Date.now() }));
+  if (f.startsWith('bunbu-') && f.length > 6) local.set('atg-partner', JSON.stringify({ code: f.slice(6), ts: Date.now() }));
+  try {
+    if (sb && !sessionStorage.getItem('atg-app-viewed')) { sessionStorage.setItem('atg-app-viewed', '1'); sb.from('site_events').insert({ kind: 'view', source: f }).then(() => {}, () => {}); }
+  } catch { /* 記録できなくても何もしない */ }
+  return f;
+})();
+// どこから来たか（演者のリンクを優先）。登録の記録と、申込みボタンの記録に使う
+const landingSource = () => {
+  let partner = null; let src = null;
+  try { partner = JSON.parse(local.get('atg-partner') || 'null'); } catch { /* noop */ }
+  try { src = JSON.parse(local.get('atg-from') || 'null'); } catch { /* noop */ }
+  return partner?.code ? { source: `bunbu-${partner.code}`, ts: partner.ts } : src?.source ? src : null;
+};
+// 新規登録の画面の上に出す、オンラインレッスンの案内（YouTubeなどから直接来た人が、何のサービスか分かるように）
+const signupIntro = () => `<div class="signup-intro">
+  <b class="si-title">オルタイムゴルフのオンラインレッスン</b>
+  <ul class="si-points"><li>PGAプロが、スイング動画の添削とZoomの面談で上達をサポートします</li><li>面談は毎時00分から20分（例：19:00〜19:20）</li><li>はじめてのオンライン面談は無料です</li></ul>
+  <div class="si-plans">${PLANS.filter((pl) => !pl.hidden).map((pl) => `<div><span>${esc(pl.name)}</span><b>${esc(pl.price)}</b></div>`).join('')}</div>
+  <p class="small muted" style="margin:6px 0 0">登録は無料です。登録のあと、プランを選んでお申し込みいただけます（お支払いは hacomono の画面で行います）。</p>
+</div>`;
 function viewAuth() {
   const t = state.authTab;
   const notice = !configured
@@ -855,6 +882,7 @@ function viewAuth() {
       <button type="button" role="tab" aria-selected="${t === 'signup'}" data-action="auth-tab" data-tab="signup" class="${t === 'signup' ? 'active' : ''}">新規登録</button>
     </div>`}
     <h1>${heading}</h1>
+    ${t === 'signup' ? signupIntro() : ''}
     ${notice}
     ${forms[t]}`);
 }
@@ -871,11 +899,21 @@ function viewRecovery() {
 // ---------- 画面：未契約（プラン選択） ----------
 
 // 申し込みボタン（カード決済のプランは決済ページへ、それ以外は LINE・電話）
+// 申込み（形1）：hacomono のプランの申込み画面を開く。押したことを記録し、スタッフが hacomono で確かめてからプランを有効にする
+const planUrl = (id) => HACOMONO_PLAN_URLS?.[id] || BOOKING_URL;
 const planApply = (pl) => (pl.checkout
   ? `<button class="btn-block btn-gold" data-action="checkout" data-plan="${esc(pl.id)}">このプランで申し込む</button>`
-  : `<p class="muted small" style="margin:12px 0 0">このプランは LINE またはお電話でお申し込みください。</p>
-     <a class="btn btn-block btn-line" href="${esc(CONTACT.lineUrl)}" target="_blank" rel="noopener">LINEで申し込む</a>
-     <a class="btn btn-block btn-sub" href="tel:${esc(CONTACT.tel)}">電話で申し込む（${esc(CONTACT.telDisplay)}）</a>`);
+  : `<a class="btn btn-block btn-gold plan-go" href="${esc(planUrl(pl.id))}" target="_blank" rel="noopener" data-plan-apply="${esc(pl.id)}">このプランを申し込む</a>
+     <p class="muted small" style="margin:8px 0 0">お申し込みとお支払いは、hacomono（LINEの予約と同じ画面）で行います。${HACOMONO_PLAN_URLS?.[pl.id] ? '' : `開いた画面で「${esc(pl.name)}」をお選びください。`}</p>
+     <div class="plan-ask"><a class="btn btn-sm btn-line" href="${esc(CONTACT.lineUrl)}" target="_blank" rel="noopener">LINEで相談</a><a class="btn btn-sm btn-sub" href="tel:${esc(CONTACT.tel)}">電話で相談</a></div>`);
+// 申込み中の案内（プランを選ぶ画面の上）
+const planAppBox = (a) => {
+  if (!a || a.confirmed_at) return '';
+  const pl = PLANS.find((x) => x.id === a.plan);
+  return `<div class="card plan-app"><b>お申し込みの手続き中です</b>
+    <p class="small" style="margin:4px 0 0">${esc(pl?.name || a.plan)}（${fmtDate(a.applied_at)}）。hacomono でのお支払いが確認でき次第、スタッフがご利用できる状態にします。完了までしばらくお待ちください。</p>
+    <p class="small muted" style="margin:4px 0 0">hacomono での手続きがまだの方は、下の「このプランを申し込む」からお進みください。</p></div>`;
+};
 
 // プランの詳細（閉じるボタン・背景・Esc で閉じる）
 function showPlanDetail(pl) {
@@ -925,6 +963,7 @@ function viewPlans() {
   return header('プランを選ぶ') + `<div class="content">
     <div class="hero"><span class="pill">WELCOME</span><h1>${esc(p.name || 'ようこそ')}さん</h1>
       <div class="muted">${anyCheckout ? 'プランを選んで決済が完了すると' : 'お申し込みが完了すると'}、動画提出やレッスンの閲覧ができるようになります。</div></div>
+    ${troubled ? '' : planAppBox(state.planApp)}
     ${troubled ? `<div class="notice">お支払いの確認ができていません（${esc(STATUS_LABEL[p.subscription_status]?.[0] ?? p.subscription_status)}）。
         カード情報を更新してください。<button class="btn-block" data-action="portal">お支払い情報を更新する</button></div>` : ''}
     ${troubled ? '' : PLANS.filter((pl) => !pl.hidden).map((pl) => `<div class="card plan${pl.recommended ? ' rec' : ''}">
@@ -938,7 +977,7 @@ function viewPlans() {
         ${planApply(pl)}
       </div>`).join('')}
     ${anyCheckout ? '<p class="muted small">カード決済は Stripe の安全な決済ページで行います。解約・プラン変更はいつでも「アカウント」から行えます。</p>'
-      : `<p class="muted small">お申し込みは、LINEまたはお電話（${esc(CONTACT.telDisplay)}・${esc(CONTACT.hours)}）で承ります。ご契約後の変更・解約は、コンシェルジュサポート（アプリ内の連絡）またはお電話で承ります。</p>`}
+      : `<p class="muted small">お申し込みとお支払いは、hacomono（LINEの予約と同じ画面）で行います。わからないことは、LINEまたはお電話（${esc(CONTACT.telDisplay)}・${esc(CONTACT.hours)}）でご相談ください。ご契約後の変更・解約は、コンシェルジュサポート（アプリ内の連絡）またはお電話で承ります。</p>`}
   </div>` + guestNav('plans');
 }
 
@@ -3029,13 +3068,15 @@ async function viewDashboard() {
   ]);
   const soft = (q) => q.then((r) => (r.error ? null : r.data || []), () => null);
   // コンシェルジュのお返事待ち・権利（今月末の期限・動画の残り）・今月の提出・毎月の付与・自動処理の失敗（どれも設定前でも動くように）
-  const [cc, liveCredits, subsMonth, lastGrant, monthGrant, jobFails] = await Promise.all([
+  const [cc, liveCredits, subsMonth, lastGrant, monthGrant, jobFails, planApps] = await Promise.all([
     loadConcierge(60).catch(() => null),
     soft(fetchAll(() => sb.from('credits').select('member_id, kind, expires_on').is('used_at', null).gte('expires_on', today()))),
     soft(fetchAll(() => sb.from('submissions').select('member_id').gte('created_at', jstMonthStartIso()))),
     soft(sb.from('credit_grants').select('granted_at').order('granted_at', { ascending: false }).limit(1)),
     soft(sb.from('credit_grants').select('member_id').eq('period', jstMonthFirst()).limit(1)),
     soft(sb.from('job_runs').select('*').eq('ok', false).gte('ran_at', isoDaysFrom(-14)).order('ran_at', { ascending: false }).limit(20)),
+    // hacomono での申込み（確認待ち）
+    soft(sb.from('plan_applications').select('member_id, plan, applied_at').is('confirmed_at', null).order('applied_at')),
   ]);
   const ccWait = cc?.pending || [];
   const people = members.filter((m) => m.role !== 'admin');
@@ -3106,6 +3147,12 @@ async function viewDashboard() {
       `${fmtDate(x.created_at)} 提出・${hoursText(hoursSince(x.created_at))}たっています`, claimButton(x))), '', '', 'watch')] : []),
     ...(staleSubs.length ? [section(`「対応中」のまま止まっている動画（${CLAIM_STALE_H}時間以上）`, '…', staleSubs.map((x) => row(`${memberLink(x.member_id, x.profiles?.name)}　${esc(x.club)} / ${esc(x.angle)}`,
       claimBadge(x, staff), claimButton(x))), '', '', 'watch')] : []),
+    ...(planApps?.length ? [section('hacomonoでの申込み（確認待ち）', '✎', planApps.map((x) => {
+      const m = members.find((y) => y.id === x.member_id);
+      const pl = PLANS.find((y) => y.id === x.plan);
+      return row(memberLink(x.member_id, m?.name), `${esc(pl?.name || x.plan)}・${fmtShort(x.applied_at)} に申込みボタン${m && isActive(m) ? '・<b>もう利用できる状態です</b>' : ''}`,
+        `<button type="button" class="btn btn-sm btn-gold" data-action="app-confirm" data-member="${x.member_id}" data-plan="${esc(x.plan)}">プランを有効にする</button>`);
+    }), '', '<span class="muted small dash-note">hacomono で支払いを確かめてから</span>', 'info')] : []),
     section('面談：結果の入力待ち', '!', lateMeetings.map((m) => row(`${memberLink(m.member_id, m.profiles?.name)}`, `${fmtShort(m.scheduled_at)} の面談`,
       `<a class="btn btn-sm" href="#/admin/prep/${m.id}">結果を入力</a>`)), '入力待ちの面談はありません'),
     section(mine ? '自分が対応する面談（7日）' : '今後7日の面談', '◷', upcoming.map((m) => row(`<b>${meetRange(m)}</b>　${memberLink(m.member_id, m.profiles?.name)}`, `${m.duration_min}分${todayMeetings.includes(m) ? '・<b class="today">今日</b>' : ''}${'staff_id' in m ? `・${m.staff_id ? `対応：${esc(staffName(staff, m.staff_id))}` : '<b class="late">対応者未定</b>'}` : ''}`,
@@ -4316,18 +4363,23 @@ const statsTabs = (active) => `<div class="st-tabs" role="tablist" aria-label="�
 
 // 紹介パートナー（文武遊ちゃんねるの演者など）：一覧・専用リンク・アンケートで選ばれた人数
 async function viewPartners() {
-  const [parts, recs, svs] = await Promise.all([
+  const [parts, recs, svs, sups, apps] = await Promise.all([
     sb.from('referral_partners').select('*').order('sort').order('name').then((r) => (r.error ? null : r.data || []), () => null),
     fetchAll(() => sb.from('referral_records').select('partner_id, referral, recorded_at')).then((r) => r.data || [], () => []),
     fetchAll(() => sb.from('member_survey').select('referral, referral_partner_id').eq('referral', 'bunbu')).then((r) => r.data || [], () => []),
+    fetchAll(() => sb.from('signup_sources').select('member_id, source').like('source', 'bunbu-%')).then((r) => r.data || [], () => []),
+    fetchAll(() => sb.from('plan_applications').select('member_id')).then((r) => r.data || [], () => []),
   ]);
-  const lp = new URL('../', location.href).href;
+  const appUrl = new URL('./', location.href).href.split('#')[0];
   if (parts === null) {
     return header('統計') + `<div class="content wide stats">${statsTabs('partners')}
       <div class="card"><p>この画面を使うには、データベースの更新（<code>20261124000000_referral_partners.sql</code>）が必要です。</p></div></div>`;
   }
   const recN = (id) => recs.filter((x) => x.partner_id === id).length;
   const svN = (id) => svs.filter((x) => x.referral_partner_id === id).length;
+  const appSet = new Set(apps.map((x) => x.member_id));
+  const supN = (code) => sups.filter((x) => x.source === `bunbu-${code}`).length;
+  const appN = (code) => sups.filter((x) => x.source === `bunbu-${code}` && appSet.has(x.member_id)).length;
   const unknownRec = recs.filter((x) => x.referral === 'bunbu' && !x.partner_id).length;
   return header('統計') + `<div class="content wide stats">
     ${statsTabs('partners')}
@@ -4342,14 +4394,14 @@ async function viewPartners() {
     </div>
     <div class="card">
       <h3 style="margin-top:0">演者の一覧</h3>
-      ${parts.length ? `<div class="tbl-wrap"><table class="st-tbl partner-tbl"><thead><tr><th>名前</th><th>専用リンク</th><th>紹介の記録</th><th>今の回答</th><th></th></tr></thead><tbody>
-        ${parts.map((x) => { const url = `${lp}?from=bunbu-${x.code}`; return `<tr class="${x.active ? '' : 'muted'}"><td><b>${esc(x.name)}</b>${x.active ? '' : '<br><span class="pill mute">アンケートに出さない</span>'}</td>
+      ${parts.length ? `<div class="tbl-wrap"><table class="st-tbl partner-tbl"><thead><tr><th>名前</th><th>専用リンク（アプリの登録画面）</th><th>登録</th><th>申込み</th><th>契約（紹介の記録）</th><th></th></tr></thead><tbody>
+        ${parts.map((x) => { const url = `${appUrl}?from=bunbu-${x.code}#/signup`; return `<tr class="${x.active ? '' : 'muted'}"><td><b>${esc(x.name)}</b>${x.active ? '' : '<br><span class="pill mute">アンケートに出さない</span>'}</td>
           <td><code class="st-link">${esc(url)}</code> <button type="button" class="btn-sm btn-sub" data-action="copy-text" data-text="${esc(url)}">コピー</button></td>
-          <td>${recN(x.id)}人</td><td>${svN(x.id)}人</td>
+          <td>${supN(x.code)}人</td><td>${appN(x.code)}人</td><td>${recN(x.id)}人${svN(x.id) ? `<br><span class="muted small">アンケートで選んだ人 ${svN(x.id)}人</span>` : ''}</td>
           <td><button type="button" class="btn-sm btn-sub" data-action="partner-edit" data-id="${x.id}">変更</button></td></tr>`; }).join('')}
       </tbody></table></div>
-      <p class="muted small">「紹介の記録」は契約のときの回答で数えた人数、「今の回答」は今のアンケートの回答で数えた人数です。演者は覚えていない（文武遊ちゃんねるを選んだが演者は選ばなかった）記録：${unknownRec}人</p>` : '<p class="muted">まだ登録されていません。</p>'}
-      <p class="muted small">専用リンクは、YouTubeの概要欄や配信画面（QRコード）に使います。このリンクからホームページに来た人は、アンケートでその演者が最初から選ばれた状態になります。QRコードは、リンクをコピーしてQRコードを作るサービスで作れます。</p>
+      <p class="muted small">「登録」はこのリンクからアプリに登録した人数、「申込み」はそのうち「このプランを申し込む」を押した人数、「契約」はプランが有効になった時点の紹介の記録の人数です（リンクから登録した人はリンクの演者、それ以外はアンケートの回答）。演者は覚えていない（文武遊ちゃんねるを選んだが演者は選ばなかった）記録：${unknownRec}人</p>` : '<p class="muted">まだ登録されていません。</p>'}
+      <p class="muted small">専用リンクは、YouTubeの概要欄や配信画面（QRコード）に使います。押すと、オンラインレッスンの案内と料金がついた<b>アプリの新規登録の画面</b>が開きます。ここから登録した人は、紹介の記録にこの演者が自動で入ります。QRコードは、リンクをコピーしてQRコードを作るサービスで作れます。</p>
       <p class="muted small">配信で紹介してもらうときは、「オルタイムゴルフの宣伝（PR）です」と伝え、YouTubeの「有料プロモーション」の表示もオンにしてもらってください（ステマ規制への対応）。</p>
     </div>
   </div>`;
@@ -4387,7 +4439,7 @@ async function viewSurvey() {
     sb.from('referral_partners').select('id, name, code').eq('active', true).order('sort').order('name').then((r) => (r.error ? [] : r.data || []), () => []),
   ]);
   const s = { ...(sRow || {}) };
-  const required = isActive(state.profile) && !s.referral;
+  const required = false; // 「何で知りましたか？」は任意（紹介の記録は、専用リンクとスタッフの確認で行う）
   // 専用リンクから来た人：まだ答えていなければ、その演者を選んだ状態にする
   const linked = partners.find((x) => x.code === partnerFromLink());
   if (!s.referral && linked) { s.referral = 'bunbu'; s.referral_partner_id = linked.id; }
@@ -4396,9 +4448,9 @@ async function viewSurvey() {
     <select name="referral_partner" aria-label="配信の演者"><option value="">選ぶ</option>${partners.map((x) => `<option value="${x.id}" ${s.referral_partner_id === x.id ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}<option value="unknown" ${s.referral === 'bunbu' && s.member_id && !s.referral_partner_id ? 'selected' : ''}>覚えていない・特にない</option></select></fieldset>`;
   return header('かんたんアンケート', required ? '' : state.profile.onboarded_at ? 'account' : '') + `<div class="content">
     ${required ? '<div class="card notice-card"><b>ご契約ありがとうございます</b><p class="small" style="margin:4px 0 0">はじめに、かんたんアンケートにお答えください。「何で知りましたか？」だけお答えいただければ、ほかの項目は空けたままで大丈夫です。</p></div>' : ''}
-    <p class="page-lead">レッスンやサービスをよくするために、教えてください（30秒ほどで終わります）。「何で知りましたか？」以外は、答えたくない項目は空けたままで大丈夫です。</p>
+    <p class="page-lead">レッスンやサービスをよくするために、教えてください（30秒ほどで終わります）。答えたくない項目は空けたままで大丈夫です。</p>
     <form class="card form survey" data-form="survey">
-      ${chips('referral', true)}
+      ${chips('referral')}
       ${partnerSel}
       <input name="referral_note" maxlength="100" value="${esc(s.referral_note || '')}" placeholder="紹介してくれた方・その他の内容（任意）" aria-label="何で知ったかの補足">
       <fieldset class="sv-q"><legend>${SURVEY_Q.birth_date}</legend>
@@ -5209,13 +5261,17 @@ async function render() {
   try {
     if (!configured) return paint(viewAuth());
     if (state.recovery) return paint(viewRecovery());
-    if (!state.session) { state.handoff = await getHandoff(); return paint(viewAuth()); }
+    if (!state.session) {
+      // 専用リンク（…#/signup）で開いたときは、新規登録の画面にする（最初の1回だけ）
+      if (getRoute()[0] === 'signup' && !state.signupRouted) { state.signupRouted = true; state.authTab = 'signup'; }
+      state.handoff = await getHandoff(); return paint(viewAuth());
+    }
     if (!state.profile) await loadProfile();
     rememberEmail();
     // どこから来て登録したか（ホームページのリンクの ?from=）。登録して7日以内の会員だけ、1回だけ記録する
     if (state.profile.role !== 'admin' && !local.get('atg-src-sent') && daysAgo(state.profile.created_at) <= 7) {
       local.set('atg-src-sent', '1');
-      let src = null; try { src = JSON.parse(local.get('atg-from') || 'null'); } catch { /* noop */ }
+      const src = landingSource();
       sb.from('signup_sources').insert({ member_id: state.profile.id, source: src?.source || 'direct', first_seen: src?.ts ? new Date(src.ts).toISOString() : null }).then(() => {}, () => {});
     }
     // 最後にアプリを開いた日時（統計の「声をかけたい会員」に使う。この端末からは6時間に1回だけ送る）
@@ -5279,6 +5335,11 @@ async function render() {
     if (r[0] === 'help') { paint(viewHelp(r[1])); return; }
     if (!isActive(p)) {
       if (r[0] !== 'plans') return go('plans');
+      if (state.planAppFor !== p.id) {
+        state.planAppFor = p.id;
+        state.planApp = await sb.from('plan_applications').select('plan, applied_at, confirmed_at').eq('member_id', p.id).maybeSingle()
+          .then((x) => (x.error ? null : x.data), () => null);
+      }
       return paint(viewPlans());
     }
     state.handoff = await getHandoff();
@@ -5287,13 +5348,6 @@ async function render() {
     if (r[0] === 'scores' && isActive(p)) return paint(await viewScores());
     if (r[0] === 'install') return paint(viewInstall());
     if (!p.onboarded_at) return go('guide');
-    // 「何で知りましたか？」に答えていなければ、先にアンケートへ（読み込めないときは止めない）
-    if (state.surveyFor !== p.id) {
-      state.surveyFor = p.id;
-      state.surveyDone = await sb.from('member_survey').select('referral').eq('member_id', p.id).maybeSingle()
-        .then((x) => (x.error ? true : !!x.data?.referral), () => true);
-    }
-    if (!state.surveyDone) return go('survey');
     const [unreadLessons, unreadDrills, unseenCele, unreadCc] = await Promise.all([
       sb.from('lessons').select('id', { count: 'exact', head: true }).eq('member_id', p.id).is('read_at', null),
       sb.from('roadmap_items').select('id', { count: 'exact', head: true }).eq('member_id', p.id).is('seen_at', null).eq('hidden', false)
@@ -5491,6 +5545,22 @@ const actions = {
     toast('削除しました'); render();
   },
   'survey-later': () => go('home'),
+  // hacomono での契約を確かめて、アプリでプランを有効にする
+  'app-confirm': async (el) => {
+    const id = el.dataset.member;
+    const m = await must(sb.from('profiles').select('id, name, plan, access_until').eq('id', id).maybeSingle());
+    // 利用期限の初期値：来月の末日
+    const d = new Date(); const end = new Date(d.getFullYear(), d.getMonth() + 2, 0);
+    const endStr = `${end.getFullYear()}-${String(end.getMonth() + 1).padStart(2, '0')}-${String(end.getDate()).padStart(2, '0')}`;
+    const v = await confirmDialog({ title: `${m?.name || '会員'}さんのプランを有効にする`, ok: '有効にする', body: `<p class="small">hacomono で契約・支払いが済んでいることを確かめてから、有効にしてください。</p>
+      <label>プラン<select name="plan">${PLANS.filter((pl) => !pl.hidden || pl.id === el.dataset.plan).map((pl) => `<option value="${esc(pl.id)}" ${pl.id === el.dataset.plan ? 'selected' : ''}>${esc(pl.name)}</option>`).join('')}</select></label>
+      <label>利用できる期限<input type="date" name="until" value="${m?.access_until && m.access_until > endStr ? m.access_until : endStr}" required></label>
+      <p class="small muted">月額のプランは、hacomono の契約が続いている間、期限を延ばしてください。</p>` });
+    if (!v) return;
+    await must(sb.from('profiles').update({ plan: v.plan, access_until: v.until }).eq('id', id));
+    await sb.from('plan_applications').update({ confirmed_at: new Date().toISOString(), confirmed_by: state.profile.id }).eq('member_id', id).then(() => {}, () => {});
+    toast('プランを有効にしました'); render();
+  },
   'partner-edit': async (el) => {
     const x = await must(sb.from('referral_partners').select('*').eq('id', el.dataset.id).maybeSingle());
     if (!x) return;
@@ -6439,9 +6509,7 @@ const forms = {
     if (bd) { const t = today(); age = Number(t.slice(0, 4)) - Number(bd.slice(0, 4)) - (t.slice(5) < bd.slice(5) ? 1 : 0); }
     const band = age == null ? '' : age < 20 ? '10s' : age >= 70 ? '70s' : `${Math.floor(age / 10)}0s`;
     const referral = val('referral');
-    if (!referral) throw new Error('「何で知りましたか？」を選んでください');
     const partner = f.referral_partner?.value || '';
-    if (referral === 'bunbu' && !partner && f.referral_partner?.options.length > 2) throw new Error('どなたの配信でお知りになったか選んでください（覚えていなければ「覚えていない・特にない」）');
     const row = { member_id: state.profile.id, referral, referral_note: f.referral_note.value.trim(), golf_years: val('golf_years'),
       score_band: val('score_band'), prefecture: f.prefecture.value, store_use: val('store_use'), updated_at: new Date().toISOString() };
     if (band) row.age_band = band;
@@ -6917,6 +6985,15 @@ document.addEventListener('pointerdown', (ev) => {
 document.addEventListener('contextmenu', (ev) => { if (ev.target.closest(HOLD_STEP.map((a) => `[data-action="${a}"]`).join(','))) ev.preventDefault(); });
 
 let courseTimer;
+document.addEventListener('click', (ev) => {
+  const a = ev.target.closest('[data-plan-apply]');
+  if (!a || !state.profile) return;
+  const plan = a.dataset.planApply;
+  sb.from('plan_applications').upsert({ member_id: state.profile.id, plan }, { onConflict: 'member_id' }).then(() => {}, () => {});
+  sb.from('site_events').insert({ kind: 'plan', source: landingSource()?.source || '' }).then(() => {}, () => {});
+  state.planApp = { plan, applied_at: new Date().toISOString(), confirmed_at: null };
+  setTimeout(() => { if (getRoute()[0] === 'plans') render(); }, 400);
+});
 document.addEventListener('change', (ev) => {
   // アンケート：「文武遊ちゃんねる」を選んだら、演者を選ぶ欄を出す
   if (ev.target.name === 'referral' && ev.target.closest('form.survey')) {
