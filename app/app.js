@@ -853,7 +853,6 @@ const landingSource = () => {
 // 新規登録の画面の上に出す、オンラインレッスンの案内（YouTubeなどから直接来た人が、何のサービスか分かるように）
 const signupIntro = () => `<div class="signup-intro">
   <b class="si-title">オルタイムゴルフのオンラインレッスン</b>
-  ${planPick() ? `<p class="si-pick">お選びのプラン：<b>${esc(planPick() === 'SUB' ? 'サブスクリプション制（梅・竹・松）' : PLANS.find((pl) => pl.id === planPick())?.name || '')}</b><br><small>登録のあと、すぐにお申し込みに進めます。</small></p>` : ''}
   <ul class="si-points"><li>PGAプロが、スイング動画の添削とZoomの面談で上達をサポートします</li><li>面談は毎時00分から20分（例：19:00〜19:20）</li><li>はじめてのオンライン面談は無料です</li></ul>
   <div class="si-plans">${PLANS.filter((pl) => !pl.hidden).map((pl) => `<div><span>${esc(pl.name)}</span><b>${esc(pl.price)}</b></div>`).join('')}</div>
   <p class="small muted" style="margin:6px 0 0">登録は無料です。登録のあと、プランを選んでお申し込みいただけます（お支払いは hacomono の画面で行います）。</p>
@@ -914,31 +913,15 @@ function viewRecovery() {
 
 // ---------- 画面：未契約（プラン選択） ----------
 
-// 申し込みボタン（カード決済のプランは決済ページへ、それ以外は LINE・電話）
 // 申込み（形1）：hacomono のプランの申込み画面を開く。押したことを記録し、スタッフが hacomono で確かめてからプランを有効にする
 const planUrl = (id) => HACOMONO_PLAN_URLS?.[id] || BOOKING_URL;
-const planApply = (pl) => (pl.checkout
-  ? `<button class="btn-block btn-gold" data-action="checkout" data-plan="${esc(pl.id)}">このプランで申し込む</button>`
-  : `<a class="btn btn-block btn-gold plan-go" href="${esc(planUrl(pl.id))}" target="_blank" rel="noopener" data-plan-apply="${esc(pl.id)}">このプランを申し込む</a>
-     <p class="muted small" style="margin:8px 0 0">お申し込みとお支払いは、hacomono（LINEの予約と同じ画面）で行います。${HACOMONO_PLAN_URLS?.[pl.id] ? '' : `開いた画面で「${esc(pl.name)}」をお選びください。`}</p>
-     <div class="plan-ask"><a class="btn btn-sm btn-line" href="${esc(CONTACT.lineUrl)}" target="_blank" rel="noopener">LINEで相談</a><a class="btn btn-sm btn-sub" href="tel:${esc(CONTACT.tel)}">電話で相談</a></div>`);
-// ホームページで選んでいたプラン：画面のいちばん上で、すぐ申し込めるようにする
-const pickedPlanBox = () => {
-  const pk = planPick();
-  if (!pk) return '';
-  if (pk === 'SUB') return `<div class="card plan-picked"><b>サブスクリプション制をお選びいただきました</b><p class="small" style="margin:4px 0 0">梅・竹・松の3つのコースから、下で1つ選んで「このプランを申し込む」を押してください。</p></div>`;
-  const pl = PLANS.find((x) => x.id === pk);
-  if (!pl) return '';
-  return `<div class="card plan-picked"><span class="pill">お選びのプラン</span><h3 style="margin:6px 0 2px">${esc(pl.name)}</h3><div class="price">${esc(pl.price)}</div>${planApply(pl)}
-    <p class="small muted" style="margin:8px 0 0">ほかのプランは下で選べます。</p></div>`;
-};
 // 申込み中の案内（プランを選ぶ画面の上）
 const planAppBox = (a) => {
   if (!a || a.confirmed_at) return '';
   const pl = PLANS.find((x) => x.id === a.plan);
   return `<div class="card plan-app"><b>お申し込みの手続き中です</b>
     <p class="small" style="margin:4px 0 0">${esc(pl?.name || a.plan)}（${fmtDate(a.applied_at)}）。hacomono でのお支払いが確認でき次第、スタッフがご利用できる状態にします。完了までしばらくお待ちください。</p>
-    <p class="small muted" style="margin:4px 0 0">hacomono での手続きがまだの方は、下の「このプランを申し込む」からお進みください。</p></div>`;
+    <p class="small muted" style="margin:4px 0 0">hacomono での手続きがまだの方は、下でプランを選んで「申し込む」からお進みください。</p></div>`;
 };
 
 // プランの詳細（閉じるボタン・背景・Esc で閉じる）
@@ -962,7 +945,7 @@ function showPlanDetail(pl) {
     <h3>お支払い・ご契約について</h3>
     <ul class="ps-terms">${d.terms.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>
     <p class="muted small">※ 料金・内容は変更になる場合があります。ご不明な点は LINE またはお電話（${esc(CONTACT.telDisplay)}・${esc(CONTACT.hours)}）でお気軽にご相談ください。</p>
-    <div class="ps-apply">${planApply(pl)}</div>
+    <div class="ps-apply"><button type="button" class="btn-block btn-gold" data-sheet-select="${esc(pl.id)}">このプランを選ぶ</button></div>
     <button type="button" class="btn-block btn-sub" data-sheet="close">閉じる</button>
   </div>`;
   const close = () => { document.removeEventListener('keydown', onKey, true); wrap.remove(); prev?.focus?.(); };
@@ -975,7 +958,15 @@ function showPlanDetail(pl) {
       items[(i + (e.shiftKey ? items.length - 1 : 1)) % items.length].focus();
     }
   };
-  wrap.addEventListener('click', (e) => { if (e.target === wrap || e.target.closest('[data-sheet="close"]')) close(); });
+  wrap.addEventListener('click', (e) => {
+    const pick = e.target.closest('[data-sheet-select]');
+    if (pick) {
+      close(); state.planSel = pick.dataset.sheetSelect; render();
+      setTimeout(() => document.getElementById('plan-apply')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 60);
+      return;
+    }
+    if (e.target === wrap || e.target.closest('[data-sheet="close"]')) close();
+  });
   document.addEventListener('keydown', onKey, true);
   document.body.appendChild(wrap);
   wrap.querySelector('.sheet-close').focus();
@@ -986,14 +977,40 @@ function viewPlans() {
   const troubled = ['past_due', 'unpaid', 'incomplete', 'paused'].includes(p.subscription_status);
   // サイト上でカード決済できるプランがあるときだけ、Stripe・「アカウント」からの解約の案内を出す
   const anyCheckout = PLANS.some((pl) => !pl.hidden && pl.checkout);
+  const plans = PLANS.filter((pl) => !pl.hidden);
+  // 選んでいるプラン（ホームページなどで選んでいたものがあれば、それを最初に選んだ状態にする）
+  if (state.planSel === undefined) state.planSel = plans.some((pl) => pl.id === planPick()) ? planPick() : '';
+  const sel = plans.find((pl) => pl.id === state.planSel);
+  const meetTxt = (pl) => (pl.credits?.meeting ? `毎月${pl.credits.meeting}回` : 'オプション（1回6,000円）');
+  const videoTxt = (pl) => (pl.credits?.video ? `毎月${pl.credits.video}回` : '—');
+  const pending = state.planApp && !state.planApp.confirmed_at;
   return header('プランを選ぶ') + `<div class="content">
     <div class="hero"><span class="pill">WELCOME</span><h1>${esc(p.name || 'ようこそ')}さん</h1>
-      <div class="muted">${anyCheckout ? 'プランを選んで決済が完了すると' : 'お申し込みが完了すると'}、動画提出やレッスンの閲覧ができるようになります。</div></div>
+      <div class="muted">${anyCheckout ? 'プランを選んで決済が完了すると' : 'お申し込みが完了すると'}、動画の添削・オンライン面談・ドリルなどが使えるようになります。</div></div>
     ${troubled ? '' : planAppBox(state.planApp)}
-    ${troubled || (state.planApp && !state.planApp.confirmed_at) ? '' : pickedPlanBox()}
     ${troubled ? `<div class="notice">お支払いの確認ができていません（${esc(STATUS_LABEL[p.subscription_status]?.[0] ?? p.subscription_status)}）。
-        カード情報を更新してください。<button class="btn-block" data-action="portal">お支払い情報を更新する</button></div>` : ''}
-    ${troubled ? '' : PLANS.filter((pl) => !pl.hidden).map((pl) => `<div class="card plan${pl.recommended ? ' rec' : ''}">
+        カード情報を更新してください。<button class="btn-block" data-action="portal">お支払い情報を更新する</button></div>` : `
+    <section class="card plans-flow"><h2>オンラインレッスンの流れ</h2>
+      <ol class="pf-steps">
+        <li><b>プランを選んで申し込む</b><span>このページでプランを選んで「申し込む」を押します。お支払いは hacomono（LINEの予約と同じ画面）で行います。</span></li>
+        <li><b>ご利用開始のご連絡</b><span>お支払いを確認できたら、スタッフがアプリを使える状態にします。</span></li>
+        <li><b>はじめてのオンライン面談（無料）</b><span>Zoomで20分。担当のPGAプロが今の悩みと目標を聞いて、3・6・12か月の目標とロードマップを決めます。</span></li>
+        <li><b>毎月のレッスン</b><span>スイング動画を送ると、プロが線を引いて解説します。面談で進み具合を確かめ、ロードマップに沿ってドリルが届きます。</span></li>
+      </ol>
+      <p class="small muted" style="margin:6px 0 0">面談は毎時00分から20分（例：19:00〜19:20）。使わなかった回数は、翌月末まで持ち越せます。</p>
+    </section>
+    <section class="card plans-compare"><h2>プランのくらべ</h2>
+      <div class="tbl-wrap"><table class="pc-tbl"><thead><tr><th></th>${plans.map((pl) => `<th>${esc(pl.name)}</th>`).join('')}</tr></thead><tbody>
+        <tr><th>料金</th>${plans.map((pl) => `<td><b>${esc(pl.price)}</b></td>`).join('')}</tr>
+        <tr><th>お支払い</th>${plans.map((pl) => `<td>${esc(pl.payment)}</td>`).join('')}</tr>
+        <tr><th>オンライン面談</th>${plans.map((pl) => `<td>${meetTxt(pl)}</td>`).join('')}</tr>
+        <tr><th>動画の添削</th>${plans.map((pl) => `<td>${videoTxt(pl)}</td>`).join('')}</tr>
+      </tbody></table></div>
+      <p class="small muted" style="margin:6px 0 0">どのプランも、はじめてのオンライン面談は無料です。追加は、面談1回6,000円・動画の添削1回5,500円（プランの方のみ）。</p>
+    </section>
+    <h2 class="plans-h">プランを選ぶ</h2>
+    <div class="plan-cards">
+    ${plans.map((pl) => `<div class="card plan${pl.recommended ? ' plan-rec' : ''}${state.planSel === pl.id ? ' selected' : ''}">
         <div class="between"><span class="eyebrow">${esc(pl.en)}</span>${pl.recommended ? '<span class="pill">おすすめ</span>' : ''}</div>
         <h3>${esc(pl.name)}</h3>
         <p class="lead">${esc(pl.lead)}</p>
@@ -1001,10 +1018,22 @@ function viewPlans() {
         <div class="price">${esc(pl.price)}</div>
         <ul>${pl.features.map((f) => `<li>${esc(f)}</li>`).join('')}</ul>
         ${pl.detail ? `<button type="button" class="btn-block btn-sub plan-detail-btn" data-action="plan-detail" data-plan="${esc(pl.id)}">詳細を見る</button>` : ''}
-        ${planApply(pl)}
+        <button type="button" class="btn-block ${state.planSel === pl.id ? 'btn-gold' : 'btn-sub'} plan-pick-btn" data-action="plan-select" data-plan="${esc(pl.id)}" aria-pressed="${state.planSel === pl.id}">${state.planSel === pl.id ? '✓ このプランを選んでいます' : 'このプランを選ぶ'}</button>
       </div>`).join('')}
+    ${sel && !sel.checkout ? `<div class="plan-mini"><div><small>選んだプラン</small><b>${esc(sel.name)}</b></div>
+      <a class="btn btn-gold" href="${esc(planUrl(sel.id))}" target="_blank" rel="noopener" data-plan-apply="${esc(sel.id)}">申し込む</a></div>` : ''}
+    </div>
+    <div class="plan-apply-bar${sel ? ' on' : ''}" id="plan-apply">
+      ${sel ? `<div class="pab-sel"><span class="muted small">選んだプラン</span><b>${esc(sel.name)}</b><span>${esc(sel.price)}</span></div>
+        ${sel.checkout ? `<button class="btn-block btn-gold" data-action="checkout" data-plan="${esc(sel.id)}">申し込む</button>`
+          : `<a class="btn btn-block btn-gold plan-go" href="${esc(planUrl(sel.id))}" target="_blank" rel="noopener" data-plan-apply="${esc(sel.id)}">${pending ? 'もう一度 hacomono を開く' : '申し込む'}</a>
+        <p class="muted small" style="margin:8px 0 0">「申し込む」を押すと、hacomono（LINEの予約と同じ画面）が開きます。そこで${HACOMONO_PLAN_URLS?.[sel.id] ? '' : `「${esc(sel.name)}」を選んで、`}契約とお支払いをしてください。</p>`}`
+        : '<p class="pab-empty">上のプランから1つ選ぶと、ここから申し込めます。</p>'}
+      <div class="plan-ask"><a class="btn btn-sm btn-line" href="${esc(CONTACT.lineUrl)}" target="_blank" rel="noopener">LINEで相談</a><a class="btn btn-sm btn-sub" href="tel:${esc(CONTACT.tel)}">電話で相談</a></div>
+    </div>
+`}
     ${anyCheckout ? '<p class="muted small">カード決済は Stripe の安全な決済ページで行います。解約・プラン変更はいつでも「アカウント」から行えます。</p>'
-      : `<p class="muted small">お申し込みとお支払いは、hacomono（LINEの予約と同じ画面）で行います。わからないことは、LINEまたはお電話（${esc(CONTACT.telDisplay)}・${esc(CONTACT.hours)}）でご相談ください。ご契約後の変更・解約は、コンシェルジュサポート（アプリ内の連絡）またはお電話で承ります。</p>`}
+      : `<p class="muted small">わからないことは、LINEまたはお電話（${esc(CONTACT.telDisplay)}・${esc(CONTACT.hours)}）でご相談ください。ご契約後の変更・解約は、コンシェルジュサポート（アプリ内の連絡）またはお電話で承ります。</p>`}
   </div>` + guestNav('plans');
 }
 
@@ -4427,7 +4456,7 @@ async function viewPartners() {
           <td>${supN(x.code)}人</td><td>${appN(x.code)}人</td><td>${recN(x.id)}人${svN(x.id) ? `<br><span class="muted small">アンケートで選んだ人 ${svN(x.id)}人</span>` : ''}</td>
           <td><button type="button" class="btn-sm btn-sub" data-action="partner-edit" data-id="${x.id}">変更</button></td></tr>`; }).join('')}
       </tbody></table></div>
-      <p class="muted small">「登録」はこのリンクからアプリに登録した人数、「申込み」はそのうち「このプランを申し込む」を押した人数、「契約」はプランが有効になった時点の紹介の記録の人数です（リンクから登録した人はリンクの演者、それ以外はアンケートの回答）。演者は覚えていない（文武遊ちゃんねるを選んだが演者は選ばなかった）記録：${unknownRec}人</p>` : '<p class="muted">まだ登録されていません。</p>'}
+      <p class="muted small">「登録」はこのリンクからアプリに登録した人数、「申込み」はそのうちプランを選んで「申し込む」を押した人数、「契約」はプランが有効になった時点の紹介の記録の人数です（リンクから登録した人はリンクの演者、それ以外はアンケートの回答）。演者は覚えていない（文武遊ちゃんねるを選んだが演者は選ばなかった）記録：${unknownRec}人</p>` : '<p class="muted">まだ登録されていません。</p>'}
       <p class="muted small">専用リンクは、YouTubeの概要欄や配信画面（QRコード）に使います。押すと、オンラインレッスンの案内と料金がついた<b>アプリの新規登録の画面</b>が開きます。ここから登録した人は、紹介の記録にこの演者が自動で入ります。QRコードは、リンクをコピーしてQRコードを作るサービスで作れます。</p>
       <p class="muted small">配信で紹介してもらうときは、「オルタイムゴルフの宣伝（PR）です」と伝え、YouTubeの「有料プロモーション」の表示もオンにしてもらってください（ステマ規制への対応）。</p>
     </div>
@@ -5572,6 +5601,11 @@ const actions = {
     toast('削除しました'); render();
   },
   'survey-later': () => go('home'),
+  // プランを選ぶ（選んだら、下の「申し込む」へ移動する）
+  'plan-select': (el) => {
+    state.planSel = el.dataset.plan; render();
+    setTimeout(() => document.getElementById('plan-apply')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 60);
+  },
   // hacomono での契約を確かめて、アプリでプランを有効にする
   'app-confirm': async (el) => {
     const id = el.dataset.member;
