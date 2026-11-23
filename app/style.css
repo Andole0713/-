@@ -2345,4 +2345,5 @@ body.rec-open{overflow:hidden}
 .pam-cancel { margin-top: 10px; }
 .plan-ask-page { flex-wrap: wrap; margin: 18px 0 8px; }
 .plan-ask-page > span { flex-basis: 100%; }
-.plan-apply-modal .spec dt { white-space: nowrap; min-width: 7.5em; }
+.plan-apply-modal .spec div { grid-template-columns: 7.5em 1fr; }
+.plan-apply-modal .spec dt { white-space: nowrap; }
