@@ -817,6 +817,18 @@ function viewContinue() {
 
 // 専用リンク（?from=…）でアプリに来た人：どこから来たかを覚える（登録したときに記録する）
 // 演者のリンク（?from=bunbu-コード）は、最後に来たものを覚える。ページを見た回数も、きっかけ別に数える
+// ホームページで選んだプラン（?plan=UME / SUB＝サブスクリプション制のどれか）。登録のあと、そのプランをすぐ申し込めるようにする
+const PLAN_PICKS = ['SUB', ...PLANS.filter((pl) => !pl.hidden).map((pl) => pl.id)];
+(() => {
+  try {
+    const pk = (new URLSearchParams(location.search).get('plan') || '').toUpperCase();
+    if (PLAN_PICKS.includes(pk)) local.set('atg-plan-pick', pk);
+  } catch { /* noop */ }
+})();
+const planPick = () => {
+  const pk = local.get('atg-plan-pick') || state.session?.user?.user_metadata?.plan_pick || '';
+  return PLAN_PICKS.includes(pk) ? pk : '';
+};
 const LANDING_FROM = (() => {
   let f = '';
   try { f = (new URLSearchParams(location.search).get('from') || '').toLowerCase().replace(/[^a-z0-9_-]/g, '').slice(0, 40); } catch { return ''; }
@@ -833,11 +845,15 @@ const landingSource = () => {
   let partner = null; let src = null;
   try { partner = JSON.parse(local.get('atg-partner') || 'null'); } catch { /* noop */ }
   try { src = JSON.parse(local.get('atg-from') || 'null'); } catch { /* noop */ }
-  return partner?.code ? { source: `bunbu-${partner.code}`, ts: partner.ts } : src?.source ? src : null;
+  if (partner?.code) return { source: `bunbu-${partner.code}`, ts: partner.ts };
+  if (src?.source) return src;
+  const meta = state.session?.user?.user_metadata?.source;
+  return meta ? { source: String(meta).slice(0, 40), ts: null } : null;
 };
 // 新規登録の画面の上に出す、オンラインレッスンの案内（YouTubeなどから直接来た人が、何のサービスか分かるように）
 const signupIntro = () => `<div class="signup-intro">
   <b class="si-title">オルタイムゴルフのオンラインレッスン</b>
+  ${planPick() ? `<p class="si-pick">お選びのプラン：<b>${esc(planPick() === 'SUB' ? 'サブスクリプション制（梅・竹・松）' : PLANS.find((pl) => pl.id === planPick())?.name || '')}</b><br><small>登録のあと、すぐにお申し込みに進めます。</small></p>` : ''}
   <ul class="si-points"><li>PGAプロが、スイング動画の添削とZoomの面談で上達をサポートします</li><li>面談は毎時00分から20分（例：19:00〜19:20）</li><li>はじめてのオンライン面談は無料です</li></ul>
   <div class="si-plans">${PLANS.filter((pl) => !pl.hidden).map((pl) => `<div><span>${esc(pl.name)}</span><b>${esc(pl.price)}</b></div>`).join('')}</div>
   <p class="small muted" style="margin:6px 0 0">登録は無料です。登録のあと、プランを選んでお申し込みいただけます（お支払いは hacomono の画面で行います）。</p>
@@ -906,6 +922,16 @@ const planApply = (pl) => (pl.checkout
   : `<a class="btn btn-block btn-gold plan-go" href="${esc(planUrl(pl.id))}" target="_blank" rel="noopener" data-plan-apply="${esc(pl.id)}">このプランを申し込む</a>
      <p class="muted small" style="margin:8px 0 0">お申し込みとお支払いは、hacomono（LINEの予約と同じ画面）で行います。${HACOMONO_PLAN_URLS?.[pl.id] ? '' : `開いた画面で「${esc(pl.name)}」をお選びください。`}</p>
      <div class="plan-ask"><a class="btn btn-sm btn-line" href="${esc(CONTACT.lineUrl)}" target="_blank" rel="noopener">LINEで相談</a><a class="btn btn-sm btn-sub" href="tel:${esc(CONTACT.tel)}">電話で相談</a></div>`);
+// ホームページで選んでいたプラン：画面のいちばん上で、すぐ申し込めるようにする
+const pickedPlanBox = () => {
+  const pk = planPick();
+  if (!pk) return '';
+  if (pk === 'SUB') return `<div class="card plan-picked"><b>サブスクリプション制をお選びいただきました</b><p class="small" style="margin:4px 0 0">梅・竹・松の3つのコースから、下で1つ選んで「このプランを申し込む」を押してください。</p></div>`;
+  const pl = PLANS.find((x) => x.id === pk);
+  if (!pl) return '';
+  return `<div class="card plan-picked"><span class="pill">お選びのプラン</span><h3 style="margin:6px 0 2px">${esc(pl.name)}</h3><div class="price">${esc(pl.price)}</div>${planApply(pl)}
+    <p class="small muted" style="margin:8px 0 0">ほかのプランは下で選べます。</p></div>`;
+};
 // 申込み中の案内（プランを選ぶ画面の上）
 const planAppBox = (a) => {
   if (!a || a.confirmed_at) return '';
@@ -964,6 +990,7 @@ function viewPlans() {
     <div class="hero"><span class="pill">WELCOME</span><h1>${esc(p.name || 'ようこそ')}さん</h1>
       <div class="muted">${anyCheckout ? 'プランを選んで決済が完了すると' : 'お申し込みが完了すると'}、動画提出やレッスンの閲覧ができるようになります。</div></div>
     ${troubled ? '' : planAppBox(state.planApp)}
+    ${troubled || (state.planApp && !state.planApp.confirmed_at) ? '' : pickedPlanBox()}
     ${troubled ? `<div class="notice">お支払いの確認ができていません（${esc(STATUS_LABEL[p.subscription_status]?.[0] ?? p.subscription_status)}）。
         カード情報を更新してください。<button class="btn-block" data-action="portal">お支払い情報を更新する</button></div>` : ''}
     ${troubled ? '' : PLANS.filter((pl) => !pl.hidden).map((pl) => `<div class="card plan${pl.recommended ? ' rec' : ''}">
@@ -6542,7 +6569,8 @@ const forms = {
     const { data, error } = await sb.auth.signUp({
       email: f.email.value.trim(),
       password: f.password.value,
-      options: { data: { name: f.name.value.trim() }, emailRedirectTo: location.origin + location.pathname },
+      // どこから来たか・選んだプランも、アカウントに保存しておく（確認メールを別のスマホやアプリで開いても消えないように）
+      options: { data: { name: f.name.value.trim(), source: landingSource()?.source || '', plan_pick: planPick() }, emailRedirectTo: location.origin + location.pathname },
     });
     if (error) throw error;
     if (!data.session) {

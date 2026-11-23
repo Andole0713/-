@@ -71,7 +71,7 @@ onScroll();
   document.addEventListener('click', (e) => {
     const a = e.target.closest('a');
     if (!a) return;
-    const kind = a.hasAttribute('data-line') ? 'line' : a.hasAttribute('data-tel') ? 'tel'
+    const kind = a.hasAttribute('data-apply') ? 'plan' : a.hasAttribute('data-line') ? 'line' : a.hasAttribute('data-tel') ? 'tel'
       : /(^|\/)app\/swing\//.test(a.getAttribute('href') || '') ? 'shoot' : /(^|\/)app\/?$/.test(a.getAttribute('href') || '') ? 'login'
       : a.closest('.plan') && a.getAttribute('href') === '#contact' ? 'plan' : '';
     if (kind) send(kind);
