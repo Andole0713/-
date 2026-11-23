@@ -2334,8 +2334,8 @@ body.rec-open{overflow:hidden}
 .card.plan.selected { border: 2px solid var(--gold, #b8955a); box-shadow: 0 12px 30px rgba(15,23,18,.10); }
 .plan-pick-btn { margin-top: 8px; }
 .plan-detail-btn { margin-top: 10px; }
-.plan-apply-bar { position: relative; z-index: 6; background: #fff; border: 1px solid var(--line, #e6dfd2); border-radius: 16px; padding: 14px; margin: 16px 0; scroll-margin-bottom: 90px; }
-.plan-mini { position: sticky; bottom: calc(76px + env(safe-area-inset-bottom, 0px)); z-index: 5; display: flex; align-items: center; justify-content: space-between; gap: 10px; background: var(--ink, #0f1712); color: #fff; border: 1px solid var(--gold, #b8955a); border-radius: 14px; padding: 8px 8px 8px 14px; margin: 8px 0 -76px; box-shadow: 0 8px 24px rgba(15,23,18,.25); }
+.plan-apply-bar { background: #fff; border: 1px solid var(--line, #e6dfd2); border-radius: 16px; padding: 14px; margin: 16px 0; scroll-margin-bottom: 90px; }
+.plan-mini { position: sticky; bottom: calc(76px + env(safe-area-inset-bottom, 0px)); z-index: 5; display: flex; align-items: center; justify-content: space-between; gap: 10px; background: var(--ink, #0f1712); color: #fff; border: 1px solid var(--gold, #b8955a); border-radius: 14px; padding: 8px 8px 8px 14px; margin: 8px 0 -72px; transition: opacity .15s; box-shadow: 0 8px 24px rgba(15,23,18,.25); }
 .plan-mini small { display: block; font-size: 11px; color: var(--gold-2, #d8c08a); }
 .plan-mini b { font-size: 15px; }
 .plan-mini .btn { min-width: 120px; margin: 0; }
@@ -2345,3 +2345,8 @@ body.rec-open{overflow:hidden}
 .pab-empty { margin: 0 0 4px; font-size: 13px; color: var(--muted, #5b6660); text-align: center; }
 .plan-app .plan-ask button { flex: 1; margin: 0; }
 .plan-app > button { margin-top: 8px; }
+
+/* 申し込みボタン：はっきり見えるように濃い色に */
+.plan-mini.off { opacity: 0; pointer-events: none; }
+.plan-apply-bar .plan-go { background: var(--ink, #0f1712); color: #fff; box-shadow: 0 6px 16px -6px rgba(15,23,18,.5); font-size: 17px; letter-spacing: .08em; margin-top: 4px; }
+.plan-apply-bar .plan-go::after { content: " ›"; color: var(--gold-2, #d8c08a); }

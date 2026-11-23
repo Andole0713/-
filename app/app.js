@@ -992,7 +992,6 @@ function viewPlans() {
   const sel = plans.find((pl) => pl.id === state.planSel);
   const meetTxt = (pl) => (pl.credits?.meeting ? `毎月${pl.credits.meeting}回` : 'オプション（1回6,000円）');
   const videoTxt = (pl) => (pl.credits?.video ? `毎月${pl.credits.video}回` : '—');
-  const pending = state.planApp && !state.planApp.confirmed_at;
   return header('プランを選ぶ') + `<div class="content">
     <div class="hero"><span class="pill">WELCOME</span><h1>${esc(p.name || 'ようこそ')}さん</h1>
       <div class="muted">${anyCheckout ? 'プランを選んで決済が完了すると' : 'お申し込みが完了すると'}、動画の添削・オンライン面談・ドリルなどが使えるようになります。</div></div>
@@ -1035,7 +1034,7 @@ function viewPlans() {
     <div class="plan-apply-bar${sel ? ' on' : ''}" id="plan-apply">
       ${sel ? `<div class="pab-sel"><span class="muted small">選んだプラン</span><b>${esc(sel.name)}</b><span>${esc(sel.price)}</span></div>
         ${sel.checkout ? `<button class="btn-block btn-gold" data-action="checkout" data-plan="${esc(sel.id)}">申し込む</button>`
-          : `<a class="btn btn-block btn-gold plan-go" href="${esc(planUrl(sel.id))}" target="_blank" rel="noopener" data-plan-apply="${esc(sel.id)}">${pending ? 'もう一度 hacomono を開く' : '申し込む'}</a>
+          : `<a class="btn btn-block btn-gold plan-go" href="${esc(planUrl(sel.id))}" target="_blank" rel="noopener" data-plan-apply="${esc(sel.id)}">${esc(sel.name)}を申し込む</a>
         <p class="muted small" style="margin:8px 0 0">「申し込む」を押すと、hacomono（LINEの予約と同じ画面）が開きます。そこで${HACOMONO_PLAN_URLS?.[sel.id] ? '' : `「${esc(sel.name)}」を選んで、`}契約とお支払いをしてください。</p>`}`
         : '<p class="pab-empty">上のプランから1つ選ぶと、ここから申し込めます。</p>'}
       <div class="plan-ask"><a class="btn btn-sm btn-line" href="${esc(CONTACT.lineUrl)}" target="_blank" rel="noopener">LINEで相談</a><a class="btn btn-sm btn-sub" href="tel:${esc(CONTACT.tel)}">電話で相談</a></div>
@@ -7070,6 +7069,17 @@ document.addEventListener('pointerdown', (ev) => {
 });
 ['pointerup', 'pointercancel', 'blur'].forEach((t) => (t === 'blur' ? window : document).addEventListener(t, stopStepHold));
 document.addEventListener('contextmenu', (ev) => { if (ev.target.closest(HOLD_STEP.map((a) => `[data-action="${a}"]`).join(','))) ev.preventDefault(); });
+
+// プラン画面：下の申し込み欄が見えているあいだは、画面下の小さいバーを隠す（同じボタンが2つ並ばないように）
+const syncPlanMini = () => {
+  const mini = document.querySelector('.plan-mini'); const bar = document.getElementById('plan-apply');
+  if (!mini || !bar) return;
+  const r = bar.getBoundingClientRect();
+  mini.classList.toggle('off', r.top < window.innerHeight - 40);
+};
+window.addEventListener('scroll', syncPlanMini, { passive: true });
+window.addEventListener('resize', syncPlanMini);
+new MutationObserver(syncPlanMini).observe(document.getElementById('app') || document.body, { childList: true });
 
 let courseTimer;
 document.addEventListener('click', (ev) => {
