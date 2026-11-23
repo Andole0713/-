@@ -856,6 +856,7 @@ const signupIntro = () => `<div class="signup-intro">
   <ul class="si-points"><li>PGAプロが、スイング動画の添削とZoomの面談で上達をサポートします</li><li>面談は毎時00分から20分（例：19:00〜19:20）</li><li>はじめてのオンライン面談は無料です</li></ul>
   <div class="si-plans">${PLANS.filter((pl) => !pl.hidden).map((pl) => `<div><span>${esc(pl.name)}</span><b>${esc(pl.price)}</b></div>`).join('')}</div>
   <p class="small muted" style="margin:6px 0 0">登録は無料です。登録のあと、プランを選んでお申し込みいただけます（お支払いは hacomono の画面で行います）。</p>
+  <a class="si-more" href="../">レッスンの内容・コーチ・料金をくわしく見る<span aria-hidden="true">›</span></a>
 </div>`;
 function viewAuth() {
   const t = state.authTab;
