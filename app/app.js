@@ -1,6 +1,6 @@
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/+esm';
 import { Upload as TusUpload } from 'https://cdn.jsdelivr.net/npm/tus-js-client@4.3.1/+esm';
-import { SUPABASE_URL, SUPABASE_ANON_KEY, SCHOOL_NAME, PLANS, CONTACT, BOOKING_URL, HACOMONO_PLAN_URLS, MEETING_URL } from './config.js';
+import { SUPABASE_URL, SUPABASE_ANON_KEY, SCHOOL_NAME, PLANS, CONTACT, BOOKING_URL, HACOMONO_PLAN_URLS, MEETING_URL, ACTIVATION_ETA } from './config.js';
 import { helpPage, HELP_TABS, wordOfDay } from './help.js';
 
 // 撮影アプリ SwingFrame（会員ページの中の swing/ に入っている。ログインなしでだれでも使える）
@@ -921,7 +921,7 @@ const planAppBox = (a) => {
   if (a && !a.confirmed_at) {
     const pl = PLANS.find((x) => x.id === a.plan);
     return `<div class="card plan-app"><b>お申し込みの確認中です</b>
-      <p class="small" style="margin:4px 0 0">${esc(pl?.name || a.plan)}（${fmtDate(a.applied_at)}に「hacomonoで手続きを済ませた」を押しました）。hacomono でのお支払いが確認でき次第、スタッフがご利用できる状態にします。</p>
+      <p class="small" style="margin:4px 0 0">${esc(pl?.name || a.plan)}（${fmtDate(a.applied_at)}に「hacomonoで手続きを済ませた」を押しました）。hacomono でのお支払いが確認でき次第、スタッフがご利用できる状態にします。<b>目安は${esc(ACTIVATION_ETA)}です。</b>使えるようになると、このアプリを開いたときに使い方ガイドが表示されます。</p>
       <p class="small muted" style="margin:4px 0 0">まだ手続きをしていない・間違えて押した場合は、取り消してください。</p>
       <button type="button" class="btn-sm btn-sub" data-action="plan-app-cancel">取り消す</button></div>`;
   }
@@ -1037,7 +1037,7 @@ function viewPlans() {
     <section class="card plans-flow"><h2>オンラインレッスンの流れ</h2>
       <ol class="pf-steps">
         <li><b>プランを選んで申し込む</b><span>このページでプランを選んで「申し込む」を押します。お支払いは hacomono（LINEの予約と同じ画面）で行います。</span></li>
-        <li><b>ご利用開始のご連絡</b><span>お支払いを確認できたら、スタッフがアプリを使える状態にします。</span></li>
+        <li><b>ご利用開始のご連絡</b><span>お支払いを確認できたら、スタッフがアプリを使える状態にします（目安：${esc(ACTIVATION_ETA)}）。</span></li>
         <li><b>はじめてのオンライン面談（無料）</b><span>Zoomで20分。担当のPGAプロが今の悩みと目標を聞いて、3・6・12か月の目標とロードマップを決めます。</span></li>
         <li><b>毎月のレッスン</b><span>スイング動画を送ると、プロが線を引いて解説します。面談で進み具合を確かめ、ロードマップに沿ってドリルが届きます。</span></li>
       </ol>
@@ -5653,7 +5653,7 @@ const actions = {
     if (error) return toast('記録できませんでした。時間をおいてもう一度お試しください。');
     local.del(`atg-hc-opened:${state.profile.id}`);
     state.planApp = { plan, applied_at: new Date().toISOString(), confirmed_at: null };
-    toast('受け付けました。スタッフの確認をお待ちください'); render();
+    toast(`受け付けました。目安は${ACTIVATION_ETA}です`); render();
   },
   'plan-app-not': () => { local.del(`atg-hc-opened:${state.profile.id}`); render(); },
   'plan-app-cancel': async () => {
