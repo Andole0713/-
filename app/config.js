@@ -181,6 +181,8 @@ export const CONTACT = {
 
 // オンライン面談の予約ページ（hacomono。LINE から開く予約ページと同じ画面）
 export const BOOKING_URL = 'https://alltimegolf.hacomono.jp';
+// 「済ませた」を押してから使えるようになるまでの目安（プラン画面に表示）。hacomono と自動でつながったら短くする
+export const ACTIVATION_ETA = '1〜2営業日';
 // オンライン面談のメニューを直接開くURL（hacomono でオンライン面談のメニューを作ったら入れる）。空のときは BOOKING_URL を開く
 export const MEETING_BOOKING_URL = '';
 export const MEETING_URL = MEETING_BOOKING_URL || BOOKING_URL;
