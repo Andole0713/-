@@ -1,6 +1,6 @@
 // はじめての方へ・図解・用語集（ゴルフを始めたばかりの方にも分かるように）
 // 画面の部品（ヘッダー・メニュー）は app.js 側で付ける。ここは中身だけ。
-import { BOOKING_URL } from './config.js';
+import { MEETING_URL } from './config.js';
 
 export const HELP_TABS = [
   ['help', 'はじめての方へ'],
@@ -87,7 +87,7 @@ function zoomPage() {
   </ol>
   <div class="card zoom-note">
     <p class="small" style="margin:0">面談は<b>毎時00分に始まり、20分で終わります</b>（例：19:00〜19:20）。終わりの時刻もご確認ください。うまく入れないときは、<a href="#/concierge">コンシェルジュサポート</a>でお知らせください。</p>
-    <a class="btn btn-block btn-sub" href="${BOOKING_URL}" target="_blank" rel="noopener">面談を予約する</a>
+    <a class="btn btn-block btn-sub" href="${MEETING_URL}" target="_blank" rel="noopener">面談を予約する</a>
     <p class="muted small" style="margin:6px 0 0">予約はhacomono（LINEの予約と同じ画面）で行います。</p>
   </div>`;
 }

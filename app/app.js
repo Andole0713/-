@@ -1,6 +1,6 @@
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/+esm';
 import { Upload as TusUpload } from 'https://cdn.jsdelivr.net/npm/tus-js-client@4.3.1/+esm';
-import { SUPABASE_URL, SUPABASE_ANON_KEY, SCHOOL_NAME, PLANS, CONTACT, BOOKING_URL, HACOMONO_PLAN_URLS } from './config.js';
+import { SUPABASE_URL, SUPABASE_ANON_KEY, SCHOOL_NAME, PLANS, CONTACT, BOOKING_URL, HACOMONO_PLAN_URLS, MEETING_URL } from './config.js';
 import { helpPage, HELP_TABS, wordOfDay } from './help.js';
 
 // 撮影アプリ SwingFrame（会員ページの中の swing/ に入っている。ログインなしでだれでも使える）
@@ -670,7 +670,7 @@ const CREDIT_SOURCE = { monthly: '毎月の付与', first_free: '初回無料', 
 const GIFT_REASONS = [['こちらのミスのお詫び', 'お詫び'], ['特典・キャンペーン', '特典'], ['その他', 'その他']];
 const lineBtn = (label) => `<a class="btn btn-block btn-line" href="${esc(CONTACT.lineUrl)}" target="_blank" rel="noopener">${label}</a>`;
 // 面談の予約ボタン：予約は hacomono（LINE から開く予約ページと同じ画面）で行う
-const bookBtn = ({ note = true, label = '面談を予約する' } = {}) => `<div class="book-box"><a class="btn btn-block btn-gold book-go" href="${esc(BOOKING_URL)}" target="_blank" rel="noopener">${icon('calendar')}${esc(label)}</a>
+const bookBtn = ({ note = true, label = '面談を予約する' } = {}) => `<div class="book-box"><a class="btn btn-block btn-gold book-go" href="${esc(MEETING_URL)}" target="_blank" rel="noopener">${icon('calendar')}${esc(label)}</a>
   ${note ? '<p class="muted small book-note">予約はhacomono（LINEの予約と同じ画面）で行います。日時の変更も同じ画面からできます。</p>' : ''}</div>`;
 
 function getRoute() {
@@ -1082,10 +1082,13 @@ const emptyBox = (ic, text, href = '', btn = '') => `<div class="empty empty-ill
 // 一度でも中の項目を開いた人は、ホームのいつもの位置（下のほう）に戻す。端末に覚えられないときは上に出したまま
 const FS_SEEN_KEY = 'atg-firststeps-seen';
 const firstStepsSeen = () => local.get(FS_SEEN_KEY) === '1';
-function firstSteps({ subCount, latest, readCount, practiced }) {
+// はじめての面談の予約画面をアプリから開いたか（hacomono での予約はアプリからは分からないため、開いたことで代わりにする）
+const firstBookOpened = () => !!state.profile && local.get(`atg-first-book:${state.profile.id}`) === '1';
+function firstSteps({ firstMeetDone, subCount, latest, readCount, practiced }) {
   if (local.get('atg-firststeps-hide')) return '';
   const p = state.profile;
   const steps = [
+    ['はじめての面談（無料）を予約する', !!firstMeetDone, MEETING_URL],
     ['使い方ガイドを見る', true, '#/guide'],
     ['Myクラブを登録する', !!(p.clubs || []).length, '#/account/clubs'],
     ['はじめての動画を送る', subCount > 0, '#/submit'],
@@ -1104,13 +1107,14 @@ function firstSteps({ subCount, latest, readCount, practiced }) {
     <ol class="fs-list">${steps.map(([label, ok, href], i) => {
       const inner = `<span class="fs-n">${ok ? '✓' : i + 1}</span><span class="fs-t">${label}</span>${i === nextI ? '<span class="fs-go">次はこれ ›</span>' : ''}`;
       const cls = ok ? 'done' : i === nextI ? 'next' : '';
-      return `<li class="${cls}">${href && !ok ? `<a href="${href}">${inner}</a>` : `<span class="fs-row">${inner}</span>`}</li>`;
+      const ext = /^https?:/.test(href);
+      return `<li class="${cls}">${href && !ok ? `<a href="${esc(href)}"${ext ? ' target="_blank" rel="noopener" data-first-book' : ''}>${inner}</a>` : `<span class="fs-row">${inner}</span>`}</li>`;
     }).join('')}</ol>
   </section>`;
 }
 
 // ホームの一番上に出す「次にやること」（そのときいちばん大事なことを1つだけ）
-function nextAction({ latest, rmNow, practicedToday, cr, pending, tasks, done, nextMeet }) {
+function nextAction({ latest, rmNow, practicedToday, cr, pending, tasks, done, nextMeet, firstMeetDone = true }) {
   const p = state.profile;
   const meetAt = nextMeet?.scheduled_at || p.next_meeting_at;
   const meetSoon = meetAt && new Date(meetAt).getTime() > Date.now() - 2 * 3600000 && new Date(meetAt).getTime() < Date.now() + 36 * 3600000;
@@ -1127,6 +1131,8 @@ function nextAction({ latest, rmNow, practicedToday, cr, pending, tasks, done, n
   // 面談の10分前から終わるまでは、何よりも先に「面談に参加する」を大きく出す
   if (nextMeet && meetingLive(nextMeet)) return joinNow(nextMeet);
   if (state.handoff) return card('📹', 'SwingFrame で撮った動画を送りましょう', 'このままコーチに送れます', '#/submit/swingframe', '送る', 'video');
+  // はじめての面談（無料）がまだ：まずはプロと目標・ロードマップを決める
+  if (!firstMeetDone) return card('🗓', 'はじめての面談（無料）を予約しましょう', 'Zoomで担当のPGAプロと話して、目標とロードマップを決めます', MEETING_URL, '予約する', 'meeting', true).replace('<a class="next-action', '<a data-first-book class="next-action');
   if (latest && !latest.read_at) return card('✉', '新しいレッスンが届いています', `「${esc(latest.title)}」`, `#/lesson/${latest.id}`, '見る', 'lesson');
   if (rmNow && !rmNow.seen_at) return card('🎯', '今月のドリルが公開されました', esc(rmNow.theme || rmNow.drills?.title || ''), '#/drills', '見る', 'drill');
   if (meetSoon) return preTodo
@@ -1138,7 +1144,7 @@ function nextAction({ latest, rmNow, practicedToday, cr, pending, tasks, done, n
     const kinds = [sv.length && `動画を送れる回数 ${sv.length}回`, sm.length && `面談の回数 ${sm.length}回`].filter(Boolean).join('・');
     return sv.length
       ? card('⏳', `期限が近い回数があります（${kinds}）`, `${expiryText(soon)}。期限を過ぎると使えなくなります`, SWINGFRAME_URL, '撮影する', 'video')
-      : card('⏳', `期限が近い回数があります（${kinds}）`, `${expiryText(soon)}。期限を過ぎると使えなくなります`, BOOKING_URL, '面談を予約する', 'meeting', true);
+      : card('⏳', `期限が近い回数があります（${kinds}）`, `${expiryText(soon)}。期限を過ぎると使えなくなります`, MEETING_URL, '面談を予約する', 'meeting', true);
   }
   if (preTodo && new Date(nextMeet.scheduled_at).getTime() - Date.now() < 8 * DAY) return card('📝', `${esc(meetRange(nextMeet))} の面談の事前アンケート`, '3分ほどで終わります。前日までにお答えください', `#/meeting-pre/${nextMeet.id}`, '答える', 'meeting');
   if (cr && left > 0 && !pending.length) return card('●', `動画をあと ${left} 回 送れます`, rmNow ? 'ドリルに取り組んだスイングを撮って、コーチに見てもらいましょう' : '撮影して、そのままコーチに送れます', SWINGFRAME_URL, '撮影する', 'video');
@@ -1188,7 +1194,7 @@ async function viewMemberHome() {
   // 互いに関係のないデータは、まとめて同時に取りに行く（順番待ちを減らして表示を速くする）
   let [tasks, lessons, subs, monthSubs, monthLessons, roadmap,
     rounds, myMeetings, subCount, readCount, checkedLessons, myPractice,
-    celes, , creditRows, asks, lastMemo, nextMeet] = await Promise.all([
+    celes, , creditRows, asks, lastMemo, nextMeet, meetCount] = await Promise.all([
     must(sb.from('tasks').select('*').eq('member_id', p.id).order('sort_order').order('created_at')),
     must(sb.from('lessons').select('id, lesson_date, title, point, practice, practice_done, read_at').eq('member_id', p.id).order('lesson_date', { ascending: false }).order('created_at', { ascending: false }).limit(1)),
     must(sb.from('submissions').select('id, created_at, club, status').eq('member_id', p.id).eq('status', 'pending').order('created_at', { ascending: false })),
@@ -1212,7 +1218,11 @@ async function viewMemberHome() {
       .then((r) => (r.error ? null : r.data?.[0] || false), () => null),
     // 次の面談の参加リンク・案内（データベースの設定前は出さない）
     loadNextMeeting(p.id),
+    // 面談の記録があるか（予定・済み）。はじめての面談の案内に使う
+    headCount(sb.from('meetings').select('id', { count: 'exact', head: true }).eq('member_id', p.id).in('status', ['scheduled', 'done'])),
   ]);
+  // はじめての面談：記録がある、またはアプリから予約画面を開いたことがあれば「予約した」とみなす
+  const firstMeetDone = meetCount > 0 || firstBookOpened();
   const practiceLogs = myPractice.length;
   const lastMeeting = myMeetings[0];
   const newCeles = celes.filter((c) => !c.seen_at);
@@ -1236,7 +1246,7 @@ async function viewMemberHome() {
   const hasNext = p.next_meeting_at && new Date(p.next_meeting_at).getTime() > Date.now() - 2 * 3600000;
   scheduleJoinRefresh(nextMeet);
   // はじめの一歩：まだ一度も開いていない人には、スマホでも見えるようにホームの上のほうに出す
-  const fsHtml = firstSteps({ subCount, latest, readCount, practiced: checkedLessons > 0 || practiceLogs > 0 || done > 0 || !!(latest?.practice_done || []).length });
+  const fsHtml = firstSteps({ firstMeetDone, subCount, latest, readCount, practiced: checkedLessons > 0 || practiceLogs > 0 || done > 0 || !!(latest?.practice_done || []).length });
   const fsTop = fsHtml && !firstStepsSeen();
   return header('マイページ') + `<div class="content wide"><div class="cols">
   <div class="col-main">
@@ -1245,7 +1255,7 @@ async function viewMemberHome() {
       <div class="hh-top">${plan ? `<span class="pill">${esc(plan.name)}</span>` : ''}<a class="hh-badge" href="#/badges">🏅 バッジ</a>${celes.length ? `<a class="hh-badge" href="#/celebrations">🏆 お祝い ${celes.length}</a>` : ''}</div>
       <h1>${esc(p.name)}さん、おかえりなさい。</h1>
       <div class="hh-goal"><span>目標</span><b>${esc(p.goal || '未設定')}</b>${themeOfMonth(p, rmNow) ? `<small>今月のテーマ：${esc(themeOfMonth(p, rmNow))}</small>` : ''}</div>
-      ${nextAction({ latest, rmNow, practicedToday, cr, pending: subs, tasks, done, nextMeet })}
+      ${nextAction({ latest, rmNow, practicedToday, cr, pending: subs, tasks, done, nextMeet, firstMeetDone })}
     </div>
     </div>
     ${fsTop ? `<div class="blk fs-top" style="--o:2">${fsHtml}</div>` : ''}
@@ -2484,9 +2494,21 @@ function viewGuide() {
   const first = !state.profile.onboarded_at;
   return header('使い方ガイド', first ? '' : 'menu') + `<div class="content guide">
     ${first ? `<div class="hero"><div class="eyebrow">Welcome</div><h1>${esc(state.profile.name || '')}さん、ようこそ。</h1>
-      <p style="margin:0">レッスンの受け方を4つのステップでご紹介します。</p></div>` : ''}
+      <p style="margin:0">ご利用いただけるようになりました。レッスンの受け方を4つのステップでご紹介します。<br>まずは<b>はじめての面談（無料）</b>を予約しましょう。</p></div>` : ''}
     <section class="card guide-step">
       <div class="step-no"><span>STEP</span>1</div>
+      <h2>はじめての面談を予約する <small>Zoom（ビデオ通話アプリ）で、担当のPGAプロと話します。はじめての面談は無料です</small></h2>
+      <ol>
+        <li>下のボタンか、マイページの「<b>面談を予約する</b>」から予約します（LINEの予約と同じhacomonoの画面が開きます）</li>
+        <li>はじめての面談では、今の悩みと目標を聞いて、<b>3・6・12か月の目標とロードマップ</b>を一緒に決めます</li>
+        <li>面談は毎時00分に始まります（例：19:00〜19:20）。日時が決まると、マイページの「次回の面談」に、終わりの時刻まで表示されます</li>
+        <li>面談の10分前になると、マイページのいちばん上に「<b>▶ 面談に参加する</b>」が出ます。2回目からも同じ流れで、面談のまとめはメニューの「面談のまとめ」で見返せます</li>
+      </ol>
+      ${bookBtn()}
+      <p class="small" style="margin:8px 0 0">${zoomHelpLink()}</p>
+    </section>
+    <section class="card guide-step">
+      <div class="step-no"><span>STEP</span>2</div>
       <h2>動画を撮る <small>このアプリの撮影機能「SwingFrame」を使います</small></h2>
       <ol>
         <li>下のメニューの「<b>撮影・提出</b>」→「<b>SwingFrame で撮影する</b>」を押します</li>
@@ -2502,7 +2524,7 @@ function viewGuide() {
         </ul></div>
     </section>
     <section class="card guide-step">
-      <div class="step-no"><span>STEP</span>2</div>
+      <div class="step-no"><span>STEP</span>3</div>
       <h2>動画を送る</h2>
       <ol>
         <li>下のメニューの「<b>撮影・提出</b>」を開く</li>
@@ -2512,25 +2534,13 @@ function viewGuide() {
       <p class="muted small" style="margin:0">送れる本数はプラン・コースによって決まっています（残りの回数はマイページで確認できます）。送った動画は3か月間、履歴から見返せます。残しておきたい動画は、送った動画の画面で「☆ お気に入り」にすると消えません（3つまで）。</p>
     </section>
     <section class="card guide-step">
-      <div class="step-no"><span>STEP</span>3</div>
+      <div class="step-no"><span>STEP</span>4</div>
       <h2>レッスンを見て練習する</h2>
       <ol>
         <li>コーチからレッスンが届くと、<b>メールでお知らせ</b>が届き、「履歴」に <span class="new-badge">NEW</span> が付きます</li>
         <li>解説動画とフィードバックを確認し、「次回までの練習」は練習したらタップして<b>チェック</b>しましょう</li>
         <li>ロードマップのドリルが公開されると、ホームに「<b>今月のドリル</b>」が表示されます。練習した日は「<b>✓ 今日練習した</b>」を押して記録します</li>
       </ol>
-    </section>
-    <section class="card guide-step">
-      <div class="step-no"><span>STEP</span>4</div>
-      <h2>オンライン面談で相談する <small>Zoom（ビデオ通話アプリ）で、コーチと20分直接話せます</small></h2>
-      <ol>
-        <li>下のボタンか、マイページの「<b>面談を予約する</b>」から予約します（LINEの予約と同じhacomonoの画面が開きます）</li>
-        <li>面談は毎時00分に始まり、20分で終わります（例：19:00〜19:20）。日時が決まると、マイページの「次回の面談」に、終わりの時刻まで表示されます</li>
-        <li>面談の10分前になると、マイページのいちばん上に「<b>▶ 面談に参加する</b>」が出ます</li>
-        <li>面談のまとめは、メニューの「面談のまとめ」で見返せます</li>
-      </ol>
-      ${bookBtn()}
-      <p class="small" style="margin:8px 0 0">${zoomHelpLink()}</p>
     </section>
     <button class="btn-block btn-gold" data-action="finish-guide">${first ? 'はじめる' : 'マイページへ'}</button>
   </div>` + (first ? '' : memberNav('menu'));
@@ -2552,7 +2562,7 @@ function viewHelp(tab) {
     <div class="card help-ask"><b>分からないことがあれば</b>
       <ul class="help-ask-list">
         <li><b>アプリ・お支払い・ご契約のこと</b>${isActive(p) && p.role !== 'admin' ? '<a href="#/concierge">コンシェルジュサポート ›</a>' : `<span>LINEまたはお電話（${esc(CONTACT.telDisplay)}）</span>`}</li>
-        <li><b>面談の予約・変更</b><a href="${esc(BOOKING_URL)}" target="_blank" rel="noopener">hacomono（LINEの予約と同じ画面） ›</a></li>
+        <li><b>面談の予約・変更</b><a href="${esc(MEETING_URL)}" target="_blank" rel="noopener">hacomono（LINEの予約と同じ画面） ›</a></li>
         <li><b>スイングのご質問</b><span>動画を送るときの「質問」欄に書いてください。動画を見ながらお答えします</span></li>
       </ul>${isActive(p) && p.role !== 'admin' ? '' : lineBtn('LINEで質問する')}</div>
   </div>` + (p.role === 'admin' ? adminNav('') : isActive(p) ? memberNav('menu') : guestNav('help'));
@@ -2613,7 +2623,7 @@ function viewMenu() {
       tile('video', 'inbox', '動画を送る', '撮った動画をコーチに送る', '#/submit'),
       tile('lesson', 'book', 'レッスン', '届いたレッスンと、送った動画の一覧', '#/history', state.unread),
       tile('drill', 'target', 'ドリル', '毎月のドリルと1年間の練習計画', '#/drills', state.drillUnread),
-      tile('meeting', 'calendar', '面談を予約する', 'Zoomでコーチと20分話す（予約はLINEの予約と同じhacomonoの画面）', BOOKING_URL, 0, true),
+      tile('meeting', 'calendar', '面談を予約する', 'Zoomでコーチと20分話す（予約はLINEの予約と同じhacomonoの画面）', MEETING_URL, 0, true),
       tile('meeting', 'book', '面談のまとめ', 'これまでの面談で、コーチがまとめた内容', '#/meetings'),
     ])}
     ${group('記録・お祝い', [
@@ -7049,6 +7059,7 @@ async function nextInboxItem(currentId) {
 // はじめの一歩の項目を開いたら、次からはホームの下のほうに出す
 document.addEventListener('click', (ev) => {
   if (ev.target.closest('.first-steps a')) local.set(FS_SEEN_KEY, '1');
+  if (ev.target.closest('[data-first-book], .book-go') && state.profile) local.set(`atg-first-book:${state.profile.id}`, '1');
 }, true);
 document.addEventListener('click', async (ev) => {
   const el = ev.target.closest('[data-action]');
