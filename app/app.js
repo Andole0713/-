@@ -1,6 +1,6 @@
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/+esm';
 import { Upload as TusUpload } from 'https://cdn.jsdelivr.net/npm/tus-js-client@4.3.1/+esm';
-import { SUPABASE_URL, SUPABASE_ANON_KEY, SCHOOL_NAME, PLANS, CONTACT, BOOKING_URL, HACOMONO_PLAN_URLS } from './config.js';
+import { SUPABASE_URL, SUPABASE_ANON_KEY, SCHOOL_NAME, PLANS, CONTACT, BOOKING_URL, HACOMONO_PLAN_URLS, MEETING_URL } from './config.js';
 import { helpPage, HELP_TABS, wordOfDay } from './help.js';
 
 // 撮影アプリ SwingFrame（会員ページの中の swing/ に入っている。ログインなしでだれでも使える）
@@ -670,7 +670,7 @@ const CREDIT_SOURCE = { monthly: '毎月の付与', first_free: '初回無料', 
 const GIFT_REASONS = [['こちらのミスのお詫び', 'お詫び'], ['特典・キャンペーン', '特典'], ['その他', 'その他']];
 const lineBtn = (label) => `<a class="btn btn-block btn-line" href="${esc(CONTACT.lineUrl)}" target="_blank" rel="noopener">${label}</a>`;
 // 面談の予約ボタン：予約は hacomono（LINE から開く予約ページと同じ画面）で行う
-const bookBtn = ({ note = true, label = '面談を予約する' } = {}) => `<div class="book-box"><a class="btn btn-block btn-gold book-go" href="${esc(BOOKING_URL)}" target="_blank" rel="noopener">${icon('calendar')}${esc(label)}</a>
+const bookBtn = ({ note = true, label = '面談を予約する' } = {}) => `<div class="book-box"><a class="btn btn-block btn-gold book-go" href="${esc(MEETING_URL)}" target="_blank" rel="noopener">${icon('calendar')}${esc(label)}</a>
   ${note ? '<p class="muted small book-note">予約はhacomono（LINEの予約と同じ画面）で行います。日時の変更も同じ画面からできます。</p>' : ''}</div>`;
 
 function getRoute() {
@@ -1138,7 +1138,7 @@ function nextAction({ latest, rmNow, practicedToday, cr, pending, tasks, done, n
     const kinds = [sv.length && `動画を送れる回数 ${sv.length}回`, sm.length && `面談の回数 ${sm.length}回`].filter(Boolean).join('・');
     return sv.length
       ? card('⏳', `期限が近い回数があります（${kinds}）`, `${expiryText(soon)}。期限を過ぎると使えなくなります`, SWINGFRAME_URL, '撮影する', 'video')
-      : card('⏳', `期限が近い回数があります（${kinds}）`, `${expiryText(soon)}。期限を過ぎると使えなくなります`, BOOKING_URL, '面談を予約する', 'meeting', true);
+      : card('⏳', `期限が近い回数があります（${kinds}）`, `${expiryText(soon)}。期限を過ぎると使えなくなります`, MEETING_URL, '面談を予約する', 'meeting', true);
   }
   if (preTodo && new Date(nextMeet.scheduled_at).getTime() - Date.now() < 8 * DAY) return card('📝', `${esc(meetRange(nextMeet))} の面談の事前アンケート`, '3分ほどで終わります。前日までにお答えください', `#/meeting-pre/${nextMeet.id}`, '答える', 'meeting');
   if (cr && left > 0 && !pending.length) return card('●', `動画をあと ${left} 回 送れます`, rmNow ? 'ドリルに取り組んだスイングを撮って、コーチに見てもらいましょう' : '撮影して、そのままコーチに送れます', SWINGFRAME_URL, '撮影する', 'video');
@@ -2552,7 +2552,7 @@ function viewHelp(tab) {
     <div class="card help-ask"><b>分からないことがあれば</b>
       <ul class="help-ask-list">
         <li><b>アプリ・お支払い・ご契約のこと</b>${isActive(p) && p.role !== 'admin' ? '<a href="#/concierge">コンシェルジュサポート ›</a>' : `<span>LINEまたはお電話（${esc(CONTACT.telDisplay)}）</span>`}</li>
-        <li><b>面談の予約・変更</b><a href="${esc(BOOKING_URL)}" target="_blank" rel="noopener">hacomono（LINEの予約と同じ画面） ›</a></li>
+        <li><b>面談の予約・変更</b><a href="${esc(MEETING_URL)}" target="_blank" rel="noopener">hacomono（LINEの予約と同じ画面） ›</a></li>
         <li><b>スイングのご質問</b><span>動画を送るときの「質問」欄に書いてください。動画を見ながらお答えします</span></li>
       </ul>${isActive(p) && p.role !== 'admin' ? '' : lineBtn('LINEで質問する')}</div>
   </div>` + (p.role === 'admin' ? adminNav('') : isActive(p) ? memberNav('menu') : guestNav('help'));
@@ -2613,7 +2613,7 @@ function viewMenu() {
       tile('video', 'inbox', '動画を送る', '撮った動画をコーチに送る', '#/submit'),
       tile('lesson', 'book', 'レッスン', '届いたレッスンと、送った動画の一覧', '#/history', state.unread),
       tile('drill', 'target', 'ドリル', '毎月のドリルと1年間の練習計画', '#/drills', state.drillUnread),
-      tile('meeting', 'calendar', '面談を予約する', 'Zoomでコーチと20分話す（予約はLINEの予約と同じhacomonoの画面）', BOOKING_URL, 0, true),
+      tile('meeting', 'calendar', '面談を予約する', 'Zoomでコーチと20分話す（予約はLINEの予約と同じhacomonoの画面）', MEETING_URL, 0, true),
       tile('meeting', 'book', '面談のまとめ', 'これまでの面談で、コーチがまとめた内容', '#/meetings'),
     ])}
     ${group('記録・お祝い', [
