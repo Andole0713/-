@@ -2356,3 +2356,14 @@ body.rec-open{overflow:hidden}
 .plans-compare .pc-h small { display: block; font-weight: 400; font-size: 12px; color: var(--muted, #5b6660); }
 .plans-compare .pc-tbl { min-width: 0; }
 .plan-cards .pc-group { font-size: 15px; margin: 18px 0 4px; color: var(--gold-deep, #8a6a2c); }
+/* hacomono 連携（スタッフ） */
+.haco-steps { list-style: none; padding: 0; margin: 0 0 8px; display: grid; gap: 6px; font-size: 14px; }
+.haco-steps li { display: flex; gap: 8px; color: var(--muted, #5b6660); }
+.haco-steps li span { width: 18px; flex: none; text-align: center; }
+.haco-steps li.done { color: var(--ink, #0f1712); }
+.haco-steps li.done span { color: var(--ok, #2f7a4b); font-weight: 700; }
+.haco-map select { width: 100%; }
+.haco-links td { vertical-align: top; }
+.haco-manual { margin-top: 12px; }
+.haco-manual summary { cursor: pointer; font-size: 14px; }
+.haco-events { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; font-size: 13px; }

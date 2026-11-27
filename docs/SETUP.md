@@ -284,6 +284,47 @@ Web で解約・解約の取り消し・契約終了があると、管理画面�
 
 途中の変更：月の入れ替え（↑↓）、「この月から後ろを1か月ずらす」（休会などで延期するとき）、月の追加・削除、公開日を待たずに今すぐ公開、がいつでもできます。会員には、まだ公開前の月はテーマだけが見え、ドリルの中身は公開日まで見えません。
 
+## 8.5 hacomono 連携（契約の自動反映）
+
+hacomono の契約を見て、会員のプランと利用できる期限を自動で合わせます（契約中は期限が延び続け、解約・退会で止まる）。アプリの会員と hacomono の会員は、同じメールアドレスで自動で結びつきます（違う場合はスタッフ画面から手動で結べます）。
+hacomono の API 連携オプション（月額2,000円・税抜）の契約が必要です。
+
+1. **SQL**：SQL Editor で `supabase/migrations/20261128000000_hacomono_link.sql` を実行
+2. **API トークン**：hacomono の管理画面で API トークンを発行し、Supabase に登録（トークンはチャットやメールに書かない）
+   ```bash
+   npx supabase secrets set HACOMONO_BRAND=<ブランドコード（管理サイトのURL https://<ここ>.admin.hacomono.jp の部分）>
+   npx supabase secrets set HACOMONO_API_TOKEN=<発行したトークン>
+   npx supabase functions deploy hacomono-sync --no-verify-jwt
+   npx supabase functions deploy hacomono-webhook --no-verify-jwt
+   ```
+   （CRON_SECRET・SITE_URL は上の「古い動画の自動削除」などで登録済みのものを使います）
+3. **プランの結びつき**：スタッフ画面の「やること」→「🔗 hacomono 連携」で「hacomono のプランを読み込む」を押し、オンラインのプランごとにアプリのプランを選んで保存
+4. **Webhook**：hacomono の管理画面「システム → 連携・拡張 → Webhook」で作成
+   - URL：`https://<プロジェクトID>.supabase.co/functions/v1/hacomono-webhook`
+   - 認証方式：HMAC-SHA256
+   - 対象イベント：新規会員登録・契約プラン登録・契約プラン変更・契約プラン更新・契約プラン削除・プロフィール更新・プラン新規契約（予約完了・予約変更・予約キャンセルも選んでおくと、記録が残ります）
+   - 作成後に表示されるシークレットを登録：`npx supabase secrets set HACOMONO_WEBHOOK_SECRET=<シークレット>`
+   - 「送信テスト」を押し、スタッフ画面の「hacomono からの知らせ」に「送信テストを受け取りました」と出れば成功
+5. **毎日の自動確認**（Webhook の取りこぼしに備える）：SQL Editor で次を実行（`<プロジェクトID>` と `<CRON_SECRET>` は置き換え）
+   ```sql
+   select cron.schedule(
+     'hacomono-sync',
+     '30 18 * * *',  -- 毎日 18:30（UTC）＝日本時間 3:30
+     $$
+     select net.http_post(
+       url := 'https://<プロジェクトID>.supabase.co/functions/v1/hacomono-sync',
+       headers := jsonb_build_object('Authorization', 'Bearer <CRON_SECRET>', 'Content-Type', 'application/json'),
+       body := '{"mode":"all"}'::jsonb
+     );
+     $$
+   );
+   ```
+6. **テスト**：テスト用の会員を hacomono とアプリの両方に同じメールアドレスで作り、hacomono でオンラインのプランを契約 → スタッフ画面で「今すぐ確認」→ アプリで使えるようになることを確かめる
+
+- 期限の決まり：月額のプランは、契約が続いている間「来月の末日」まで（毎日延びる）。解約の手続きで終了日が決まると、その日まで。6・9・12か月のプランは、開始月から数えて「月数＋1か月目の月末」まで
+- スタッフが会員の期限を長めに設定していれば、契約が続いている間は短くしません。契約が終わると、終わった日まで縮めます
+- hacomono に同じメールアドレスの会員が複数いるときは自動で結ばず、スタッフ画面に「要確認」と出ます
+
 ## 9. テスト（テストモード）
 
 1. 別のメールアドレスで会員登録 → プランを選ぶ
