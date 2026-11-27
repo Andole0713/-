@@ -540,3 +540,4 @@ main>section::before{content:"";position:absolute;top:22px;right:max(8px,calc((1
   .apply-bubble b{font-size:16px}
   .sticky-cta [data-apply]{display:none}
 }
+.cc-group{margin:40px 0 -16px;font-size:17px;color:var(--gold-deep)}
