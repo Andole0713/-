@@ -3334,7 +3334,7 @@ async function viewDashboard() {
     </div>
     ${allPending.some(claimOn) || meetings.some((m) => 'staff_id' in m) || mine ? `<div class="mine-bar">${mineToggle()}${mine ? '<span class="muted small">自分が対応中の動画・自分が対応する面談だけを表示しています</span>' : ''}</div>` : ''}
     <div class="dash-top"><p class="dash-legend"><span class="lg todo">対応が必要</span><span class="lg watch">様子を見る</span><span class="lg info">お知らせ</span><span class="lg celebrate">お祝い</span></p>
-      <span class="dash-links"><a class="btn btn-sm btn-sub" href="#/admin/templates">✎ テンプレート</a><a class="btn btn-sm btn-sub" href="#/admin/quotas">⚙ プランの回数</a><a class="btn btn-sm btn-sub" href="#/admin/announce">📣 お知らせを送る</a><a class="btn btn-sm ${fbOpen ? 'btn-alert' : 'btn-sub'}" href="#/admin/feedback">🛠 不具合・要望${fbOpen ? ` <em>${fbOpen}件</em>` : ''}</a></span></div>
+      <span class="dash-links"><a class="btn btn-sm btn-sub" href="#/admin/templates">✎ テンプレート</a><a class="btn btn-sm btn-sub" href="#/admin/quotas">⚙ プランの回数</a><a class="btn btn-sm btn-sub" href="#/admin/hacomono">🔗 hacomono 連携</a><a class="btn btn-sm btn-sub" href="#/admin/announce">📣 お知らせを送る</a><a class="btn btn-sm ${fbOpen ? 'btn-alert' : 'btn-sub'}" href="#/admin/feedback">🛠 不具合・要望${fbOpen ? ` <em>${fbOpen}件</em>` : ''}</a></span></div>
     <div class="cols">
       <div class="col-main">${left.map((h, i) => `<div class="blk" style="--o:${i}">${h}</div>`).join('')}</div>
       <div class="col-side">${sysSec ? `<div class="blk" style="--o:9">${sysSec}</div>` : ''}${right.map((h, i) => `<div class="blk" style="--o:${10 + i}">${h}</div>`).join('')}
@@ -4440,6 +4440,79 @@ async function viewQuotaSettings() {
   </div>` + adminNav('');
 }
 
+// ---------- 画面：hacomono 連携（スタッフ） ----------
+// hacomono の契約を見て、会員のプランと利用できる期限を自動で合わせる（サーバーの hacomono-sync・hacomono-webhook）
+let hacoMembers = [];
+const HACO_STATUS = { active: ['契約中', 'ok'], ended: ['契約終了', 'mute'], none: ['オンラインの契約なし', 'mute'], error: ['要確認', 'warn'], linked: ['結びつき済み', ''] };
+const HACO_APP_PLANS = () => PLANS.filter((pl) => !pl.hidden || pl.id === 'KIWAMI').filter((pl) => pl.id !== 'SUBSCRIPTION');
+const planMonths = (id) => ({ YOUCAN6: 6, YOUCAN9: 9, YOUCAN: 12 }[id] || null);
+async function viewHacomono() {
+  const tables = await sb.from('hacomono_plan_map').select('hacomono_plan_id, hacomono_plan_name, app_plan, months').then((r) => r, () => ({ error: true }));
+  if (tables.error) return header('hacomono 連携', 'admin/dashboard') + '<div class="content"><div class="notice">データベースの設定（20261128000000_hacomono_link.sql）がまだのため表示できません。</div></div>' + adminNav('');
+  const map = tables.data || [];
+  const [status, links, events, profiles] = await Promise.all([
+    callFunction('hacomono-sync', { mode: 'status' }).catch((e) => ({ error: e.message })),
+    sb.from('hacomono_links').select('member_id, hacomono_member_id, linked_by, synced_at, status, detail').then((r) => r.data || [], () => []),
+    sb.from('hacomono_events').select('id, type, received_at, result').order('received_at', { ascending: false }).limit(15).then((r) => r.data || [], () => []),
+    fetchAll(() => sb.from('profiles').select('id, name, email, plan, access_until, subscription_status, role').neq('role', 'admin')).then((r) => r.data || [], () => []),
+  ]);
+  hacoMembers = profiles;
+  const byId = new Map(profiles.map((m) => [m.id, m]));
+  const cfg = status?.configured || {};
+  const ready = cfg.brand && cfg.token;
+  const step = (done, text) => `<li class="${done ? 'done' : ''}"><span>${done ? '✓' : '・'}</span>${text}</li>`;
+  const plans = state.hacoPlans;
+  const mapBy = new Map(map.map((r) => [Number(r.hacomono_plan_id), r]));
+  const planRows = (plans || map.map((r) => ({ id: r.hacomono_plan_id, name: r.hacomono_plan_name }))).map((hp) => {
+    const cur = mapBy.get(Number(hp.id))?.app_plan || '';
+    return `<tr><td>${esc(hp.name || '')}<br><small class="muted">ID ${esc(hp.id)}${hp.code ? `・${esc(hp.code)}` : ''}</small></td>
+      <td><select name="map_${esc(hp.id)}" data-name="${esc(hp.name || '')}"><option value="">（オンラインのプランではない）</option>${HACO_APP_PLANS().map((pl) => `<option value="${pl.id}"${cur === pl.id ? ' selected' : ''}>${esc(pl.name)}</option>`).join('')}</select></td></tr>`;
+  }).join('');
+  const issues = links.filter((l) => l.status === 'error');
+  const linkedIds = new Set(links.map((l) => l.member_id));
+  const unlinked = profiles.filter((m) => !linkedIds.has(m.id));
+  const linkRow = (l) => { const m = byId.get(l.member_id); const st = HACO_STATUS[l.status] || [l.status, '']; return `<tr>
+      <td>${m ? `<a href="#/admin/member/${l.member_id}">${esc(m.name || m.email || '')}</a>` : '（削除済み）'}<br><small class="muted">hacomono ID ${esc(l.hacomono_member_id)}${l.linked_by === 'staff' ? '・手動' : ''}</small></td>
+      <td><span class="pill ${st[1]}">${st[0]}</span><br><small>${esc(l.detail || '')}</small></td>
+      <td class="small">${l.synced_at ? esc(fmtShort(l.synced_at)) : '—'}<br><button type="button" class="btn btn-sm btn-sub" data-action="haco-sync-one" data-id="${l.member_id}">今すぐ確認</button></td></tr>`; };
+  return header('hacomono 連携', 'admin/dashboard') + `<div class="content">
+    <p class="page-lead">hacomono の契約を見て、会員のプランと利用できる期限を自動で合わせます。契約が続いている間は期限が延び、解約・退会すると止まります。アプリの会員と hacomono の会員は、同じメールアドレスで自動で結びつきます。</p>
+    <section class="card"><h2>準備の状態</h2>
+      ${status?.error ? `<p class="small warn-text">サーバーの処理（hacomono-sync）にまだつながりません：${esc(status.error)}</p>` : ''}
+      <ol class="haco-steps">
+        ${step(cfg.brand && cfg.token, 'hacomono の API トークンとブランドコードを Supabase に登録')}
+        ${step(map.length > 0, `hacomono のプランとアプリのプランを結びつける（${map.length}件）`)}
+        ${step(cfg.webhookSecret, 'hacomono の管理画面で Webhook を作り、シークレットを Supabase に登録')}
+        ${step(cfg.cron && status?.lastRun, '毎日の自動確認を設定（最後の確認：' + (status?.lastRun ? `${esc(fmtShort(status.lastRun.ran_at))}・${esc(status.lastRun.detail || '')}` : 'まだ') + '）')}
+      </ol>
+      <p class="muted small">登録のしかたは docs/SETUP.md の「hacomono 連携」にあります。トークンやシークレットはチャットやメールに書かず、Supabase の画面に直接入れてください。</p>
+    </section>
+    <section class="card"><div class="between"><h2>プランの結びつき</h2>
+        <button type="button" class="btn btn-sm btn-sub" data-action="haco-load-plans"${ready ? '' : ' disabled'}>hacomono のプランを読み込む</button></div>
+      <p class="muted small">hacomono のプランごとに、アプリのどのプランにあたるかを選んでください。店舗のプランなどは「オンラインのプランではない」のままにします。</p>
+      ${planRows ? `<form data-form="haco-map"><div class="tbl-wrap"><table class="tbl haco-map"><thead><tr><th>hacomono のプラン</th><th>アプリのプラン</th></tr></thead><tbody>${planRows}</tbody></table></div>
+        <button class="btn-block btn-gold" type="submit">保存する</button></form>` : `<p class="muted small">${ready ? '「hacomono のプランを読み込む」を押してください。' : 'API トークンを登録すると読み込めます。'}</p>`}
+    </section>
+    <section class="card"><div class="between"><h2>会員の結びつき <small>${links.length}人${issues.length ? ` ・<span class="warn-text">要確認 ${issues.length}人</span>` : ''}</small></h2>
+        <button type="button" class="btn btn-sm btn-gold" data-action="haco-sync-all"${ready && map.length ? '' : ' disabled'}>全員を今すぐ確認</button></div>
+      ${links.length ? `<div class="tbl-wrap"><table class="tbl haco-links"><thead><tr><th>会員</th><th>hacomono の状態</th><th>確認</th></tr></thead><tbody>
+        ${[...issues, ...links.filter((l) => l.status !== 'error')].map(linkRow).join('')}</tbody></table></div>` : '<p class="muted small">まだ結びついた会員はいません。</p>'}
+      <details class="haco-manual"><summary>メールアドレスが違う会員を手動で結ぶ（${unlinked.length}人がまだ）</summary>
+        <form class="form" data-form="haco-link">
+          <label>アプリの会員</label>
+          <input type="search" class="member-search" data-member-search data-list="haco" placeholder="名前・メールで検索" aria-label="会員を名前・メールで検索" autocomplete="off">
+          <select name="member_id" required>${memberOptionsHtml(unlinked, '')}</select>
+          <label>hacomono の会員ID <span class="muted small">（hacomono の会員詳細の画面に出ている番号）</span></label>
+          <input name="hacomono_member_id" type="number" min="1" inputmode="numeric" required>
+          <button class="btn-block btn-sub" type="submit"${ready ? '' : ' disabled'}>結んで確認する</button>
+        </form></details>
+    </section>
+    <section class="card"><h2>hacomono からの知らせ <small>最新15件</small></h2>
+      ${events.length ? `<ul class="haco-events">${events.map((e) => `<li><small class="muted">${esc(fmtShort(e.received_at))}</small> <b>${esc(e.type)}</b><br><small>${esc(e.result || '')}</small></li>`).join('')}</ul>` : '<p class="muted small">まだ届いていません。</p>'}
+    </section>
+  </div>` + adminNav('');
+}
+
 async function viewTemplates() {
   const list = await must(sb.from('lesson_templates').select('*').order('title'));
   return header('レッスン文のテンプレート', 'admin/dashboard') + `<div class="content">
@@ -5425,6 +5498,7 @@ async function render() {
       if (r[1] === 'stats') return paint(await viewStats());
       if (r[1] === 'templates') return paint(await viewTemplates());
       if (r[1] === 'quotas') return paint(await viewQuotaSettings());
+      if (r[1] === 'hacomono') return paint(await viewHacomono());
       if (r[1] === 'concierge') return paint(await viewConciergeAdmin(r[2]));
       if (r[1] === 'announce') return paint(await viewAnnounceAdmin());
       if (r[1] === 'feedback') return paint(await viewFeedbackAdmin());
@@ -5669,6 +5743,25 @@ const actions = {
   },
   // プランを選ぶ（選んだら、下の「申し込む」へ移動する）
   'plan-select': (el) => openPlanApply(el.dataset.plan),
+  'haco-load-plans': async (el) => {
+    el.disabled = true; el.textContent = '読み込み中…';
+    try { const r = await callFunction('hacomono-sync', { mode: 'plans' }); state.hacoPlans = r.plans || []; toast(`${state.hacoPlans.length}件のプランを読み込みました`); }
+    catch (e) { toast(e.message); }
+    render();
+  },
+  'haco-sync-one': async (el) => {
+    el.disabled = true; el.textContent = '確認中…';
+    try { const r = await callFunction('hacomono-sync', { mode: 'member', member_id: el.dataset.id }); toast(`${(HACO_STATUS[r.status] || [r.status])[0]}：${r.detail || ''}`); }
+    catch (e) { toast(e.message); }
+    render();
+  },
+  'haco-sync-all': async (el) => {
+    if (!(await confirmDialog({ title: '全員を今すぐ確認しますか？', body: '<p>hacomono の契約を見て、会員のプランと利用できる期限を合わせます。人数が多いと1〜2分かかります。</p>', ok: '確認する' }))) return;
+    el.disabled = true; el.textContent = '確認中…';
+    try { const r = await callFunction('hacomono-sync', { mode: 'all' }); toast(r.detail || '確認しました'); }
+    catch (e) { toast(e.message); }
+    render();
+  },
   // hacomono での契約を確かめて、アプリでプランを有効にする
   'app-confirm': async (el) => {
     const id = el.dataset.member;
@@ -6618,6 +6711,22 @@ const forms = {
     await must(sb.from('ad_spend').upsert({ month: `${f.month.value}-01`, channel: f.channel.value, amount: Number(f.amount.value), updated_at: new Date().toISOString() }, { onConflict: 'month,channel' }));
     toast('広告費を保存しました'); render();
   },
+  'haco-map': async (f) => {
+    const sels = [...f.querySelectorAll('select[name^="map_"]')];
+    const keep = []; const drop = [];
+    sels.forEach((sel) => {
+      const id = Number(sel.name.slice(4));
+      if (sel.value) keep.push({ hacomono_plan_id: id, hacomono_plan_name: sel.dataset.name || '', app_plan: sel.value, months: planMonths(sel.value), updated_at: new Date().toISOString() });
+      else drop.push(id);
+    });
+    if (keep.length) await must(sb.from('hacomono_plan_map').upsert(keep, { onConflict: 'hacomono_plan_id' }));
+    if (drop.length) await must(sb.from('hacomono_plan_map').delete().in('hacomono_plan_id', drop));
+    toast(`保存しました（オンラインのプラン ${keep.length}件）`); render();
+  },
+  'haco-link': async (f) => {
+    const r = await callFunction('hacomono-sync', { mode: 'link', member_id: f.member_id.value, hacomono_member_id: Number(f.hacomono_member_id.value) });
+    toast(`結びました：${(HACO_STATUS[r.status] || [r.status])[0]}`); render();
+  },
   'partner-add': async (f) => {
     const name = f.name.value.trim(); const code = f.code.value.trim().toLowerCase();
     if (!/^[a-z0-9][a-z0-9_-]{0,30}$/.test(code)) throw new Error('コードは半角の英小文字・数字で入れてください（例：tanaka）');
@@ -7178,7 +7287,8 @@ document.addEventListener('input', (ev) => {
   if (ev.target.matches('[data-glossary-search]')) { filterGlossary(); return; }
   if (ev.target.matches('[data-member-search]')) {
     const sel = ev.target.parentElement.querySelector('select[name="member_id"]');
-    sel.innerHTML = memberOptionsHtml(ev.target.dataset.list === 'cc' ? ccMembers : meetingMembers, sel.value, ev.target.value);
+    const pool = ev.target.dataset.list === 'cc' ? ccMembers : ev.target.dataset.list === 'haco' ? hacoMembers : meetingMembers;
+    sel.innerHTML = memberOptionsHtml(pool, sel.value, ev.target.value);
     const modal = ev.target.closest('.modal');
     if (modal) refreshPayType(modal);
     return;
