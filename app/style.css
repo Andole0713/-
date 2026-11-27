@@ -2351,3 +2351,8 @@ body.rec-open{overflow:hidden}
 /* 新規登録の案内：ホームページへ */
 .signup-intro .si-more { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 10px; padding: 10px 12px; border-radius: 10px; background: #fff; border: 1px solid var(--line, #e6dfd2); color: var(--ink, #0f1712); font-size: 13.5px; font-weight: 700; text-decoration: none; }
 .signup-intro .si-more span { color: var(--gold, #b8955a); font-size: 18px; line-height: 1; }
+/* プランのくらべ：サブスク・UCAN の見出し */
+.plans-compare .pc-h { font-size: 14px; margin: 14px 0 6px; }
+.plans-compare .pc-h small { display: block; font-weight: 400; font-size: 12px; color: var(--muted, #5b6660); }
+.plans-compare .pc-tbl { min-width: 0; }
+.plan-cards .pc-group { font-size: 15px; margin: 18px 0 4px; color: var(--gold-deep, #8a6a2c); }

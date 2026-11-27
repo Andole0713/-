@@ -853,7 +853,7 @@ const landingSource = () => {
 // 新規登録の画面の上に出す、オンラインレッスンの案内（YouTubeなどから直接来た人が、何のサービスか分かるように）
 const signupIntro = () => `<div class="signup-intro">
   <b class="si-title">オルタイムゴルフのオンラインレッスン</b>
-  <ul class="si-points"><li>PGAプロが、スイング動画の添削とZoomの面談で上達をサポートします</li><li>面談は毎時55分から20分（例：18:55〜19:15）</li><li>はじめてのオンライン面談は無料です</li></ul>
+  <ul class="si-points"><li>PGAプロが、スイング動画の添削とZoomのミーティングで上達をサポートします</li><li>ミーティングは毎時55分から20分（例：18:55〜19:15）</li><li>月額のプランは、はじめてのミーティングが無料です</li></ul>
   <div class="si-plans">${PLANS.filter((pl) => !pl.hidden).map((pl) => `<div><span>${esc(pl.name)}</span><b>${esc(pl.price)}</b></div>`).join('')}</div>
   <p class="small muted" style="margin:6px 0 0">登録は無料です。登録のあと、プランを選んでお申し込みいただけます（お支払いは hacomono の画面で行います）。</p>
   <a class="si-more" href="../">レッスンの内容・コーチ・料金をくわしく見る<span aria-hidden="true">›</span></a>
@@ -993,7 +993,7 @@ function openPlanApply(id) {
     <span class="eyebrow">${esc(pl.en)}</span>
     <h2 id="pam-title">${esc(pl.name)}</h2>
     <div class="pam-price">${esc(pl.price)}</div>
-    <dl class="spec"><div><dt>オンライン面談</dt><dd>${meet}</dd></div><div><dt>動画の添削</dt><dd>${video}</dd></div><div><dt>お支払い</dt><dd>${esc(pl.payment)}</dd></div></dl>
+    <dl class="spec"><div><dt>ミーティング</dt><dd>${meet}</dd></div><div><dt>動画の添削</dt><dd>${video}</dd></div><div><dt>お支払い</dt><dd>${esc(pl.payment)}</dd></div></dl>
     ${pl.checkout ? `<button class="btn-block plan-go" data-action="checkout" data-plan="${esc(pl.id)}">${esc(pl.name)}を申し込む</button>`
       : `<a class="btn btn-block plan-go" href="${esc(planUrl(pl.id))}" target="_blank" rel="noopener" data-plan-apply="${esc(pl.id)}">${esc(pl.name)}を申し込む</a>
     <p class="muted small" style="margin:8px 0 0">押すと hacomono（LINEの予約と同じ画面）が開きます。${HACOMONO_PLAN_URLS?.[pl.id] ? '' : `そこで「${esc(pl.name)}」を選んで、`}契約とお支払いをしてください。</p>`}
@@ -1028,9 +1028,18 @@ function viewPlans() {
   const plans = PLANS.filter((pl) => !pl.hidden);
   const meetTxt = (pl) => (pl.credits?.meeting ? `毎月${pl.credits.meeting}回` : 'オプション（1回6,000円）');
   const videoTxt = (pl) => (pl.credits?.video ? `毎月${pl.credits.video}回` : '—');
+  // 月額のプラン（サブスク）と、期間を選んで一括で払うプラン（UCAN）を分けて、くらべ表とカードを並べる
+  const subs = plans.filter((pl) => !/一括/.test(pl.payment));
+  const lumps = plans.filter((pl) => /一括/.test(pl.payment));
+  const shortName = (pl) => pl.name.replace('上達プログラム', '').replace('プラン', '');
+  const cmpTable = (list) => `<div class="tbl-wrap"><table class="pc-tbl"><thead><tr><th></th>${list.map((pl) => `<th>${esc(shortName(pl))}</th>`).join('')}</tr></thead><tbody>
+        <tr><th>料金</th>${list.map((pl) => `<td><b>${esc(pl.price.replace('（税込）', ''))}</b></td>`).join('')}</tr>
+        <tr><th>動画の添削</th>${list.map((pl) => `<td>${videoTxt(pl)}</td>`).join('')}</tr>
+        <tr><th>ミーティング</th>${list.map((pl) => `<td>${pl.credits?.meeting ? meetTxt(pl) : 'オプション'}</td>`).join('')}</tr>
+      </tbody></table></div>`;
   return header('プランを選ぶ') + `<div class="content">
     <div class="hero"><span class="pill">WELCOME</span><h1>${esc(p.name || 'ようこそ')}さん</h1>
-      <div class="muted">${anyCheckout ? 'プランを選んで決済が完了すると' : 'お申し込みが完了すると'}、動画の添削・オンライン面談・ドリルなどが使えるようになります。</div></div>
+      <div class="muted">${anyCheckout ? 'プランを選んで決済が完了すると' : 'お申し込みが完了すると'}、動画の添削・オンラインミーティング・ドリルなどが使えるようになります。</div></div>
     ${troubled ? '' : planAppBox(state.planApp)}
     ${troubled ? `<div class="notice">お支払いの確認ができていません（${esc(STATUS_LABEL[p.subscription_status]?.[0] ?? p.subscription_status)}）。
         カード情報を更新してください。<button class="btn-block" data-action="portal">お支払い情報を更新する</button></div>` : `
@@ -1038,23 +1047,19 @@ function viewPlans() {
       <ol class="pf-steps">
         <li><b>プランを選んで申し込む</b><span>このページでプランを選んで「申し込む」を押します。お支払いは hacomono（LINEの予約と同じ画面）で行います。</span></li>
         <li><b>ご利用開始のご連絡</b><span>お支払いを確認できたら、スタッフがアプリを使える状態にします（目安：${esc(ACTIVATION_ETA)}）。</span></li>
-        <li><b>はじめてのオンライン面談（無料）</b><span>Zoomで20分。担当のPGAプロが今の悩みと目標を聞いて、3・6・12か月の目標とロードマップを決めます。</span></li>
-        <li><b>毎月のレッスン</b><span>スイング動画を送ると、プロが線を引いて解説します。面談で進み具合を確かめ、ロードマップに沿ってドリルが届きます。</span></li>
+        <li><b>はじめてのオンラインミーティング</b><span>Zoomで20分。担当のPGAプロが今の悩みと目標を聞いて、目標と上達の計画を決めます（月額のプランは無料）。</span></li>
+        <li><b>毎月のレッスン</b><span>スイング動画を送ると、プロが線を引いて解説します。ミーティングで進み具合を確かめ、計画に沿ってドリルが届きます。</span></li>
       </ol>
-      <p class="small muted" style="margin:6px 0 0">面談は毎時55分から20分（例：18:55〜19:15）。使わなかった回数は、翌月末まで持ち越せます。</p>
+      <p class="small muted" style="margin:6px 0 0">ミーティングは毎時55分から20分（例：18:55〜19:15）。使わなかった回数は、翌月末まで持ち越せます。</p>
     </section>
     <section class="card plans-compare"><h2>プランのくらべ</h2>
-      <div class="tbl-wrap"><table class="pc-tbl"><thead><tr><th></th>${plans.map((pl) => `<th>${esc(pl.name)}</th>`).join('')}</tr></thead><tbody>
-        <tr><th>料金</th>${plans.map((pl) => `<td><b>${esc(pl.price)}</b></td>`).join('')}</tr>
-        <tr><th>お支払い</th>${plans.map((pl) => `<td>${esc(pl.payment)}</td>`).join('')}</tr>
-        <tr><th>オンライン面談</th>${plans.map((pl) => `<td>${meetTxt(pl)}</td>`).join('')}</tr>
-        <tr><th>動画の添削</th>${plans.map((pl) => `<td>${videoTxt(pl)}</td>`).join('')}</tr>
-      </tbody></table></div>
-      <p class="small muted" style="margin:6px 0 0">どのプランも、はじめてのオンライン面談は無料です。追加は、面談1回6,000円・動画の添削1回5,500円（プランの方のみ）。</p>
+      ${subs.length ? `<h3 class="pc-h">サブスクシステム <small>月額制個別指導プログラム・中級者〜上級者向け</small></h3>${cmpTable(subs)}` : ''}
+      ${lumps.length ? `<h3 class="pc-h">UCANシステム <small>期間選択型上達プログラム・初心者〜初級者向け</small></h3>${cmpTable(lumps)}` : ''}
+      <p class="small muted" style="margin:6px 0 0">月額のプランは、はじめてのオンラインミーティングが無料です。追加は、ミーティング1回6,000円・動画の添削1回5,500円（どちらのシステムでも追加できます）。料金はすべて税込です。</p>
     </section>
     <h2 class="plans-h">プランを選ぶ</h2>
     <div class="plan-cards">
-    ${plans.map((pl) => `<div class="card plan${pl.recommended ? ' plan-rec' : ''}">
+    ${[[subs, 'サブスクシステム（月額制）'], [lumps, 'UCANシステム（期間選択・一括払い）']].filter(([list]) => list.length).map(([list, title]) => `<h3 class="pc-group">${title}</h3>${list.map((pl) => `<div class="card plan${pl.recommended ? ' plan-rec' : ''}">
         <div class="between"><span class="eyebrow">${esc(pl.en)}</span>${pl.recommended ? '<span class="pill">おすすめ</span>' : ''}</div>
         <h3>${esc(pl.name)}</h3>
         <p class="lead">${esc(pl.lead)}</p>
@@ -1063,7 +1068,7 @@ function viewPlans() {
         <ul>${pl.features.map((f) => `<li>${esc(f)}</li>`).join('')}</ul>
         ${pl.detail ? `<button type="button" class="btn-block btn-sub plan-detail-btn" data-action="plan-detail" data-plan="${esc(pl.id)}">詳細を見る</button>` : ''}
         <button type="button" class="btn-block btn-gold plan-pick-btn" data-action="plan-select" data-plan="${esc(pl.id)}">このプランを選ぶ</button>
-      </div>`).join('')}
+      </div>`).join('')}`).join('')}
     </div>
     <div class="plan-ask plan-ask-page"><span class="small muted">決める前に相談したい方</span><a class="btn btn-sm btn-line" href="${esc(CONTACT.lineUrl)}" target="_blank" rel="noopener">LINEで相談</a><a class="btn btn-sm btn-sub" href="tel:${esc(CONTACT.tel)}">電話で相談</a></div>
 `}
@@ -4525,8 +4530,8 @@ const DIAG_TAGS = ['スライス', 'フック', 'プッシュ', '引っかけ', 
   'アプローチ', 'バンカー', 'パター', 'コースマネジメント'];
 const RATINGS = [[3, '👍', '役に立った'], [2, '🙂', 'まあまあ'], [1, '🤔', 'わかりにくい']];
 // 月の料金。売上の見込みの計算だけに使う（面談1回6,000円・添削1本5,500円で計算）。
-// 12か月上達プログラム（YOUCAN）は年69,800円を12か月で割った額
-const PLAN_MONTHLY_YEN = { UME: 11500, TAKE: 17000, MATSU: 23000, KIWAMI: 26000, SUBSCRIPTION: 23000, YOUCAN: 5817 };
+// 6・9・12か月上達プログラム（UCAN）は一括の料金を月数で割った額（案の料金）
+const PLAN_MONTHLY_YEN = { UME: 11500, TAKE: 16500, MATSU: 22000, KIWAMI: 26000, SUBSCRIPTION: 22000, YOUCAN6: 6000, YOUCAN9: 5500, YOUCAN: 5000 };
 const optLabel = (key, v) => SURVEY_OPTS[key]?.find(([k]) => k === v)?.[1] || '';
 const monthKey = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
 
