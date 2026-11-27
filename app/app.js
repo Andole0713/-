@@ -536,7 +536,7 @@ function meetingWhen(iso, min = 20) {
   const d = new Date(iso);
   return `<b class="when">${d.getMonth() + 1}/${d.getDate()}<small>（${WEEK[d.getDay()]}）</small><em>${hhmm(d)}〜${hhmm(d.getTime() + min * 60000)}</em></b>`;
 }
-// 時刻（19:00）と、面談の時間帯（11/27（金）19:00〜19:20）。お客様が終わりの時刻も分かるように、面談は必ず「〜終わり」まで出す
+// 時刻（18:55）と、面談の時間帯（11/27（金）18:55〜19:15）。お客様が終わりの時刻も分かるように、面談は必ず「〜終わり」まで出す
 const hhmm = (t) => { const d = new Date(t); return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
 const meetRange = (m) => `${fmtShort(m.scheduled_at)}〜${hhmm(new Date(m.scheduled_at).getTime() + (m.duration_min || 20) * 60000)}`;
 const monthStart = () => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1).toISOString(); };
@@ -853,7 +853,7 @@ const landingSource = () => {
 // 新規登録の画面の上に出す、オンラインレッスンの案内（YouTubeなどから直接来た人が、何のサービスか分かるように）
 const signupIntro = () => `<div class="signup-intro">
   <b class="si-title">オルタイムゴルフのオンラインレッスン</b>
-  <ul class="si-points"><li>PGAプロが、スイング動画の添削とZoomの面談で上達をサポートします</li><li>面談は毎時00分から20分（例：19:00〜19:20）</li><li>はじめてのオンライン面談は無料です</li></ul>
+  <ul class="si-points"><li>PGAプロが、スイング動画の添削とZoomの面談で上達をサポートします</li><li>面談は毎時55分から20分（例：18:55〜19:15）</li><li>はじめてのオンライン面談は無料です</li></ul>
   <div class="si-plans">${PLANS.filter((pl) => !pl.hidden).map((pl) => `<div><span>${esc(pl.name)}</span><b>${esc(pl.price)}</b></div>`).join('')}</div>
   <p class="small muted" style="margin:6px 0 0">登録は無料です。登録のあと、プランを選んでお申し込みいただけます（お支払いは hacomono の画面で行います）。</p>
   <a class="si-more" href="../">レッスンの内容・コーチ・料金をくわしく見る<span aria-hidden="true">›</span></a>
@@ -1041,7 +1041,7 @@ function viewPlans() {
         <li><b>はじめてのオンライン面談（無料）</b><span>Zoomで20分。担当のPGAプロが今の悩みと目標を聞いて、3・6・12か月の目標とロードマップを決めます。</span></li>
         <li><b>毎月のレッスン</b><span>スイング動画を送ると、プロが線を引いて解説します。面談で進み具合を確かめ、ロードマップに沿ってドリルが届きます。</span></li>
       </ol>
-      <p class="small muted" style="margin:6px 0 0">面談は毎時00分から20分（例：19:00〜19:20）。使わなかった回数は、翌月末まで持ち越せます。</p>
+      <p class="small muted" style="margin:6px 0 0">面談は毎時55分から20分（例：18:55〜19:15）。使わなかった回数は、翌月末まで持ち越せます。</p>
     </section>
     <section class="card plans-compare"><h2>プランのくらべ</h2>
       <div class="tbl-wrap"><table class="pc-tbl"><thead><tr><th></th>${plans.map((pl) => `<th>${esc(pl.name)}</th>`).join('')}</tr></thead><tbody>
@@ -1332,7 +1332,7 @@ async function viewMemberHome() {
         ${cr && cr.live.length ? `<p class="small credit-exp">有効期限：${expiryText(cr.live)}（期限が近いものから使われます）</p>` : ''}
         ${exemptN ? `<p class="small quota-free-note">回数外の動画 ${exemptN}本（コーチ側で戻した分）は数えていません。</p>` : ''}
         ${plan?.credits ? `<p class="muted small">毎月1日に、動画${plan.credits.video}回${plan.credits.meeting ? `・オンライン面談${plan.credits.meeting}回` : ''}の回数が付与されます。使わなかった分は翌月まで持ち越せます（付与された月の翌月末まで有効）${p.plan === 'YOUCAN' ? '。12か月目の分は13か月目の月末まで使えます' : ''}。</p>` : ''}
-        <p class="muted small">面談のご予約は、上の「面談を予約する」から（LINEの予約と同じhacomonoの画面です）。オンライン面談はZoomで20分、毎時00分に始まります（例：19:00〜19:20）。終わりの時刻もご確認ください。日時が決まると「次回の面談」に表示されます。</p>
+        <p class="muted small">面談のご予約は、上の「面談を予約する」から（LINEの予約と同じhacomonoの画面です）。オンライン面談はZoomで20分、毎時55分に始まります（例：18:55〜19:15）。終わりの時刻もご確認ください。日時が決まると「次回の面談」に表示されます。</p>
         <p class="muted small">回数を使い切ったときは追加できます（面談1回6,000円・動画添削1回5,500円）。ご希望は<a href="#/concierge">コンシェルジュサポート</a>へ。</p>
         <p class="small">${zoomHelpLink()}</p>
       </details>
@@ -2501,7 +2501,7 @@ function viewGuide() {
       <ol>
         <li>下のボタンか、マイページの「<b>面談を予約する</b>」から予約します（LINEの予約と同じhacomonoの画面が開きます）</li>
         <li>はじめての面談では、今の悩みと目標を聞いて、<b>3・6・12か月の目標とロードマップ</b>を一緒に決めます</li>
-        <li>面談は毎時00分に始まります（例：19:00〜19:20）。日時が決まると、マイページの「次回の面談」に、終わりの時刻まで表示されます</li>
+        <li>面談は毎時55分に始まります（例：18:55〜19:15）。日時が決まると、マイページの「次回の面談」に、終わりの時刻まで表示されます</li>
         <li>面談の10分前になると、マイページのいちばん上に「<b>▶ 面談に参加する</b>」が出ます。2回目からも同じ流れで、面談のまとめはメニューの「面談のまとめ」で見返せます</li>
       </ol>
       ${bookBtn()}
@@ -2704,19 +2704,19 @@ const daysAgo = (iso) => Math.floor((Date.now() - new Date(iso).getTime()) / DAY
 const isoDaysFrom = (n) => new Date(Date.now() + n * DAY).toISOString();
 const monthStartIso = () => monthStart();
 const MEETING_STATUS = { scheduled: ['予定', ''], done: ['完了', 'ok'], no_show: ['欠席', 'warn'], canceled: ['キャンセル', 'mute'] };
-// オンライン面談：1回20分、毎時00分に始める（例：19:00〜19:20）。1人のプロ・コーチは1時間の枠に1件まで（もう1枠は店舗のレッスン）
+// オンライン面談：1回20分、毎時55分に始める（例：18:55〜19:15）。1人のプロ・コーチは1時間の枠に1件まで（もう1枠は店舗のレッスン）
 const MEETING_MIN = 20;
 // 結果の入力待ち：始まる時刻＋面談の長さを過ぎても「予定」のまま（ダッシュボード・面談・メニューの件数で同じ決まり）
 const isLateMeeting = (m, now = Date.now()) => m.status === 'scheduled' && new Date(m.scheduled_at).getTime() + (m.duration_min || MEETING_MIN) * 60000 < now;
-// 次の「:00」の枠。日付と時刻（端末の時刻）を返す
+// 次の「:55」の枠（5分以上先）。日付と時刻（端末の時刻）を返す
 function nextMeetingSlot(from = Date.now()) {
   const d = new Date(from + 5 * 60000);
   d.setSeconds(0, 0);
-  if (d.getMinutes() > 0) d.setHours(d.getHours() + 1);
-  d.setMinutes(0);
+  if (d.getMinutes() > 55) d.setHours(d.getHours() + 1);
+  d.setMinutes(55);
   return splitLocal(d.toISOString());
 }
-// 同じプロ・コーチの、同じ1時間の枠（:00〜次の:00）にある面談。以前の :55 開始の面談は、次の時間の枠として数える
+// 同じプロ・コーチの、同じ1時間の枠にある面談。:55 開始の面談は、次の時間の枠（例：18:55 → 19時台）として数える
 const meetingHourKey = (iso) => { const d = new Date(new Date(iso).getTime() + 10 * 60000); return `${d.toDateString()} ${d.getHours()}`; };
 async function meetingClash(staffId, iso, exceptId = null) {
   if (!staffId) return [];
@@ -3384,7 +3384,7 @@ async function viewMeetings() {
       <div class="filter-chips" role="group" aria-label="表示する面談">${tabBtn('upcoming', 'これから', upcoming.length)}${tabBtn('late', '結果入力待ち', late.length)}${tabBtn('past', '過去', 0)}</div>
       <span class="row" style="gap:8px">${staffOn || mineOnly() ? mineToggle() : ''}<a class="btn btn-sm btn-sub" href="#/admin/member/${state.profile.id}/info">⚙ 自分のZoom</a><button type="button" class="btn btn-gold btn-sm" data-action="meeting-add">＋ hacomonoの予約を登録</button></span>
     </div>
-    <p class="muted small">面談の予約は、会員がhacomono（LINE）から入れます。hacomonoに入った予約を、ここに登録してください。登録すると会員の「次回の面談」に表示され、前日にお知らせメールが届きます（メール設定後）。オンライン面談は1回20分・毎時00分開始（例：19:00〜19:20）で、1人のプロ・コーチにつき1時間の枠に1件までです（もう1枠は店舗のレッスン）。終わりの時刻を守れるよう、時間に気をつけてください。</p>
+    <p class="muted small">面談の予約は、会員がhacomono（LINE）から入れます。hacomonoに入った予約を、ここに登録してください。登録すると会員の「次回の面談」に表示され、前日にお知らせメールが届きます（メール設定後）。オンライン面談は1回20分・毎時55分開始（例：18:55〜19:15）で、1人のプロ・コーチにつき1時間の枠に1件までです（もう1枠は店舗のレッスン）。終わりの時刻を守れるよう、時間に気をつけてください。</p>
     ${rows ? `<div class="meeting-list">${rows}</div>` : `<div class="empty">${tab === 'late' ? '結果の入力待ちはありません 🎉' : tab === 'past' ? '過去の面談はまだありません' : 'これからの面談はありません'}</div>`}
   </div>` + adminNav('admin/meetings');
 }
@@ -5930,7 +5930,7 @@ const actions = {
         <input type="search" class="member-search" data-member-search placeholder="名前・メールで検索" aria-label="会員を名前・メールで検索" autocomplete="off">
         <select name="member_id" required>${await meetingMemberOptions(el.dataset.member)}</select>
         <div class="grid"><div><label>日付</label><input name="date" type="date" value="${d}" required></div>
-          <div><label>開始時刻 <span class="muted">（:00 開始・20分）</span></label><input name="time" type="time" value="${t}" step="300" required></div></div>
+          <div><label>開始時刻 <span class="muted">（:55 開始・20分）</span></label><input name="time" type="time" value="${t}" step="300" required></div></div>
         <label>時間（分）</label><input name="duration_min" type="number" min="5" max="180" value="${MEETING_MIN}" required>
         ${staffOn ? `<label>対応するプロ・コーチ</label><select name="staff_id" data-zoom-staff>${staffOptions(staff, state.profile.id)}</select>` : ''}
         <label>支払い方法</label>
