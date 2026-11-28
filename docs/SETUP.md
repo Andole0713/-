@@ -325,6 +325,32 @@ hacomono の API 連携オプション（月額2,000円・税抜）の契約が�
 - スタッフが会員の期限を長めに設定していれば、契約が続いている間は短くしません。契約が終わると、終わった日まで縮めます
 - hacomono に同じメールアドレスの会員が複数いるときは自動で結ばず、スタッフ画面に「要確認」と出ます
 
+### オンライン面談の受付時間を hacomono のシフトから作る
+
+1. SQL Editor で `supabase/migrations/20261129000000_meeting_booking.sql` と `20261130000000_meeting_hacomono_shift.sql` を実行する
+2. デプロイ：`supabase functions deploy hacomono-schedule --no-verify-jwt`
+   - 必要な環境変数は上と同じ（HACOMONO_BRAND・HACOMONO_API_TOKEN・CRON_SECRET・SITE_URL）。店舗が複数あるときは HACOMONO_STUDIO_ID も入れる
+3. アプリのスタッフ画面「📅 オンライン面談の受付」で、担当するプロ・コーチにチェックを入れ、hacomono のスタッフコード（コーチA・B。例：`IN0001, IN0002`）を入れて保存する
+4. 「今すぐ hacomono から読み込む」を押して、結果（何日分・何件）が出ることを確かめる
+5. 15分ごとの自動の読み込みを登録する（SQL Editor）
+   ```sql
+   select cron.schedule(
+     'hacomono-schedule',
+     '*/15 * * * *',
+     $$
+     select net.http_post(
+       url := 'https://<プロジェクトID>.supabase.co/functions/v1/hacomono-schedule',
+       headers := jsonb_build_object('Authorization', 'Bearer <CRON_SECRET>')
+     );
+     $$
+   );
+   ```
+
+- 受けられる時間：A・B のどちらかのシフトが「:00〜:20」を含み、その1時間（:00〜次の:00）に予約も予定ブロックも入っていないとき。面談は1つ前の :55 から（例：19時の枠 → 18:55〜19:15）
+- 店舗の予約が A・B とも入っている時間は受け付けない。1件だけなら、空いている方で受け付ける
+- オンライン面談は、1人のプロ・コーチにつき1時間1件まで（アプリで確かめる）
+- 一度でも読み込むと、スタッフが決めた「仮の受付時間」は使わなくなる
+
 ## 9. テスト（テストモード）
 
 1. 別のメールアドレスで会員登録 → プランを選ぶ

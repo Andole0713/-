@@ -4626,27 +4626,41 @@ async function viewBook() {
 // スタッフ：オンライン面談の受付設定（受け付ける時間・担当できるスタッフ）
 const BOOK_HOURS = Array.from({ length: 14 }, (_, i) => `${String(i + 8).padStart(2, '0')}:55`); // 8:55〜21:55
 async function viewBookingSettings() {
-  const [hours, staff, settings] = await Promise.all([
+  const [hours, staff, settings, avail, lastRun] = await Promise.all([
     sb.from('meeting_hours').select('weekday, start_time').then((r) => (r.error ? null : r.data || []), () => null),
     sb.from('profiles').select('id, name, email').eq('role', 'admin').order('name').then((r) => r.data || [], () => []),
-    sb.from('staff_settings').select('staff_id, online_ok, hacomono_instructor_ids').then((r) => (r.error ? [] : r.data || []), () => []),
+    sb.from('staff_settings').select('*').then((r) => (r.error ? [] : r.data || []), () => []),
+    // hacomono のシフトから作った受付時間（20261130000000_meeting_hacomono_shift.sql の実行前は null）
+    sb.from('meeting_availability').select('synced_at').order('synced_at', { ascending: false }).limit(1).then((r) => (r.error ? null : r.data || []), () => null),
+    sb.from('job_runs').select('ran_at, ok, detail').eq('job', 'hacomono-schedule').order('ran_at', { ascending: false }).limit(1).then((r) => r.data?.[0] || null, () => null),
   ]);
+  const shiftReady = avail !== null;
+  const fromHaco = !!avail?.length;
   if (!hours) return header('オンライン面談の受付', 'admin/meetings') + '<div class="content"><div class="notice">データベースの設定（20261129000000_meeting_booking.sql）がまだのため表示できません。</div></div>' + adminNav('');
   const on = new Set(hours.map((h) => `${h.weekday}-${String(h.start_time).slice(0, 5)}`));
   const st = new Map(settings.map((x) => [x.staff_id, x]));
   const order = [1, 2, 3, 4, 5, 6, 0];
   return header('オンライン面談の受付', 'admin/meetings') + `<div class="content">
-    <p class="page-lead">アプリで予約を受け付ける時間と、オンライン面談を担当できるスタッフを決めます。担当は、予約が入ったときに空いているスタッフから自動で決まります（1人1時間に1件まで）。${BOOK_ON ? '' : '<br><b>いまは「面談を予約する」で hacomono を開く設定です。</b>アプリでの予約は、hacomono とつないでから切り替えます（下の「お客様の画面を確認」で見た目を確かめられます）。'}</p>
+    <p class="page-lead">オンライン面談を担当できるスタッフと、受け付ける時間を決めます。担当は、予約が入ったときに空いているスタッフから自動で決まります（1人1時間に1件まで）。${BOOK_ON ? '' : '<br><b>いまは「面談を予約する」で hacomono を開く設定です。</b>アプリでの予約は、hacomono とつないでから切り替えます（下の「お客様の画面を確認」で見た目を確かめられます）。'}</p>
+    ${shiftReady ? `<section class="card bk-source">
+      <h2>受け付ける時間は hacomono のシフトから</h2>
+      <p class="small">hacomono のスタッフシフトで、コーチA・B のどちらかが出勤していて、予約が入っていない時間（毎時55分から20分）を、自動で受付時間にします。店舗の予約が A・B とも入っている時間は受け付けません。</p>
+      ${fromHaco ? `<p class="small"><span class="pill ok">hacomono から読み込み中</span> 最終更新：${esc(fmtShort(avail[0].synced_at))}</p>`
+        : '<p class="small"><span class="pill warn">まだ読み込んでいません</span> hacomono とつなぎ、下の「担当できるスタッフ」でスタッフコードを登録すると、15分ごとに自動で読み込みます。それまでは、下の「仮の受付時間」を使います。</p>'}
+      ${lastRun && !lastRun.ok ? `<p class="small notice">前回の読み込み：${esc(lastRun.detail || 'エラー')}</p>` : ''}
+      <button type="button" class="btn btn-sm btn-sub" data-action="book-sync">今すぐ hacomono から読み込む</button>
+    </section>` : ''}
     <form data-form="booking-settings">
-      <section class="card"><h2>受け付ける時間 <small>毎時55分から20分</small></h2>
+      <details class="card"${fromHaco ? '' : ' open'}><summary><h2 style="display:inline">${shiftReady ? '仮の受付時間（hacomono とつなぐまで）' : '受け付ける時間'} <small>毎時55分から20分</small></h2></summary>
+        ${fromHaco ? '<p class="small muted">いまは hacomono のシフトを使っているため、この表は使っていません。</p>' : ''}
         <div class="tbl-wrap"><table class="tbl book-grid"><thead><tr><th></th>${order.map((w) => `<th>${WEEK[w]}</th>`).join('')}</tr></thead><tbody>
           ${BOOK_HOURS.map((t) => `<tr><th>${t}</th>${order.map((w) => `<td><input type="checkbox" name="h_${w}_${t}" aria-label="${WEEK[w]}曜 ${t}"${on.has(`${w}-${t}`) ? ' checked' : ''}></td>`).join('')}</tr>`).join('')}
         </tbody></table></div>
-      </section>
+      </details>
       <section class="card"><h2>担当できるスタッフ</h2>
         ${staff.map((m) => { const x = st.get(m.id) || {}; return `<div class="book-staff">
           <label class="chk-line"><input type="checkbox" name="ok_${m.id}"${x.online_ok ? ' checked' : ''}> <b>${esc(m.name || m.email)}</b></label>
-          <label class="small">hacomono のスタッフID（A・B をカンマ区切り。つないでから使います）<input name="hid_${m.id}" inputmode="numeric" value="${esc((x.hacomono_instructor_ids || []).join(', '))}" placeholder="例：101, 102"></label></div>`; }).join('')}
+          <label class="small">hacomono のスタッフコード（コーチA・B をカンマ区切り）<input name="hid_${m.id}" autocapitalize="characters" value="${esc((x.hacomono_instructor_codes || []).join(', '))}" placeholder="例：IN0001, IN0002"></label></div>`; }).join('')}
       </section>
       <button class="btn-block btn-gold" type="submit">保存する</button>
     </form>
@@ -5900,6 +5914,12 @@ const actions = {
   },
   // プランを選ぶ（選んだら、下の「申し込む」へ移動する）
   'plan-select': (el) => openPlanApply(el.dataset.plan),
+  'book-sync': async (el) => {
+    el.disabled = true; el.textContent = '読み込み中…';
+    try { const r = await callFunction('hacomono-schedule', {}); toast(r.detail || '読み込みました'); }
+    catch (e) { toast(e.message, true); }
+    render();
+  },
   'book-week': (el) => { state.bookWeek = (state.bookWeek || 0) + Number(el.dataset.dir); render(); },
   'book-slot': async (el) => {
     const at = el.dataset.at;
@@ -7028,9 +7048,9 @@ const forms = {
     }
     const staff = [...f.querySelectorAll('input[name^="ok_"]')].map((el) => {
       const id = el.name.slice(3);
-      const ids = (f[`hid_${id}`]?.value || '').split(/[,、\s]+/).filter(Boolean);
-      if (ids.some((x) => !/^\d+$/.test(x))) throw new Error('hacomono のスタッフIDは数字で入力してください');
-      return { staff_id: id, online_ok: el.checked, hacomono_instructor_ids: ids.map(Number), updated_at: new Date().toISOString() };
+      const codes = (f[`hid_${id}`]?.value || '').toUpperCase().split(/[,、，\s]+/).filter(Boolean);
+      if (codes.some((x) => !/^[A-Z0-9_-]{1,30}$/.test(x))) throw new Error('hacomono のスタッフコードは「IN0001」のように入力してください');
+      return { staff_id: id, online_ok: el.checked, hacomono_instructor_codes: codes, updated_at: new Date().toISOString() };
     });
     await must(sb.from('meeting_hours').delete().gte('weekday', 0));
     if (rows.length) await must(sb.from('meeting_hours').insert(rows));
