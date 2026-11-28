@@ -2373,3 +2373,27 @@ body.rec-open{overflow:hidden}
 .plan-expired b { display: block; font-size: 16px; margin-bottom: 4px; }
 .plan-expired p { margin: 0 0 10px; }
 .plan-expired .plan-ask { flex-wrap: wrap; } .plan-expired .plan-ask .btn { flex: 1 1 100%; }
+
+/* オンライン面談の予約（アプリの中で予約する） */
+.book-head .pill.warn { background: #fdecea; color: #b3261e; }
+.book-mine { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 0; border-top: 1px solid var(--line); }
+.book-mine:first-of-type { border-top: 0; }
+.book-days { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 6px; -webkit-overflow-scrolling: touch; }
+.book-day { flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; min-width: 74px; padding: 8px 10px; border: 1px solid rgba(0,0,0,.15); border-radius: 10px; background: #fff; color: inherit; font: inherit; font-size: 14px; cursor: pointer; }
+.book-day small { font-size: 11px; opacity: .7; }
+.book-day.none { opacity: .55; }
+.book-day.on { background: #0f3d2e; border-color: #0f3d2e; color: #fff; }
+.book-time-h { margin-top: 14px; }
+.book-time-h small { font-weight: 400; opacity: .7; margin-left: 6px; }
+.book-slots { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
+.book-slot { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 10px 12px; border: 1px solid var(--gold); border-radius: 10px; background: #fffaf0; color: inherit; font: inherit; cursor: pointer; text-align: left; }
+.book-slot small { font-size: 12px; color: #2e7d32; }
+.book-slot:disabled { border-color: rgba(0,0,0,.1); background: #f3f3f3; cursor: not-allowed; }
+.book-slot:disabled small { color: #888; }
+.book-rules { margin: 12px 4px; padding-left: 18px; line-height: 1.7; }
+.book-grid td, .book-grid th { text-align: center; padding: 4px; }
+.book-grid input { width: 20px; height: 20px; }
+.book-staff { padding: 10px 0; border-top: 1px solid rgba(0,0,0,.08); display: grid; gap: 6px; }
+.book-staff:first-of-type { border-top: 0; }
+.book-staff input:not([type=checkbox]) { width: 100%; }
+.book-head .pill { white-space: nowrap; flex: 0 0 auto; }
