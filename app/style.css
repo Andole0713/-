@@ -2367,3 +2367,9 @@ body.rec-open{overflow:hidden}
 .haco-manual { margin-top: 12px; }
 .haco-manual summary { cursor: pointer; font-size: 14px; }
 .haco-events { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; font-size: 13px; }
+.auth-resend { margin-top: 8px; } .auth-resend p { margin: 0 0 6px; }
+/* 利用期限が切れた会員への案内 */
+.plan-expired { border: 2px solid var(--gold, #b8955a); margin-bottom: 14px; }
+.plan-expired b { display: block; font-size: 16px; margin-bottom: 4px; }
+.plan-expired p { margin: 0 0 10px; }
+.plan-expired .plan-ask { flex-wrap: wrap; } .plan-expired .plan-ask .btn { flex: 1 1 100%; }
