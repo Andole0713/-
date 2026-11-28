@@ -1,6 +1,6 @@
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/+esm';
 import { Upload as TusUpload } from 'https://cdn.jsdelivr.net/npm/tus-js-client@4.3.1/+esm';
-import { SUPABASE_URL, SUPABASE_ANON_KEY, SCHOOL_NAME, PLANS, CONTACT, BOOKING_URL, HACOMONO_PLAN_URLS, MEETING_URL, ACTIVATION_ETA } from './config.js';
+import { SUPABASE_URL, SUPABASE_ANON_KEY, SCHOOL_NAME, PLANS, CONTACT, BOOKING_URL, HACOMONO_PLAN_URLS, MEETING_URL, ACTIVATION_ETA, MEETING_BOOKING_MODE } from './config.js';
 import { helpPage, HELP_TABS, wordOfDay } from './help.js';
 
 // 撮影アプリ SwingFrame（会員ページの中の swing/ に入っている。ログインなしでだれでも使える）
@@ -672,7 +672,7 @@ const CREDIT_SOURCE = { monthly: '毎月の付与', first_free: '初回無料', 
 const GIFT_REASONS = [['こちらのミスのお詫び', 'お詫び'], ['特典・キャンペーン', '特典'], ['その他', 'その他']];
 const lineBtn = (label) => `<a class="btn btn-block btn-line" href="${esc(CONTACT.lineUrl)}" target="_blank" rel="noopener">${label}</a>`;
 // 面談の予約ボタン：予約は hacomono（LINE から開く予約ページと同じ画面）で行う
-const bookBtn = ({ note = true, label = '面談を予約する' } = {}) => `<div class="book-box"><a class="btn btn-block btn-gold book-go" href="${esc(MEETING_URL)}" target="_blank" rel="noopener">${icon('calendar')}${esc(label)}</a>
+const bookBtn = ({ note = true, label = '面談を予約する' } = {}) => `<div class="book-box"><a class="btn btn-block btn-gold book-go" href="${BOOK_ON ? '#/book' : esc(MEETING_URL)}"${BOOK_ON ? '' : ' target="_blank" rel="noopener"'}>${icon('calendar')}${esc(label)}</a>
   ${note ? '<p class="muted small book-note">予約はhacomono（LINEの予約と同じ画面）で行います。日時の変更も同じ画面からできます。</p>' : ''}</div>`;
 
 function getRoute() {
@@ -3374,7 +3374,7 @@ async function viewDashboard() {
     </div>
     ${allPending.some(claimOn) || meetings.some((m) => 'staff_id' in m) || mine ? `<div class="mine-bar">${mineToggle()}${mine ? '<span class="muted small">自分が対応中の動画・自分が対応する面談だけを表示しています</span>' : ''}</div>` : ''}
     <div class="dash-top"><p class="dash-legend"><span class="lg todo">対応が必要</span><span class="lg watch">様子を見る</span><span class="lg info">お知らせ</span><span class="lg celebrate">お祝い</span></p>
-      <span class="dash-links"><a class="btn btn-sm btn-sub" href="#/admin/templates">✎ テンプレート</a><a class="btn btn-sm btn-sub" href="#/admin/quotas">⚙ プランの回数</a><a class="btn btn-sm btn-sub" href="#/admin/hacomono">🔗 hacomono 連携</a><a class="btn btn-sm btn-sub" href="#/admin/announce">📣 お知らせを送る</a><a class="btn btn-sm ${fbOpen ? 'btn-alert' : 'btn-sub'}" href="#/admin/feedback">🛠 不具合・要望${fbOpen ? ` <em>${fbOpen}件</em>` : ''}</a></span></div>
+      <span class="dash-links"><a class="btn btn-sm btn-sub" href="#/admin/templates">✎ テンプレート</a><a class="btn btn-sm btn-sub" href="#/admin/quotas">⚙ プランの回数</a><a class="btn btn-sm btn-sub" href="#/admin/hacomono">🔗 hacomono 連携</a><a class="btn btn-sm btn-sub" href="#/admin/booking">📅 オンライン面談の受付</a><a class="btn btn-sm btn-sub" href="#/admin/announce">📣 お知らせを送る</a><a class="btn btn-sm ${fbOpen ? 'btn-alert' : 'btn-sub'}" href="#/admin/feedback">🛠 不具合・要望${fbOpen ? ` <em>${fbOpen}件</em>` : ''}</a></span></div>
     <div class="cols">
       <div class="col-main">${left.map((h, i) => `<div class="blk" style="--o:${i}">${h}</div>`).join('')}</div>
       <div class="col-side">${sysSec ? `<div class="blk" style="--o:9">${sysSec}</div>` : ''}${right.map((h, i) => `<div class="blk" style="--o:${10 + i}">${h}</div>`).join('')}
@@ -4553,6 +4553,92 @@ async function viewHacomono() {
   </div>` + adminNav('');
 }
 
+// ---------- 画面：オンライン面談の予約（アプリの中で予約する） ----------
+// 空いている時間（毎時55分から20分）だけを出す。担当のプロ・コーチは自動で決まり、お客様には出さない
+// 決まり（3時間前まで・キャンセル8時間前まで・20日から翌月分・1時間1件まで・回数を使う）はデータベース側（book_meeting）で守る
+const BOOK_ON = MEETING_BOOKING_MODE === 'app';
+const jstDate = (iso) => new Date(iso).toLocaleDateString('sv-SE', { timeZone: 'Asia/Tokyo' });
+const jstHm = (iso) => new Date(iso).toLocaleTimeString('ja-JP', { timeZone: 'Asia/Tokyo', hour: '2-digit', minute: '2-digit', hour12: false });
+const slotRange = (iso) => `${jstHm(iso)}〜${jstHm(new Date(new Date(iso).getTime() + 20 * 60000).toISOString())}`;
+const dayLabel = (d) => { const [y, m, n] = d.split('-').map(Number); return `${m}/${n}（${WEEK[new Date(Date.UTC(y, m - 1, n)).getUTCDay()]}）`; }; // 端末のタイムゾーンに左右されない
+async function viewBook() {
+  const p = state.profile;
+  const staffPreview = p.role === 'admin';
+  const from = today();
+  const to = new Date(Date.now() + 70 * 86400000).toLocaleDateString('sv-SE');
+  const [slots, mine, creditRows] = await Promise.all([
+    sb.rpc('meeting_slots', { p_from: from, p_to: to }).then((r) => (r.error ? null : r.data || []), () => null),
+    staffPreview ? Promise.resolve([]) : sb.from('meetings').select('id, scheduled_at, duration_min, status, booked_via').eq('member_id', p.id).eq('status', 'scheduled')
+      .gte('scheduled_at', new Date(Date.now() - 2 * 3600000).toISOString()).order('scheduled_at').then((r) => r.data || [], () => []),
+    staffPreview ? Promise.resolve(null) : loadCredits(p.id, { self: true }),
+  ]);
+  const nav = staffPreview ? adminNav('') : memberNav('home');
+  const back = staffPreview ? 'admin/booking' : 'home';
+  if (!slots) return header('面談を予約する', back) + '<div class="content"><div class="notice">データベースの設定（20261129000000_meeting_booking.sql）がまだのため、予約の画面を表示できません。</div></div>' + nav;
+  const cr = creditRows ? creditSummary(creditRows) : null;
+  const left = cr ? cr.meeting.length : 0;
+  const days = [...new Set(slots.map((x) => jstDate(x.slot_at)))];
+  const openDays = days.filter((d) => slots.some((x) => jstDate(x.slot_at) === d && x.available));
+  if (!state.bookDay || !days.includes(state.bookDay)) state.bookDay = openDays[0] || days[0] || '';
+  const daySlots = slots.filter((x) => jstDate(x.slot_at) === state.bookDay);
+  const canBook = !staffPreview && left > 0;
+  return header('面談を予約する', back) + `<div class="content book">
+    ${staffPreview ? '<div class="notice">スタッフ用の確認表示です（お客様に見える画面と同じです。スタッフのアカウントでは予約できません）。</div>' : ''}
+    ${!staffPreview ? `<section class="card book-head">
+      <div class="between"><b>オンライン面談（Zoom・20分）</b><span class="pill ${left ? 'ok' : 'warn'}">残り ${left}回</span></div>
+      ${left && cr ? `<p class="small muted" style="margin:4px 0 0">${expiryText(cr.meeting)}</p>` : ''}
+      ${!left ? '<p class="small" style="margin:6px 0 0">面談の回数が残っていません。追加するときは、<a href="#/concierge">コンシェルジュサポート</a>からご連絡ください。</p>' : ''}
+    </section>` : ''}
+    ${mine.length ? `<section class="card"><h2>予約中の面談</h2>${mine.map((m) => `<div class="book-mine">
+        <div><b>${esc(dayLabel(jstDate(m.scheduled_at)))} ${esc(slotRange(m.scheduled_at))}</b><br><small class="muted">キャンセルは開始の8時間前まで（それより後は回数を使います）</small></div>
+        <button type="button" class="btn btn-sm btn-sub" data-action="book-cancel" data-id="${m.id}" data-at="${esc(m.scheduled_at)}">キャンセル</button></div>`).join('')}</section>` : ''}
+    <section class="card"><h2>日にちを選ぶ</h2>
+      ${days.length ? `<div class="book-days" role="tablist">${days.map((d) => { const has = openDays.includes(d); return `<button type="button" role="tab" class="book-day${d === state.bookDay ? ' on' : ''}${has ? '' : ' none'}" data-action="book-day" data-day="${d}" aria-selected="${d === state.bookDay}">${esc(dayLabel(d))}${has ? '' : '<small>満席</small>'}</button>`; }).join('')}</div>
+      <h2 class="book-time-h">時間を選ぶ <small>${esc(dayLabel(state.bookDay))}</small></h2>
+      <div class="book-slots">${daySlots.map((x) => `<button type="button" class="book-slot"${x.available && canBook ? '' : ' disabled'} data-action="book-slot" data-at="${esc(x.slot_at)}">
+        <b>${esc(slotRange(x.slot_at))}</b>${x.available ? '<small>空きあり</small>' : `<small>${esc(x.reason)}</small>`}</button>`).join('')}</div>`
+      : '<p class="muted small">いまは予約できる日がありません。</p>'}
+    </section>
+    <ul class="small muted book-rules">
+      <li>面談は毎時55分から20分です（例：18:55〜19:15）。担当のプロ・コーチは自動で決まります</li>
+      <li>予約は開始の3時間前まで。キャンセルは8時間前まで（それより後は回数を使います）</li>
+      <li>毎月20日から、翌月末までの分を予約できます</li>
+      <li>予約すると、面談の回数を1回使います</li>
+    </ul>
+  </div>` + nav;
+}
+
+// スタッフ：オンライン面談の受付設定（受け付ける時間・担当できるスタッフ）
+const BOOK_HOURS = Array.from({ length: 14 }, (_, i) => `${String(i + 8).padStart(2, '0')}:55`); // 8:55〜21:55
+async function viewBookingSettings() {
+  const [hours, staff, settings] = await Promise.all([
+    sb.from('meeting_hours').select('weekday, start_time').then((r) => (r.error ? null : r.data || []), () => null),
+    sb.from('profiles').select('id, name, email').eq('role', 'admin').order('name').then((r) => r.data || [], () => []),
+    sb.from('staff_settings').select('staff_id, online_ok, hacomono_instructor_ids').then((r) => (r.error ? [] : r.data || []), () => []),
+  ]);
+  if (!hours) return header('オンライン面談の受付', 'admin/meetings') + '<div class="content"><div class="notice">データベースの設定（20261129000000_meeting_booking.sql）がまだのため表示できません。</div></div>' + adminNav('');
+  const on = new Set(hours.map((h) => `${h.weekday}-${String(h.start_time).slice(0, 5)}`));
+  const st = new Map(settings.map((x) => [x.staff_id, x]));
+  const order = [1, 2, 3, 4, 5, 6, 0];
+  return header('オンライン面談の受付', 'admin/meetings') + `<div class="content">
+    <p class="page-lead">アプリで予約を受け付ける時間と、オンライン面談を担当できるスタッフを決めます。担当は、予約が入ったときに空いているスタッフから自動で決まります（1人1時間に1件まで）。${BOOK_ON ? '' : '<br><b>いまは「面談を予約する」で hacomono を開く設定です。</b>アプリでの予約は、hacomono とつないでから切り替えます（下の「お客様の画面を確認」で見た目を確かめられます）。'}</p>
+    <form data-form="booking-settings">
+      <section class="card"><h2>受け付ける時間 <small>毎時55分から20分</small></h2>
+        <div class="tbl-wrap"><table class="tbl book-grid"><thead><tr><th></th>${order.map((w) => `<th>${WEEK[w]}</th>`).join('')}</tr></thead><tbody>
+          ${BOOK_HOURS.map((t) => `<tr><th>${t}</th>${order.map((w) => `<td><input type="checkbox" name="h_${w}_${t}" aria-label="${WEEK[w]}曜 ${t}"${on.has(`${w}-${t}`) ? ' checked' : ''}></td>`).join('')}</tr>`).join('')}
+        </tbody></table></div>
+      </section>
+      <section class="card"><h2>担当できるスタッフ</h2>
+        ${staff.map((m) => { const x = st.get(m.id) || {}; return `<div class="book-staff">
+          <label class="chk-line"><input type="checkbox" name="ok_${m.id}"${x.online_ok ? ' checked' : ''}> <b>${esc(m.name || m.email)}</b></label>
+          <label class="small">hacomono のスタッフID（A・B をカンマ区切り。つないでから使います）<input name="hid_${m.id}" inputmode="numeric" value="${esc((x.hacomono_instructor_ids || []).join(', '))}" placeholder="例：101, 102"></label></div>`; }).join('')}
+      </section>
+      <button class="btn-block btn-gold" type="submit">保存する</button>
+    </form>
+    <p class="center"><a class="btn btn-sm btn-sub" href="#/admin/book-preview">お客様の画面を確認</a></p>
+  </div>` + adminNav('');
+}
+
 async function viewTemplates() {
   const list = await must(sb.from('lesson_templates').select('*').order('title'));
   return header('レッスン文のテンプレート', 'admin/dashboard') + `<div class="content">
@@ -5539,6 +5625,8 @@ async function render() {
       if (r[1] === 'templates') return paint(await viewTemplates());
       if (r[1] === 'quotas') return paint(await viewQuotaSettings());
       if (r[1] === 'hacomono') return paint(await viewHacomono());
+      if (r[1] === 'booking') return paint(await viewBookingSettings());
+      if (r[1] === 'book-preview') return paint(await viewBook());
       if (r[1] === 'concierge') return paint(await viewConciergeAdmin(r[2]));
       if (r[1] === 'announce') return paint(await viewAnnounceAdmin());
       if (r[1] === 'feedback') return paint(await viewFeedbackAdmin());
@@ -5588,6 +5676,7 @@ async function render() {
     state.drillUnread = unreadDrills.count || 0;
     if (r[0] === 'menu') return paint(viewMenu());
     if (r[0] === 'concierge') return paint(await viewConcierge());
+    if (r[0] === 'book' && BOOK_ON) return paint(await viewBook());
     if (r[0] === 'meeting-pre' && r[1]) return paint(await viewMeetingPre(r[1]));
     if (r[0] === 'meetings') return paint(await viewMeetingHistory());
     if (r[0] === 'celebrations') return paint(await viewCelebrations());
@@ -5796,6 +5885,34 @@ const actions = {
   },
   // プランを選ぶ（選んだら、下の「申し込む」へ移動する）
   'plan-select': (el) => openPlanApply(el.dataset.plan),
+  'book-day': (el) => { state.bookDay = el.dataset.day; render(); },
+  'book-slot': async (el) => {
+    const at = el.dataset.at;
+    const ok = await confirmDialog({
+      title: 'この時間で予約しますか？',
+      body: `<p><b>${esc(dayLabel(jstDate(at)))} ${esc(slotRange(at))}</b>（Zoom・20分）</p><p class="small">面談の回数を1回使います。キャンセルは開始の8時間前まで（それより後は回数を使います）。</p>`,
+      ok: '予約する',
+    });
+    if (!ok) return;
+    const { error } = await sb.rpc('book_meeting', { p_at: at });
+    if (error) { toast(error.message || '予約できませんでした', true); return render(); }
+    toast('予約しました。マイページの「次回の面談」に表示されます');
+    go('home');
+  },
+  'book-cancel': async (el) => {
+    const late = new Date(el.dataset.at).getTime() - Date.now() < 8 * 3600000;
+    const ok = await confirmDialog({
+      title: '予約をキャンセルしますか？',
+      body: late ? '<p>開始まで8時間を切っているため、<b>面談の回数は戻りません</b>。</p>' : '<p>面談の回数は戻ります。</p>',
+      ok: 'キャンセルする', cancel: 'やめる',
+    });
+    if (!ok) return;
+    const { data, error } = await sb.rpc('cancel_my_meeting', { p_id: el.dataset.id });
+    if (error) return toast(error.message || 'キャンセルできませんでした', true);
+    toast(data === 'late' ? 'キャンセルしました（回数は使ったままです）' : 'キャンセルしました（回数は戻りました）');
+    render();
+  },
+
   'haco-load-plans': async (el) => {
     el.disabled = true; el.textContent = '読み込み中…';
     try { const r = await callFunction('hacomono-sync', { mode: 'plans' }); state.hacoPlans = r.plans || []; toast(`${state.hacoPlans.length}件のプランを読み込みました`); }
@@ -6886,6 +7003,25 @@ const forms = {
     await must(sb.from('profiles').update({ email_notify: f.email_notify.checked }).eq('id', state.profile.id));
     await loadProfile();
     toast(f.email_notify.checked ? 'お知らせメールを受け取る設定にしました' : 'お知らせメールを停止しました');
+  },
+  'booking-settings': async (f) => {
+    const rows = [];
+    for (const el of f.querySelectorAll('input[type=checkbox][name^="h_"]')) {
+      if (!el.checked) continue;
+      const [, w, t] = el.name.split('_');
+      rows.push({ weekday: Number(w), start_time: `${t}:00` });
+    }
+    const staff = [...f.querySelectorAll('input[name^="ok_"]')].map((el) => {
+      const id = el.name.slice(3);
+      const ids = (f[`hid_${id}`]?.value || '').split(/[,、\s]+/).filter(Boolean);
+      if (ids.some((x) => !/^\d+$/.test(x))) throw new Error('hacomono のスタッフIDは数字で入力してください');
+      return { staff_id: id, online_ok: el.checked, hacomono_instructor_ids: ids.map(Number), updated_at: new Date().toISOString() };
+    });
+    await must(sb.from('meeting_hours').delete().gte('weekday', 0));
+    if (rows.length) await must(sb.from('meeting_hours').insert(rows));
+    if (staff.length) await must(sb.from('staff_settings').upsert(staff, { onConflict: 'staff_id' }));
+    toast('保存しました');
+    render();
   },
   'profile-name': async (f) => {
     const name = f.name.value.trim();
