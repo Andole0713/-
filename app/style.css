@@ -2416,3 +2416,4 @@ body.rec-open{overflow:hidden}
 .bk-grid thead th { border-top-width: 1px; scroll-snap-align: start; }
 .bk-grid thead th:first-child { background: var(--paper-2); }
 .bk-grid .bk-m { font-style: normal; font-size: 11px; }
+.bk-source .pill { margin-right: 6px; } details.card > summary { cursor: pointer; list-style: revert; }

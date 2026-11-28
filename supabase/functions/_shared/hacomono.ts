@@ -4,6 +4,8 @@
 //   ・契約プランから「アプリのプラン」と「利用できる期限」を決める
 // 仕様の出典：hacomono for Developers（Admin API 2.0.0 / Webhook スタートガイド）
 
+import type { ChoiceSchedule } from "./hacomono_schedule.ts";
+
 // ---------- Webhook の署名 ----------
 // ヘッダー X-Webhook-Event：{"timestamp":…, "nonce":"…", "signature_algorithm":"HMAC-SHA256", "signature":"…"}
 // 署名＝ HMAC-SHA256(シークレット, `${本文}:${timestamp}:${nonce}`) の16進文字列
@@ -121,7 +123,28 @@ export class HacomonoClient {
     }
     return out;
   }
+
+  // スタッフの一覧（スタッフコード「IN0001」などから、スタッフID を調べるために使う）
+  async listInstructors(): Promise<HInstructor[]> {
+    const out: HInstructor[] = [];
+    for (let page = 1; page <= 20; page++) {
+      const data = await this.get<{ instructors?: { list?: HInstructor[]; total_page?: number } }>("/master/instructors", { page });
+      out.push(...(data.instructors?.list ?? []));
+      if (!data.instructors?.total_page || page >= data.instructors.total_page) break;
+    }
+    return out;
+  }
+
+  // 自由枠予約のスケジュール（1日分：スタッフのシフト・入っている予約・予定ブロック）
+  async getChoiceSchedule(date: string, studioId?: number): Promise<ChoiceSchedule> {
+    const query: Record<string, unknown> = { date };
+    if (studioId) query.studio_id = studioId;
+    const data = await this.get<{ schedule?: ChoiceSchedule }>("/reservation/reservations/choice/schedule", query);
+    return data.schedule ?? {};
+  }
 }
+
+export type HInstructor = { id: number; code?: string; name?: string; status?: number };
 
 // ---------- 契約プラン → アプリのプランと利用できる期限 ----------
 // map：hacomono のプランID → { アプリのプラン, 期間（月数。月額のプランは null）}
