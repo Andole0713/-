@@ -2378,18 +2378,6 @@ body.rec-open{overflow:hidden}
 .book-head .pill.warn { background: #fdecea; color: #b3261e; }
 .book-mine { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 0; border-top: 1px solid var(--line); }
 .book-mine:first-of-type { border-top: 0; }
-.book-days { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 6px; -webkit-overflow-scrolling: touch; }
-.book-day { flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; min-width: 74px; padding: 8px 10px; border: 1px solid rgba(0,0,0,.15); border-radius: 10px; background: #fff; color: inherit; font: inherit; font-size: 14px; cursor: pointer; }
-.book-day small { font-size: 11px; opacity: .7; }
-.book-day.none { opacity: .55; }
-.book-day.on { background: #0f3d2e; border-color: #0f3d2e; color: #fff; }
-.book-time-h { margin-top: 14px; }
-.book-time-h small { font-weight: 400; opacity: .7; margin-left: 6px; }
-.book-slots { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
-.book-slot { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 10px 12px; border: 1px solid var(--gold); border-radius: 10px; background: #fffaf0; color: inherit; font: inherit; cursor: pointer; text-align: left; }
-.book-slot small { font-size: 12px; color: #2e7d32; }
-.book-slot:disabled { border-color: rgba(0,0,0,.1); background: #f3f3f3; cursor: not-allowed; }
-.book-slot:disabled small { color: #888; }
 .book-rules { margin: 12px 4px; padding-left: 18px; line-height: 1.7; }
 .book-grid td, .book-grid th { text-align: center; padding: 4px; }
 .book-grid input { width: 20px; height: 20px; }
@@ -2397,3 +2385,34 @@ body.rec-open{overflow:hidden}
 .book-staff:first-of-type { border-top: 0; }
 .book-staff input:not([type=checkbox]) { width: 100%; }
 .book-head .pill { white-space: nowrap; flex: 0 0 auto; }
+.bk-card { padding-left: 10px; padding-right: 10px; }
+.bk-week { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
+.bk-nav { width: 40px; height: 36px; border: 1px solid var(--line); border-radius: 8px; background: #fff; font-size: 22px; line-height: 1; color: inherit; cursor: pointer; }
+.bk-nav:disabled { opacity: .3; cursor: default; }
+.bk-wrap { overflow-x: auto; }
+.bk-grid { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 14px; }
+.bk-grid th, .bk-grid td { border: 1px solid var(--line); text-align: center; padding: 0; height: 44px; }
+.bk-grid thead th { height: 46px; font-size: 15px; background: var(--paper-2); }
+.bk-grid thead th small { display: block; font-size: 11px; font-weight: 400; }
+.bk-grid thead th.sat { color: #1565c0; }
+.bk-grid thead th.sun { color: #c62828; }
+.bk-grid thead th.today { background: #0f3d2e; color: #fff; }
+.bk-grid tbody th { width: 52px; font-size: 12px; font-weight: 600; background: var(--paper); }
+.bk-grid thead th:first-child { width: 52px; }
+.bk-none { color: #bbb; background: #f4f4f4; }
+.bk-mine { color: #0f3d2e; font-weight: 700; background: #e8f3ec; font-size: 13px; }
+.bk-ok { width: 100%; height: 100%; border: 0; background: none; font-size: 20px; color: #0f3d2e; cursor: pointer; }
+.bk-ok:hover:not(:disabled), .bk-ok:focus-visible { background: #fff7e3; }
+.bk-ok:disabled { color: #999; cursor: default; }
+.bk-legend { margin: 8px 2px 0; }
+.bk-grid .bk-ok { display: block; width: 100%; height: 44px; margin: 0; padding: 0; border: 0; border-radius: 0; box-shadow: none; min-height: 0; background: transparent; font-size: 20px; font-weight: 400; color: #0f3d2e; }
+.bk-grid .bk-ok:disabled { color: #999; background: transparent; }
+.bk-week .bk-nav { margin: 0; padding: 0; min-height: 0; box-shadow: none; }
+/* 半月分を横にスライド（時間の列は左に固定） */
+.bk-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; scroll-snap-type: x proximity; }
+.bk-grid { width: max-content; table-layout: fixed; border-collapse: separate; border-spacing: 0; }
+.bk-grid th, .bk-grid td { width: 44px; min-width: 44px; border-width: 0 1px 1px 0; }
+.bk-grid tr > :first-child { position: sticky; left: 0; z-index: 1; width: 52px; min-width: 52px; border-left-width: 1px; box-shadow: 2px 0 3px rgba(0,0,0,.06); }
+.bk-grid thead th { border-top-width: 1px; scroll-snap-align: start; }
+.bk-grid thead th:first-child { background: var(--paper-2); }
+.bk-grid .bk-m { font-style: normal; font-size: 11px; }
