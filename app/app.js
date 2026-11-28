@@ -4577,11 +4577,23 @@ async function viewBook() {
   if (!slots) return header('面談を予約する', back) + '<div class="content"><div class="notice">データベースの設定（20261129000000_meeting_booking.sql）がまだのため、予約の画面を表示できません。</div></div>' + nav;
   const cr = creditRows ? creditSummary(creditRows) : null;
   const left = cr ? cr.meeting.length : 0;
-  const days = [...new Set(slots.map((x) => jstDate(x.slot_at)))];
-  const openDays = days.filter((d) => slots.some((x) => jstDate(x.slot_at) === d && x.available));
-  if (!state.bookDay || !days.includes(state.bookDay)) state.bookDay = openDays[0] || days[0] || '';
-  const daySlots = slots.filter((x) => jstDate(x.slot_at) === state.bookDay);
   const canBook = !staffPreview && left > 0;
+  // 1週間（今日から7日ずつ）を、横に日にち・縦に時間の表で出す（hacomono の予約画面と同じ見方）
+  const addDay = (d, n) => { const [y, m, x] = d.split('-').map(Number); return new Date(Date.UTC(y, m - 1, x + n)).toISOString().slice(0, 10); };
+  const lastDay = slots.length ? jstDate(slots[slots.length - 1].slot_at) : from;
+  const weeks = Math.max(1, Math.ceil((Date.parse(lastDay) - Date.parse(from)) / (7 * 86400000) + 1e-9) || 1);
+  state.bookWeek = Math.min(Math.max(0, state.bookWeek || 0), weeks - 1);
+  const week = Array.from({ length: 7 }, (_, i) => addDay(from, state.bookWeek * 7 + i));
+  const byKey = new Map(slots.map((x) => [`${jstDate(x.slot_at)} ${jstHm(x.slot_at)}`, x]));
+  const times = [...new Set(slots.map((x) => jstHm(x.slot_at)))].sort();
+  const wd = (d) => { const [y, m, x] = d.split('-').map(Number); return new Date(Date.UTC(y, m - 1, x)).getUTCDay(); };
+  const cell = (d, t) => {
+    const x = byKey.get(`${d} ${t}`);
+    if (!x) return '<td class="bk-none">－</td>';
+    if (x.available) return `<td><button type="button" class="bk-ok" data-action="book-slot" data-at="${esc(x.slot_at)}"${canBook ? '' : ' disabled'} aria-label="${esc(dayLabel(d))} ${esc(slotRange(x.slot_at))} 予約できます">○</button></td>`;
+    if (x.reason === '予約済み') return '<td class="bk-mine">済</td>';
+    return '<td class="bk-none">－</td>';
+  };
   return header('面談を予約する', back) + `<div class="content book">
     ${staffPreview ? '<div class="notice">スタッフ用の確認表示です（お客様に見える画面と同じです。スタッフのアカウントでは予約できません）。</div>' : ''}
     ${!staffPreview ? `<section class="card book-head">
@@ -4592,11 +4604,14 @@ async function viewBook() {
     ${mine.length ? `<section class="card"><h2>予約中の面談</h2>${mine.map((m) => `<div class="book-mine">
         <div><b>${esc(dayLabel(jstDate(m.scheduled_at)))} ${esc(slotRange(m.scheduled_at))}</b><br><small class="muted">キャンセルは開始の8時間前まで（それより後は回数を使います）</small></div>
         <button type="button" class="btn btn-sm btn-sub" data-action="book-cancel" data-id="${m.id}" data-at="${esc(m.scheduled_at)}">キャンセル</button></div>`).join('')}</section>` : ''}
-    <section class="card"><h2>日にちを選ぶ</h2>
-      ${days.length ? `<div class="book-days" role="tablist">${days.map((d) => { const has = openDays.includes(d); return `<button type="button" role="tab" class="book-day${d === state.bookDay ? ' on' : ''}${has ? '' : ' none'}" data-action="book-day" data-day="${d}" aria-selected="${d === state.bookDay}">${esc(dayLabel(d))}${has ? '' : '<small>満席</small>'}</button>`; }).join('')}</div>
-      <h2 class="book-time-h">時間を選ぶ <small>${esc(dayLabel(state.bookDay))}</small></h2>
-      <div class="book-slots">${daySlots.map((x) => `<button type="button" class="book-slot"${x.available && canBook ? '' : ' disabled'} data-action="book-slot" data-at="${esc(x.slot_at)}">
-        <b>${esc(slotRange(x.slot_at))}</b>${x.available ? '<small>空きあり</small>' : `<small>${esc(x.reason)}</small>`}</button>`).join('')}</div>`
+    <section class="card bk-card">
+      ${slots.length ? `<div class="bk-week">
+        <button type="button" class="bk-nav" data-action="book-week" data-dir="-1"${state.bookWeek ? '' : ' disabled'} aria-label="前の週">‹</button>
+        <b>${esc(dayLabel(week[0]))} 〜 ${esc(dayLabel(week[6]))}</b>
+        <button type="button" class="bk-nav" data-action="book-week" data-dir="1"${state.bookWeek < weeks - 1 ? '' : ' disabled'} aria-label="次の週">›</button></div>
+      <div class="bk-wrap"><table class="bk-grid"><thead><tr><th></th>${week.map((d) => `<th class="${wd(d) === 0 ? 'sun' : wd(d) === 6 ? 'sat' : ''}${d === from ? ' today' : ''}">${Number(d.slice(8))}<small>${WEEK[wd(d)]}</small></th>`).join('')}</tr></thead>
+        <tbody>${times.map((t) => `<tr><th>${t}</th>${week.map((d) => cell(d, t)).join('')}</tr>`).join('')}</tbody></table></div>
+      <p class="small muted bk-legend">○ 予約できる　－ 予約できない　済 予約済み　／ 面談は表示の時刻から20分</p>`
       : '<p class="muted small">いまは予約できる日がありません。</p>'}
     </section>
     <ul class="small muted book-rules">
@@ -5885,7 +5900,7 @@ const actions = {
   },
   // プランを選ぶ（選んだら、下の「申し込む」へ移動する）
   'plan-select': (el) => openPlanApply(el.dataset.plan),
-  'book-day': (el) => { state.bookDay = el.dataset.day; render(); },
+  'book-week': (el) => { state.bookWeek = (state.bookWeek || 0) + Number(el.dataset.dir); render(); },
   'book-slot': async (el) => {
     const at = el.dataset.at;
     const ok = await confirmDialog({
