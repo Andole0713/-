@@ -4578,12 +4578,12 @@ async function viewBook() {
   const cr = creditRows ? creditSummary(creditRows) : null;
   const left = cr ? cr.meeting.length : 0;
   const canBook = !staffPreview && left > 0;
-  // 1週間（今日から7日ずつ）を、横に日にち・縦に時間の表で出す（hacomono の予約画面と同じ見方）
+  // 半月（今日から14日ずつ）を、横に日にち・縦に時間の表で出す。横にスライドして見る（時間の列は左に固定）
   const addDay = (d, n) => { const [y, m, x] = d.split('-').map(Number); return new Date(Date.UTC(y, m - 1, x + n)).toISOString().slice(0, 10); };
   const lastDay = slots.length ? jstDate(slots[slots.length - 1].slot_at) : from;
-  const weeks = Math.max(1, Math.ceil((Date.parse(lastDay) - Date.parse(from)) / (7 * 86400000) + 1e-9) || 1);
+  const weeks = Math.max(1, Math.ceil((Date.parse(lastDay) - Date.parse(from) + 86400000) / (14 * 86400000)) || 1);
   state.bookWeek = Math.min(Math.max(0, state.bookWeek || 0), weeks - 1);
-  const week = Array.from({ length: 7 }, (_, i) => addDay(from, state.bookWeek * 7 + i));
+  const week = Array.from({ length: 14 }, (_, i) => addDay(from, state.bookWeek * 14 + i)).filter((d) => d <= lastDay);
   const byKey = new Map(slots.map((x) => [`${jstDate(x.slot_at)} ${jstHm(x.slot_at)}`, x]));
   const times = [...new Set(slots.map((x) => jstHm(x.slot_at)))].sort();
   const wd = (d) => { const [y, m, x] = d.split('-').map(Number); return new Date(Date.UTC(y, m - 1, x)).getUTCDay(); };
@@ -4606,12 +4606,12 @@ async function viewBook() {
         <button type="button" class="btn btn-sm btn-sub" data-action="book-cancel" data-id="${m.id}" data-at="${esc(m.scheduled_at)}">キャンセル</button></div>`).join('')}</section>` : ''}
     <section class="card bk-card">
       ${slots.length ? `<div class="bk-week">
-        <button type="button" class="bk-nav" data-action="book-week" data-dir="-1"${state.bookWeek ? '' : ' disabled'} aria-label="前の週">‹</button>
-        <b>${esc(dayLabel(week[0]))} 〜 ${esc(dayLabel(week[6]))}</b>
-        <button type="button" class="bk-nav" data-action="book-week" data-dir="1"${state.bookWeek < weeks - 1 ? '' : ' disabled'} aria-label="次の週">›</button></div>
-      <div class="bk-wrap"><table class="bk-grid"><thead><tr><th></th>${week.map((d) => `<th class="${wd(d) === 0 ? 'sun' : wd(d) === 6 ? 'sat' : ''}${d === from ? ' today' : ''}">${Number(d.slice(8))}<small>${WEEK[wd(d)]}</small></th>`).join('')}</tr></thead>
+        <button type="button" class="bk-nav" data-action="book-week" data-dir="-1"${state.bookWeek ? '' : ' disabled'} aria-label="前の期間">‹</button>
+        <b>${esc(dayLabel(week[0]))} 〜 ${esc(dayLabel(week[week.length - 1]))}</b>
+        <button type="button" class="bk-nav" data-action="book-week" data-dir="1"${state.bookWeek < weeks - 1 ? '' : ' disabled'} aria-label="次の期間">›</button></div>
+      <div class="bk-wrap"><table class="bk-grid"><thead><tr><th></th>${week.map((d, i) => `<th class="${wd(d) === 0 ? 'sun' : wd(d) === 6 ? 'sat' : ''}${d === from ? ' today' : ''}">${i === 0 || d.endsWith('-01') ? `<i class="bk-m">${Number(d.slice(5, 7))}/</i>` : ''}${Number(d.slice(8))}<small>${WEEK[wd(d)]}</small></th>`).join('')}</tr></thead>
         <tbody>${times.map((t) => `<tr><th>${t}</th>${week.map((d) => cell(d, t)).join('')}</tr>`).join('')}</tbody></table></div>
-      <p class="small muted bk-legend">○ 予約できる　－ 予約できない　済 予約済み　／ 面談は表示の時刻から20分</p>`
+      <p class="small muted bk-legend">横にスライドすると先の日にちが見られます<br>○ 予約できる　－ 予約できない　済 予約済み　／ 面談は表示の時刻から20分</p>`
       : '<p class="muted small">いまは予約できる日がありません。</p>'}
     </section>
     <ul class="small muted book-rules">

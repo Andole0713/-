@@ -2408,3 +2408,11 @@ body.rec-open{overflow:hidden}
 .bk-grid .bk-ok { display: block; width: 100%; height: 44px; margin: 0; padding: 0; border: 0; border-radius: 0; box-shadow: none; min-height: 0; background: transparent; font-size: 20px; font-weight: 400; color: #0f3d2e; }
 .bk-grid .bk-ok:disabled { color: #999; background: transparent; }
 .bk-week .bk-nav { margin: 0; padding: 0; min-height: 0; box-shadow: none; }
+/* 半月分を横にスライド（時間の列は左に固定） */
+.bk-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; scroll-snap-type: x proximity; }
+.bk-grid { width: max-content; table-layout: fixed; border-collapse: separate; border-spacing: 0; }
+.bk-grid th, .bk-grid td { width: 44px; min-width: 44px; border-width: 0 1px 1px 0; }
+.bk-grid tr > :first-child { position: sticky; left: 0; z-index: 1; width: 52px; min-width: 52px; border-left-width: 1px; box-shadow: 2px 0 3px rgba(0,0,0,.06); }
+.bk-grid thead th { border-top-width: 1px; scroll-snap-align: start; }
+.bk-grid thead th:first-child { background: var(--paper-2); }
+.bk-grid .bk-m { font-style: normal; font-size: 11px; }
