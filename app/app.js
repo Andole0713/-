@@ -511,6 +511,8 @@ function statusPill(status) {
 // 利用できる会員：Stripe で契約中、または管理者が設定した利用期限内（LINE・電話で申し込んだ会員）
 const isActive = (p) => ['active', 'trialing'].includes(p?.subscription_status)
   || (!!p?.access_until && p.access_until >= new Date().toLocaleDateString('sv-SE'));
+// 利用期限が切れた会員（以前は使えていた人。まだ一度も使えるようになっていない人は含まない）
+const isExpired = (p) => !!p?.access_until && !!p?.plan && !isActive(p) && p.role !== 'admin';
 // アカウント削除：申し込みから30日後に完全に削除（それまではログインして元に戻せる）
 const DELETE_GRACE_DAYS = 30;
 const deleteOn = (p) => new Date(new Date(p.deletion_requested_at).getTime() + DELETE_GRACE_DAYS * 86400000).toISOString();
@@ -858,11 +860,34 @@ const signupIntro = () => `<div class="signup-intro">
   <p class="small muted" style="margin:6px 0 0">登録は無料です。登録のあと、プランを選んでお申し込みいただけます（お支払いは hacomono の画面で行います）。</p>
   <a class="si-more" href="../">レッスンの内容・コーチ・料金をくわしく見る<span aria-hidden="true">›</span></a>
 </div>`;
+// ログイン・登録・パスワードのエラーを、わかりやすい日本語にする（Supabase の英語のエラーをそのまま出さない）
+function authErrorJa(e) {
+  const code = e?.code || ''; const msg = String(e?.message || ''); const status = e?.status || 0;
+  const wait = msg.match(/after (\d+) seconds?/i);
+  if (code === 'invalid_credentials' || /invalid login credentials/i.test(msg)) return 'メールアドレスまたはパスワードが正しくありません。もう一度お確かめください。';
+  if (code === 'email_not_confirmed' || /email not confirmed/i.test(msg)) return 'メールアドレスの確認がまだ済んでいません。登録のときに届いた確認メールのリンクを押してください。';
+  if (code === 'user_already_exists' || /already registered|already been registered/i.test(msg)) return 'このメールアドレスはすでに登録されています。「ログイン」からお入りください（パスワードを忘れた方は「パスワードをお忘れの方」から）。';
+  if (code === 'weak_password' || /password should be|weak password|at least \d+ characters/i.test(msg)) return 'パスワードが短すぎるか、簡単すぎます。8文字以上で、英字と数字をまぜて決めてください。';
+  if (code === 'same_password' || /should be different from the old/i.test(msg)) return '今と同じパスワードです。別のパスワードを決めてください。';
+  if (code === 'email_address_invalid' || /invalid format|unable to validate email/i.test(msg)) return 'メールアドレスの形が正しくありません。もう一度お確かめください。';
+  if (wait) return `続けて操作されたため、少しお待ちください（あと${wait[1]}秒ほどで、もう一度お試しいただけます）。`;
+  if (code === 'over_email_send_rate_limit' || /email rate limit/i.test(msg)) return '短い時間にメールの送信が続いたため、いまは送れません。しばらく（1時間ほど）たってからお試しください。';
+  if (code === 'over_request_rate_limit' || status === 429 || /rate limit|too many/i.test(msg)) return '短い時間に何度も操作されたため、いまは受け付けられません。少し時間をおいてお試しください。';
+  if (code === 'signup_disabled' || /signups not allowed/i.test(msg)) return 'いまは新規登録を受け付けていません。LINE またはお電話でお問い合わせください。';
+  if (code === 'otp_expired' || /expired|invalid.*(link|token)/i.test(msg)) return 'メールのリンクの期限が切れています。もう一度メールを送り直してください。';
+  if (/failed to fetch|network|load failed/i.test(msg)) return '通信できませんでした。電波のよいところで、もう一度お試しください。';
+  return 'うまくいきませんでした。時間をおいてもう一度お試しいただくか、LINE またはお電話でお問い合わせください。';
+}
+const authFail = (e) => new Error(authErrorJa(e));
+// 確認メールの送り直し（登録のあと・確認がまだのままログインしたとき）
+const resendBox = () => (state.resendEmail ? `<div class="auth-resend"><p class="small muted">メールが届かないときは、迷惑メールフォルダもご確認ください。それでも見つからなければ、送り直せます。</p>
+  <button type="button" class="btn btn-sm btn-sub" data-action="auth-resend">確認メールを送り直す</button></div>` : '');
+
 function viewAuth() {
   const t = state.authTab;
   const notice = !configured
     ? '<div class="notice">会員ログインは現在準備中です。開設まで今しばらくお待ちください。</div>'
-    : state.authMessage ? `<div class="notice">${esc(state.authMessage)}</div>`
+    : state.authMessage ? `<div class="notice">${esc(state.authMessage)}${resendBox()}</div>`
     : state.handoff && t !== 'reset' ? '<div class="notice">📹 SwingFrame で撮った動画をコーチに送るには、ログインしてください（初めての方は「新規登録」から）。ログインすると、そのまま送れます。</div>' : '';
   const forms = {
     login: `<form class="form" data-form="login">
@@ -1020,6 +1045,20 @@ function openPlanApply(id) {
   wrap.querySelector('.plan-go')?.focus();
 }
 
+// 利用期限が切れた会員への案内（プラン画面のいちばん上）
+function expiredBox(p) {
+  const pl = PLANS.find((x) => x.id === p.plan);
+  const monthly = pl && !/一括/.test(pl.payment || '');
+  return `<section class="card plan-expired">
+    <b>ご利用期限（${esc(fmtDate(p.access_until))}）が過ぎています</b>
+    <p class="small">いまは、動画の提出・オンライン面談の予約・ドリルなどが使えません。続けるときは、hacomono でお手続きをしてください。お手続きが確認でき次第、また使えるようになります（これまでの記録はそのまま残っています）。</p>
+    ${pl ? `<a class="btn btn-block btn-gold" href="${esc(planUrl(pl.id))}" target="_blank" rel="noopener" data-plan-apply="${esc(pl.id)}">${esc(pl.name)}を続ける（hacomono）</a>` : ''}
+    <p class="small muted" style="margin:8px 0 0">別のプランに変えるときは、下の「プランを選ぶ」から選んでください。</p>
+    ${monthly ? '<p class="small muted" style="margin:6px 0 0">hacomono で月額のお支払いが続いているのにこの表示が出ている場合は、お手数ですがコンシェルジュサポートからご連絡ください。</p>' : ''}
+    <div class="plan-ask"><a class="btn btn-sm btn-sub" href="#/history">これまでのレッスンを見る</a><a class="btn btn-sm btn-sub" href="#/concierge">コンシェルジュに連絡</a></div>
+  </section>`;
+}
+
 function viewPlans() {
   const p = state.profile;
   const troubled = ['past_due', 'unpaid', 'incomplete', 'paused'].includes(p.subscription_status);
@@ -1038,8 +1077,9 @@ function viewPlans() {
         <tr><th>ミーティング</th>${list.map((pl) => `<td>${pl.credits?.meeting ? meetTxt(pl) : 'オプション'}</td>`).join('')}</tr>
       </tbody></table></div>`;
   return header('プランを選ぶ') + `<div class="content">
-    <div class="hero"><span class="pill">WELCOME</span><h1>${esc(p.name || 'ようこそ')}さん</h1>
-      <div class="muted">${anyCheckout ? 'プランを選んで決済が完了すると' : 'お申し込みが完了すると'}、動画の添削・オンラインミーティング・ドリルなどが使えるようになります。</div></div>
+    <div class="hero"><span class="pill">${isExpired(p) ? 'WELCOME BACK' : 'WELCOME'}</span><h1>${esc(p.name || 'ようこそ')}さん</h1>
+      <div class="muted">${isExpired(p) ? 'お手続きをすると、また動画の添削・オンラインミーティング・ドリルなどが使えるようになります。' : `${anyCheckout ? 'プランを選んで決済が完了すると' : 'お申し込みが完了すると'}、動画の添削・オンラインミーティング・ドリルなどが使えるようになります。`}</div></div>
+    ${!troubled && isExpired(p) ? expiredBox(p) : ''}
     ${troubled ? '' : planAppBox(state.planApp)}
     ${troubled ? `<div class="notice">お支払いの確認ができていません（${esc(STATUS_LABEL[p.subscription_status]?.[0] ?? p.subscription_status)}）。
         カード情報を更新してください。<button class="btn-block" data-action="portal">お支払い情報を更新する</button></div>` : `
@@ -5514,6 +5554,12 @@ async function render() {
 
     if (r[0] === 'help') { paint(viewHelp(r[1])); return; }
     if (!isActive(p)) {
+      // 利用期限が切れた会員：これまでのレッスンとコンシェルジュサポートは見られるようにする（問い合わせ・見返しのため）
+      if (isExpired(p) && ['history', 'lesson', 'concierge'].includes(r[0])) {
+        if (r[0] === 'history') return paint(await viewHistory());
+        if (r[0] === 'lesson' && r[1]) return paint(await viewLesson(r[1]));
+        if (r[0] === 'concierge') return paint(await viewConcierge());
+      }
       if (r[0] !== 'plans') return go('plans');
       if (state.planAppFor !== p.id) {
         state.planAppFor = p.id;
@@ -5617,7 +5663,14 @@ const actions = {
     go(state.profile?.role === 'admin' ? 'admin/dashboard' : 'home');
   },
   'switch-account': async () => { await signOutHere(); toLogin(); },
-  'auth-tab': (el) => { state.authTab = el.dataset.tab; state.authMessage = ''; render(); },
+  'auth-tab': (el) => { state.authTab = el.dataset.tab; state.authMessage = ''; state.resendEmail = ''; render(); },
+  'auth-resend': async (el) => {
+    el.disabled = true;
+    const { error } = await sb.auth.resend({ type: 'signup', email: state.resendEmail, options: { emailRedirectTo: location.origin + location.pathname } });
+    if (error) { el.disabled = false; return toast(authErrorJa(error), true); }
+    toast('確認メールを送り直しました');
+    el.textContent = '送り直しました';
+  },
   'history-filter': (el) => { state.historyClub = el.dataset.club; render(); },
   'toggle-practice': async (el) => {
     const on = el.getAttribute('aria-pressed') !== 'true';
@@ -6701,7 +6754,14 @@ const forms = {
     state.introForce = true;
     primeIntro();
     const { error } = await sb.auth.signInWithPassword({ email: f.email.value.trim(), password: f.password.value });
-    if (error) { state.introForce = false; state.introEl = null; throw new Error('メールアドレスまたはパスワードが正しくありません'); }
+    if (error) {
+      state.introForce = false; state.introEl = null;
+      // 確認メールのリンクをまだ押していない人には、送り直しのボタンも出す
+      if (error.code === 'email_not_confirmed' || /email not confirmed/i.test(error.message || '')) {
+        state.resendEmail = f.email.value.trim(); state.authMessage = authErrorJa(error); render(); return;
+      }
+      throw authFail(error);
+    }
     local.set(LAST_EMAIL_KEY, f.email.value.trim());
     // ログインのあとはオープニング動画が流れるので、カップインの音は鳴らさない
     // 撮影画面から来てログインした場合は、そのままマイページへ
@@ -6778,22 +6838,23 @@ const forms = {
       // どこから来たか・選んだプランも、アカウントに保存しておく（確認メールを別のスマホやアプリで開いても消えないように）
       options: { data: { name: f.name.value.trim(), source: landingSource()?.source || '', plan_pick: planPick() }, emailRedirectTo: location.origin + location.pathname },
     });
-    if (error) throw error;
+    if (error) throw authFail(error);
     if (!data.session) {
       state.authTab = 'login';
-      state.authMessage = '確認メールを送りました。メール内のリンクを開いて登録を完了してください。';
+      state.resendEmail = f.email.value.trim();
+      state.authMessage = `確認メールを ${state.resendEmail} に送りました。メール内のリンクを開いて登録を完了してください。`;
       render();
     }
   },
   reset: async (f) => {
     const { error } = await sb.auth.resetPasswordForEmail(f.email.value.trim(), { redirectTo: location.origin + location.pathname });
-    if (error) throw error;
+    if (error) throw authFail(error);
     state.authMessage = '再設定メールを送りました。メール内のリンクを開いてください。';
     render();
   },
   'new-password': async (f) => {
     const { error } = await sb.auth.updateUser({ password: f.password.value });
-    if (error) throw error;
+    if (error) throw authFail(error);
     state.recovery = false;
     toast('パスワードを変更しました');
     render();
@@ -6805,7 +6866,7 @@ const forms = {
     });
     if (!ok) return;
     const { error } = await sb.auth.updateUser({ password: f.password.value });
-    if (error) throw error;
+    if (error) throw authFail(error);
     f.reset(); toast('パスワードを変更しました');
   },
   clubs: async (f) => {
@@ -7445,6 +7506,12 @@ async function init() {
   const checkout = params.get('checkout');
   const view = params.get('view');
   if (checkout || view) history.replaceState(null, '', location.pathname + (view ? `#/${view}` : location.hash));
+  // メールのリンクの期限切れなど（#error=…&error_code=…）は、日本語で案内して、アドレスバーから消す
+  const hashErr = new URLSearchParams(location.hash.replace(/^#\/?/, ''));
+  if (hashErr.get('error_code') || hashErr.get('error')) {
+    state.authMessage = authErrorJa({ code: hashErr.get('error_code') || '', message: hashErr.get('error_description') || '' });
+    history.replaceState(null, '', location.pathname + location.search);
+  }
 
   sb.auth.onAuthStateChange((event, session) => {
     if (event === 'PASSWORD_RECOVERY') state.recovery = true;
